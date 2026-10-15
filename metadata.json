@@ -1,0 +1,6 @@
+{
+  "name": "Anki 2.0 - FSRS Flashcards",
+  "description": "Modern cross-platform flashcard app featuring the official FSRS algorithm, Apple iOS design aesthetic, rich media, voice recording comparison, and Cloze support.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
