@@ -1,6 +1,0 @@
-{
-  "summary": "Plano detalhado para corrigir o bug de exclusão de Decks, Cards e Note Types substituindo o window.confirm nativo (bloqueado em iframes) por um Modal de Confirmação estilizado, seguro e com aviso claro de impacto.",
-  "updatedAt": "2026-10-12T22:05:28.855066292Z",
-  "requestFeedback": true,
-  "userFacing": true
-}
