@@ -1,20 +1,58 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+<img width="1200" alt="Anki FSRS Flashcards Banner" src="https://raw.githubusercontent.com/enzouK/Anki2.0/main/src/assets/logo.svg" />
 </div>
 
-# Run and deploy your AI Studio app
+# Anki FSRS Flashcards
 
-This contains everything you need to run your app locally.
+Aplicativo de flashcards inteligente usando o algoritmo FSRS (Spaced Repetition System) para Anki.
 
-View your app in AI Studio: https://ai.studio/apps/f4f4e36b-93b5-48f0-88d0-7715162c4b90
+## 📋 Sobre
 
-## Run Locally
+Este projeto implementa o algoritmo **FSRS** (Free Spaced Repetition System) para o Anki, proporcionando uma otimização inteligente do espaçamento de repetição baseado na ciência da memória.
 
-**Prerequisites:**  Node.js
+## 🚀 Funcionalidades
 
+- **Algoritmo FSRS**: Otimização personalizada do espaçamento baseada em pesquisas de memória
+- **Integração Anki**: Plugin completo para o cliente de flashcards Anki
+- **Gerenciamento de Decks**: Criação, edição e exclusão de baralhos
+- **Tipos de Nota**: Suporte a templates de notas personalizáveis
+- **Estudo Interativo**: Interface fluida para revisão de cartões
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 🛠️ Tecnologias
+
+- **Frontend**: React + TypeScript + Vite
+- **Storage**: IndexedDB via serviço personalizado
+- **FSRS Algorithm**: Implementação do algoritmo FSRS em TypeScript
+- **Anki Addon**: Integração com o ecossistema Anki
+
+## 📦 Instalação
+
+```bash
+# Instalar dependências
+npm install
+
+# Executar em modo desenvolvimento
+npm run dev
+
+# Build para produção
+npm run build
+```
+
+## 📁 Estrutura do Projeto
+
+```
+src/
+├── components/     <- Componentes UI
+├── fsrs/           <- Algoritmo FSRS
+├── services/       <- Serviços Anki/Audio
+├── types/          <- Tipos TypeScript
+└── main.tsx        <- Ponto de entrada
+```
+
+## 🎯 Propósito
+
+Este plugin substitui o sistema de repetição padrão do Anki pelo algoritmo FSRS, que foi desenvolvido por pesquisadores da Universidade de Waterloo e tem demonstrado melhores resultados na retenção de longo prazo comparado aos métodos tradicionais.
+
+## 📄 Licença
+
+MIT
