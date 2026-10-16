@@ -51,6 +51,20 @@ export function detectFieldModes(
   return modes;
 }
 
+/**
+ * Resolves the display field order for a note type.
+ * The user's preference order WINS (first item = primary field); fields that
+ * no longer exist on the note type are dropped. Without a preference, the
+ * first two fields by ord are used.
+ */
+export function resolveDisplayFields(fieldNamesByOrd: string[], pref?: string[]): string[] {
+  if (pref && pref.length > 0) {
+    const chosen = pref.filter((n) => fieldNamesByOrd.includes(n));
+    if (chosen.length > 0) return chosen;
+  }
+  return fieldNamesByOrd.slice(0, 2);
+}
+
 /** Decodes the common HTML entities produced by rich-text editors. */
 function decodeEntities(s: string): string {
   return s.replace(/&(nbsp|amp|lt|gt|quot|apos|#39|#x27|#x2f);/gi, (_ent, name: string) => {

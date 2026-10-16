@@ -19,6 +19,7 @@ import {
   extractFirstImage,
   extractFirstAudio,
   detectFieldModes,
+  resolveDisplayFields,
   furiganaPreviewHtml,
   kanjiPreviewText,
   kanaPreviewText,
@@ -195,16 +196,11 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
    * Effective display field NAMES for a note type. The FIRST one is the
    * primary field. Falls back to first two fields by ord when no preference.
    */
-  const effectiveFields = (nt: NoteType): string[] => {
-    const defs = sortedFields(nt);
-    const names = defs.map((f) => f.name);
-    const pref = fieldPrefs[nt.id];
-    if (pref && pref.length > 0) {
-      const chosen = names.filter((n) => pref.includes(n));
-      if (chosen.length > 0) return chosen;
-    }
-    return names.slice(0, 2);
-  };
+  const effectiveFields = (nt: NoteType): string[] =>
+    resolveDisplayFields(
+      sortedFields(nt).map((f) => f.name),
+      fieldPrefs[nt.id]
+    );
 
   const toggleFieldPref = (noteTypeId: string, fieldName: string) => {
     const nt = noteTypes.find((n) => n.id === noteTypeId);
