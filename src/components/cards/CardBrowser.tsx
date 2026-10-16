@@ -8,6 +8,8 @@ import {
   Star,
   Check,
   Headphones,
+  Play,
+  Pause,
 } from 'lucide-react';
 import { Card, Note, NoteType } from '../../types/anki';
 import { StorageService } from '../../services/storage';
@@ -24,7 +26,6 @@ import {
   furiganaPreviewHtml,
   kanjiPreviewText,
   kanaPreviewText,
-  revealSoundAndCloze,
   FieldRenderMode,
 } from '../../services/cardPreview';
 import { ConfirmationModal } from '../common/ConfirmationModal';
@@ -48,11 +49,20 @@ async function resolveMedia(ref: string): Promise<string | null> {
   return ref;
 }
 
-/** Fixed-size image box: every image (any aspect ratio) centers inside, so text alignment never shifts. */
-const RowImage: React.FC<{ imageRef: string | null; fallbackImage?: string }> = ({
-  imageRef,
-  fallbackImage,
-}) => {
+/**
+ * Row layout driven by the PRIMARY (starred) field:
+ * - text  → image box left, primary text highlighted (current behavior)
+ * - image → featured image centered above the (all-secondary) text fields
+ * - audio → image box left (if any) + full review-style player above the texts
+ */
+type RowLayout = 'text' | 'image' | 'audio';
+
+/** Image box: fixed size keeps text alignment stable; featured variant is larger. */
+const RowImage: React.FC<{
+  imageRef: string | null;
+  fallbackImage?: string;
+  featured?: boolean;
+}> = ({ imageRef, fallbackImage, featured = false }) => {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,7 +82,11 @@ const RowImage: React.FC<{ imageRef: string | null; fallbackImage?: string }> = 
   if (!imageRef && !fallbackImage) return null;
 
   return (
-    <div className="w-44 h-28 rounded-xl border border-black/[0.06] dark:border-white/[0.1] bg-black/[0.03] dark:bg-white/[0.05] flex items-center justify-center overflow-hidden shrink-0">
+    <div
+      className={`rounded-xl border border-black/[0.06] dark:border-white/[0.1] bg-black/[0.03] dark:bg-white/[0.05] flex items-center justify-center overflow-hidden shrink-0 ${
+        featured ? 'w-[280px] h-56' : 'w-44 h-28'
+      }`}
+    >
       {url && (
         <img
           src={url}
@@ -84,14 +98,13 @@ const RowImage: React.FC<{ imageRef: string | null; fallbackImage?: string }> = 
   );
 };
 
-/** AnkiDroid-style headphone button: plays the card audio inline with the text (sm) or standalone (lg). */
+/** AnkiDroid-style headphone button: plays the card audio inline with the text. */
 const RowAudioButton: React.FC<{
   audioRef: string | null;
   fallbackAudio?: string;
   playingUrl: string | null;
   onToggle: (url: string) => void;
-  size?: 'sm' | 'lg';
-}> = ({ audioRef, fallbackAudio, playingUrl, onToggle, size = 'sm' }) => {
+}> = ({ audioRef, fallbackAudio, playingUrl, onToggle }) => {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -117,18 +130,131 @@ const RowAudioButton: React.FC<{
         onToggle(url);
       }}
       title={isPlaying ? 'Pausar áudio' : 'Tocar áudio'}
-      className={`inline-flex items-center justify-center rounded-full transition-all active:scale-90 shrink-0 ${
-        size === 'lg' ? 'w-10 h-10 self-start' : 'w-6 h-6 align-[-4px] mr-1.5'
-      } ${
+      className={`inline-flex items-center justify-center w-6 h-6 rounded-full align-[-4px] mr-1.5 transition-all active:scale-90 shrink-0 ${
         isPlaying
           ? 'bg-ios-blue text-white shadow-[0_1px_6px_rgba(0,122,255,0.45)]'
           : 'bg-ios-blue/10 text-ios-blue hover:bg-ios-blue/20'
       }`}
     >
-      <Headphones
-        className={`w-3.5 h-3.5 ${size === 'lg' ? 'w-[18px] h-[18px]' : ''} ${isPlaying ? 'animate-pulse' : ''}`}
-      />
+      <Headphones className={`w-3.5 h-3.5 ${isPlaying ? 'animate-pulse' : ''}`} />
     </button>
+  );
+};
+
+function formatPlayerTime(secs: number): string {
+  if (!secs || isNaN(secs)) return '0:00';
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+/** Review-style audio mini player (play/pause + seekable progress + time). */
+const RowAudioPlayer: React.FC<{ audioRef: string | null; fallbackAudio?: string }> = ({
+  audioRef,
+  fallbackAudio,
+}) => {
+  const [url, setUrl] = useState<string | null>(null);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setUrl(null);
+    (async () => {
+      const u = audioRef ? await resolveMedia(audioRef) : null;
+      if (cancelled) return;
+      setUrl(u ?? (audioRef ? null : fallbackAudio ?? null));
+    })();
+    return () => {
+      cancelled = true;
+      audioElRef.current?.pause();
+    };
+  }, [audioRef, fallbackAudio]);
+
+  if (!url) return null;
+
+  const togglePlay = () => {
+    const a = audioElRef.current;
+    if (!a) return;
+    if (isPlaying) {
+      a.pause();
+      setIsPlaying(false);
+    } else {
+      a.play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
+    }
+  };
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const a = audioElRef.current;
+    if (!a || !a.duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    a.currentTime = ratio * a.duration;
+    setCurrentTime(a.currentTime);
+    setProgress(ratio * 100);
+  };
+
+  return (
+    <div className="p-2.5 rounded-2xl bg-ios-blue/[0.06] dark:bg-ios-blue/[0.12] border border-ios-blue/20 flex items-center gap-2.5 w-full max-w-[320px]">
+      <audio
+        ref={audioElRef}
+        src={url}
+        preload="metadata"
+        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+        onTimeUpdate={(e) => {
+          const a = e.currentTarget;
+          setCurrentTime(a.currentTime);
+          if (a.duration) setProgress((a.currentTime / a.duration) * 100);
+        }}
+        onEnded={() => {
+          setIsPlaying(false);
+          setProgress(0);
+          setCurrentTime(0);
+        }}
+      />
+
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          togglePlay();
+        }}
+        title={isPlaying ? 'Pausar áudio' : 'Reproduzir áudio'}
+        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all active:scale-95 ${
+          isPlaying
+            ? 'bg-ios-blue text-white shadow-[0_1px_6px_rgba(0,122,255,0.45)]'
+            : 'bg-ios-blue/15 text-ios-blue hover:bg-ios-blue/25'
+        }`}
+      >
+        {isPlaying ? (
+          <Pause className="w-4 h-4 fill-current" />
+        ) : (
+          <Play className="w-4 h-4 ml-0.5 fill-current" />
+        )}
+      </button>
+
+      <div className="flex-1 min-w-0">
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            handleSeek(e);
+          }}
+          title="Clique para avançar/retroceder"
+          className="w-full h-1.5 rounded-full bg-black/[0.08] dark:bg-white/[0.12] cursor-pointer relative overflow-hidden"
+        >
+          <div className="h-full bg-ios-blue rounded-full" style={{ width: `${progress}%` }} />
+        </div>
+        <div className="flex items-center justify-between mt-1 text-[10px] font-mono tabular-nums text-zinc-400 dark:text-zinc-500">
+          <span>{formatPlayerTime(currentTime)}</span>
+          <span>{formatPlayerTime(duration)}</span>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -146,7 +272,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
     () => StorageService.getBrowserFieldPrefs()
   );
 
-  // Single shared audio element so only one preview plays at a time
+  // Single shared audio element so only one headphone-button preview plays at a time
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
 
@@ -280,7 +406,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   };
 
   return (
-    <div className="space-y-4 ios-fade-in">
+    <div className="space-y-4">
       {/* Search and Filters Card */}
       <div className="p-4 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] space-y-3">
         {/* iOS Search Field */}
@@ -365,7 +491,8 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
               <p className="text-[12px] text-zinc-400 dark:text-zinc-500 mt-0.5">
                 Toque para incluir ou remover campos. A estrela{' '}
                 <Star className="w-3 h-3 inline text-ios-orange fill-current -mt-0.5" /> define o
-                campo principal — ele aparece primeiro e com o texto destacado.
+                campo principal — texto ganha destaque; imagem vira destaque centralizado; áudio
+                vira player completo.
               </p>
             </div>
             <button
@@ -459,7 +586,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
               const noteType = note ? noteTypeMap.get(note.noteTypeId) : null;
               if (!note) return null;
 
-              // Chosen display fields (names); the first one is the primary field
+              // Chosen display fields (names); the first one is the PRIMARY field
               const chosenNames = noteType
                 ? effectiveFields(noteType)
                 : Object.keys(note.fields).slice(0, 2);
@@ -474,26 +601,39 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                   const html = furiganaPreviewHtml(raw);
                   // Readable fallback text: reading shown in parentheses
                   const text = stripHtml(html.replace(/<rt[^>]*>([\s\S]*?)<\/rt>/gi, '($1)'));
-                  return { name, mode, raw, html, text };
+                  return { name, raw, html, text };
                 }
                 if (mode === 'kanji') {
-                  return { name, mode, raw, html: undefined, text: kanjiPreviewText(raw) };
+                  return { name, raw, html: undefined, text: kanjiPreviewText(raw) };
                 }
                 if (mode === 'kana') {
-                  return { name, mode, raw, html: undefined, text: kanaPreviewText(raw) };
+                  return { name, raw, html: undefined, text: kanaPreviewText(raw) };
                 }
-                return { name, mode, raw, html: undefined, text: stripHtml(raw) };
+                return { name, raw, html: undefined, text: stripHtml(raw) };
               });
 
-              // Fields that are pure media (or empty) are represented by the
-              // image preview / headphone button — never as raw text blocks.
-              const blocks = allBlocks.filter((b) => b.text.length > 0);
+              // ---- Layout driven by the PRIMARY (starred) field ----
+              const primaryEntry = allBlocks[0];
+              const pHasText = primaryEntry ? primaryEntry.text.length > 0 : false;
+              const pImage = primaryEntry ? extractFirstImage(primaryEntry.raw) : null;
+              const pAudio = primaryEntry ? extractFirstAudio(primaryEntry.raw) : null;
+              const layout: RowLayout = pHasText
+                ? 'text'
+                : pImage
+                ? 'image'
+                : pAudio
+                ? 'audio'
+                : 'text'; // starred an empty field → fall back to text layout
+
+              // Text blocks (media-only/empty fields are represented by previews instead)
+              const textBlocks = allBlocks.filter((b) => b.text.length > 0);
+              const primaryTextBlock =
+                layout === 'text' ? textBlocks[0] : undefined;
 
               // Media refs scanned across the chosen RAW field contents, in display order
-              // (raw — NOT the preview html, which has media tags already stripped)
               const joined = allBlocks.map((b) => b.raw).join(' ');
-              const imageRef = extractFirstImage(joined);
-              const audioRef = extractFirstAudio(joined);
+              const imageRef = layout === 'image' ? null : extractFirstImage(joined);
+              const audioRef = layout === 'audio' ? null : extractFirstAudio(joined);
               const mediaImage = note.media?.find((m) => m.type === 'image')?.dataUrl;
               const mediaAudio = note.media?.find((m) => m.type === 'audio')?.dataUrl;
 
@@ -503,9 +643,11 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                   : '100%';
 
               // Primary text shows at least the first 2 <br>-separated lines
-              const primaryBlock = blocks[0];
-              const primaryLines = primaryBlock ? primaryBlock.text.split('\n') : [];
+              const primaryLines = primaryTextBlock ? primaryTextBlock.text.split('\n') : [];
               const primaryShown = primaryLines.slice(0, 2).join('\n');
+
+              const hasAnyVisual =
+                !!imageRef || !!mediaImage || !!audioRef || !!mediaAudio || !!pImage || !!pAudio;
 
               return (
                 <div
@@ -513,18 +655,60 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                   onClick={() => onEditNote(note.id)}
                   className="group flex flex-col sm:flex-row sm:items-start justify-between gap-3 px-4 py-4 cursor-pointer select-none transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
                 >
-                  {/* Left: image + field texts (headphone button inline) */}
+                  {/* Left: media + field contents (layout driven by primary field) */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start gap-3.5">
-                      <RowImage imageRef={imageRef} fallbackImage={mediaImage} />
+                    {/* IMAGE-PRIMARY: featured centered image above the texts */}
+                    {layout === 'image' && primaryEntry && (
+                      <div className="mb-3">
+                        <div className="flex items-center justify-center gap-1 mb-1.5">
+                          <Star className="w-2.5 h-2.5 text-ios-orange fill-current" />
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-600">
+                            {primaryEntry.name}
+                          </span>
+                        </div>
+                        <div className="flex justify-center">
+                          <RowImage
+                            featured
+                            imageRef={pImage}
+                            fallbackImage={mediaImage}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className={layout === 'image' ? '' : 'flex items-start gap-3.5'}>
+                      {/* Normal left box (text and audio-primary layouts) */}
+                      {layout !== 'image' && (
+                        <RowImage imageRef={imageRef} fallbackImage={mediaImage} />
+                      )}
 
                       <div className="flex-1 min-w-0 space-y-2">
-                        {primaryBlock && (
+                        {/* AUDIO-PRIMARY: review-style player instead of headphone icon */}
+                        {layout === 'audio' && primaryEntry && pAudio && (
+                          <div>
+                            <div className="flex items-center gap-1 mb-1.5">
+                              <Star className="w-2.5 h-2.5 text-ios-orange fill-current" />
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-600">
+                                {primaryEntry.name}
+                              </span>
+                            </div>
+                            <RowAudioPlayer audioRef={pAudio} fallbackAudio={mediaAudio} />
+                          </div>
+                        )}
+                        {/* IMAGE-PRIMARY with audio in the same field */}
+                        {layout === 'image' && pAudio && (
+                          <div className="flex justify-center">
+                            <RowAudioPlayer audioRef={pAudio} fallbackAudio={mediaAudio} />
+                          </div>
+                        )}
+
+                        {/* TEXT-PRIMARY: highlighted first text block (with inline headphone) */}
+                        {layout === 'text' && primaryTextBlock && (
                           <div>
                             <div className="flex items-center gap-1 mb-0.5">
                               <Star className="w-2.5 h-2.5 text-ios-orange fill-current" />
                               <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-600">
-                                {primaryBlock.name}
+                                {primaryTextBlock.name}
                               </span>
                             </div>
                             <div className="whitespace-pre-line font-semibold text-[15px] leading-relaxed text-zinc-900 dark:text-white line-clamp-6">
@@ -534,46 +718,31 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                                 playingUrl={playingUrl}
                                 onToggle={toggleAudio}
                               />
-                              {primaryBlock.html !== undefined ? (
-                                <span dangerouslySetInnerHTML={{ __html: primaryBlock.html }} />
-                              ) : (
-                                primaryShown || '—'
-                              )}
+                              {primaryShown || '—'}
                             </div>
                           </div>
                         )}
 
-                        {blocks.slice(1).map((b) => (
-                          <div key={b.name}>
-                            <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-600 mb-0.5">
-                              {b.name}
+                        {/* Secondary text fields (all of them when primary is media) */}
+                        {textBlocks
+                          .filter((b) => b !== primaryTextBlock)
+                          .map((b) => (
+                            <div key={b.name}>
+                              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-600 mb-0.5">
+                                {b.name}
+                              </div>
+                              <div className="whitespace-pre-line text-[13px] leading-relaxed text-zinc-400 dark:text-zinc-500 line-clamp-2">
+                                {b.html !== undefined ? (
+                                  <span dangerouslySetInnerHTML={{ __html: b.html }} />
+                                ) : (
+                                  b.text
+                                )}
+                              </div>
                             </div>
-                            <div className="whitespace-pre-line text-[13px] leading-relaxed text-zinc-400 dark:text-zinc-500 line-clamp-2">
-                              {b.html !== undefined ? (
-                                <span dangerouslySetInnerHTML={{ __html: b.html }} />
-                              ) : (
-                                b.text
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          ))}
 
-                        {blocks.length === 0 && (audioRef || mediaAudio) && (
-                          <div className="flex items-center gap-2.5 py-1">
-                            <RowAudioButton
-                              size="lg"
-                              audioRef={audioRef}
-                              fallbackAudio={mediaAudio}
-                              playingUrl={playingUrl}
-                              onToggle={toggleAudio}
-                            />
-                            <span className="text-[13px] text-zinc-400 dark:text-zinc-500">
-                              Card somente áudio — toque no botão para ouvir
-                            </span>
-                          </div>
-                        )}
-
-                        {blocks.length === 0 && !imageRef && !audioRef && !mediaAudio && !mediaImage && (
+                        {/* Truly empty card */}
+                        {textBlocks.length === 0 && !hasAnyVisual && (
                           <div className="text-[13px] text-zinc-400 py-1">Card sem conteúdo</div>
                         )}
                       </div>
@@ -624,7 +793,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                         onClick={(e) =>
                           handleDeleteCardClick(
                             card,
-                            primaryBlock?.text || 'Card sem título',
+                            textBlocks[0]?.text || 'Card sem título',
                             deck?.name || 'Deck',
                             e
                           )
