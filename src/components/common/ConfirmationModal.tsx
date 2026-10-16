@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 
 export interface ConfirmationModalProps {
@@ -46,7 +47,9 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  // Portal to <body>: keeps the dialog above everything and immune to
+  // transformed ancestors (which hijack position:fixed into their own box).
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -139,6 +142,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

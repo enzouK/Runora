@@ -38,8 +38,12 @@
   }
 }
 
+/* Subtle iOS-style view transition.
+   IMPORTANT: no animation-fill-mode — a filled transform (even translateY(0))
+   would turn this element into a containing block for position:fixed
+   descendants, breaking modals/toasts rendered inside animated views. */
 .ios-fade-in {
-  animation: ios-fade-in 0.25s ease-out both;
+  animation: ios-fade-in 0.25s ease-out;
 }
 
 /* Cloze Deletion Styling (FSRS / Anki Compatible) */
