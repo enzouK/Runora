@@ -8,10 +8,8 @@ import {
   Plus,
   MoreVertical,
   Play,
-  Settings,
   Trash2,
   Edit2,
-  Sparkles,
 } from 'lucide-react';
 import { Deck } from '../../types/anki';
 import { DeckTreeNode, DeckService } from '../../services/deckService';
@@ -90,22 +88,21 @@ export const DeckList: React.FC<DeckListProps> = ({
     const isCollapsed = collapsedMap[node.fullName] ?? false;
     const hasChildren = node.children.length > 0;
     const { counts } = node;
-    const totalDue = counts.newCount + counts.learningCount + counts.reviewCount;
 
     return (
       <div key={node.deck.id} className="w-full">
         <div
           onClick={() => onSelectDeckToStudy(node.deck)}
-          className={`group flex items-center justify-between py-3.5 px-4 rounded-2xl transition-all cursor-pointer select-none hover:bg-zinc-100/80 dark:hover:bg-zinc-800/60 active:scale-[0.99] border border-transparent hover:border-zinc-200/60 dark:hover:border-zinc-700/40`}
-          style={{ paddingLeft: `${node.level * 20 + 16}px` }}
+          className="group flex items-center justify-between py-3 pr-3 cursor-pointer select-none transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
+          style={{ paddingLeft: `${node.level * 24 + 16}px` }}
         >
           {/* Left: Expand toggle + Folder Icon + Title */}
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
             {hasChildren ? (
               <button
                 type="button"
                 onClick={(e) => toggleCollapse(node.fullName, e)}
-                className="p-1 rounded-lg hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 text-zinc-400 transition-colors -ml-1"
+                className="p-1 -ml-1 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
               >
                 {isCollapsed ? (
                   <ChevronRight className="w-4 h-4" />
@@ -117,62 +114,60 @@ export const DeckList: React.FC<DeckListProps> = ({
               <div className="w-6" />
             )}
 
-            <div className="w-8 h-8 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-              {hasChildren ? (
-                isCollapsed ? <Folder className="w-4 h-4" /> : <FolderOpen className="w-4 h-4" />
+            {/* iOS Files-style blue folder glyph */}
+            <div className="w-6 flex items-center justify-center shrink-0">
+              {hasChildren && !isCollapsed ? (
+                <FolderOpen className="w-5 h-5 text-ios-blue" fill="currentColor" strokeWidth={0} />
               ) : (
-                <Folder className="w-4 h-4" />
+                <Folder className="w-5 h-5 text-ios-blue" fill="currentColor" strokeWidth={0} />
               )}
             </div>
 
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100 truncate">
+                <span className="font-semibold text-[15px] text-zinc-900 dark:text-zinc-50 truncate">
                   {node.shortName}
                 </span>
                 {node.deck.fsrsParams?.requestRetention && (
-                  <span className="hidden sm:inline-flex text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border border-zinc-200 dark:border-zinc-700">
-                    {Math.round(node.deck.fsrsParams.requestRetention * 100)}% FSRS
+                  <span
+                    className="hidden sm:inline text-[11px] font-medium text-zinc-400 dark:text-zinc-500"
+                    title="Retenção alvo FSRS"
+                  >
+                    {Math.round(node.deck.fsrsParams.requestRetention * 100)}%
                   </span>
                 )}
               </div>
               {node.deck.description && (
-                <p className="text-[11px] text-zinc-400 truncate max-w-xs">
+                <p className="text-[12px] text-zinc-400 dark:text-zinc-500 truncate max-w-xs leading-tight mt-px">
                   {node.deck.description}
                 </p>
               )}
             </div>
           </div>
 
-          {/* Right: Anki Tri-color Counters & Actions */}
-          <div className="flex items-center gap-3 shrink-0">
-            {/* Tri-color counts (New, Learn, Due) */}
-            <div className="flex items-center gap-1.5 font-mono text-xs font-semibold">
+          {/* Right: iOS colored counters & actions */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* Anki tri-color counts (plain iOS numbers) */}
+            <div className="flex items-center gap-3 text-[15px] font-medium tabular-nums pr-1">
               <span
-                className={`w-7 text-center py-0.5 rounded-md ${
-                  counts.newCount > 0
-                    ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40'
-                    : 'text-zinc-300 dark:text-zinc-600'
+                className={`w-6 text-center ${
+                  counts.newCount > 0 ? 'text-ios-blue' : 'text-zinc-300 dark:text-zinc-600'
                 }`}
                 title="Cards Novos"
               >
                 {counts.newCount}
               </span>
               <span
-                className={`w-7 text-center py-0.5 rounded-md ${
-                  counts.learningCount > 0
-                    ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40'
-                    : 'text-zinc-300 dark:text-zinc-600'
+                className={`w-6 text-center ${
+                  counts.learningCount > 0 ? 'text-ios-orange' : 'text-zinc-300 dark:text-zinc-600'
                 }`}
                 title="Aprendizado / Reaprendizado"
               >
                 {counts.learningCount}
               </span>
               <span
-                className={`w-7 text-center py-0.5 rounded-md ${
-                  counts.reviewCount > 0
-                    ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40'
-                    : 'text-zinc-300 dark:text-zinc-600'
+                className={`w-6 text-center ${
+                  counts.reviewCount > 0 ? 'text-ios-green' : 'text-zinc-300 dark:text-zinc-600'
                 }`}
                 title="Revisões Vencidas"
               >
@@ -187,7 +182,7 @@ export const DeckList: React.FC<DeckListProps> = ({
                 e.stopPropagation();
                 onSelectDeckToStudy(node.deck);
               }}
-              className="hidden sm:flex items-center gap-1 px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all active:scale-95"
+              className="hidden sm:flex items-center gap-1 px-3 py-1 rounded-full bg-ios-blue hover:bg-[#0071eb] text-white text-[12px] font-semibold transition-all active:scale-95"
             >
               <Play className="w-3 h-3 fill-current" />
               <span>Estudar</span>
@@ -212,7 +207,7 @@ export const DeckList: React.FC<DeckListProps> = ({
                   });
                 }
               }}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200/50 dark:hover:bg-zinc-700/50 transition-colors"
+              className="p-1.5 rounded-full text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] transition-colors"
             >
               <MoreVertical className="w-4 h-4" />
             </button>
@@ -223,8 +218,8 @@ export const DeckList: React.FC<DeckListProps> = ({
         {hasChildren && !isCollapsed && (
           <div className="relative">
             <div
-              className="absolute left-6 top-0 bottom-0 w-px bg-zinc-200/60 dark:bg-zinc-800/60"
-              style={{ left: `${node.level * 20 + 28}px` }}
+              className="absolute top-0 bottom-0 w-px bg-black/[0.07] dark:bg-white/[0.08]"
+              style={{ left: `${node.level * 24 + 26}px` }}
             />
             {node.children.map((child) => renderNode(child))}
           </div>
@@ -236,11 +231,11 @@ export const DeckList: React.FC<DeckListProps> = ({
   if (decks.length === 0) {
     return (
       <div className="text-center py-16 px-4">
-        <Folder className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-3" />
-        <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+        <Folder className="w-10 h-10 text-zinc-300 dark:text-zinc-600 mx-auto mb-3" strokeWidth={1.5} />
+        <p className="text-[15px] font-semibold text-zinc-800 dark:text-zinc-200">
           Nenhum deck criado ainda
         </p>
-        <p className="text-xs text-zinc-400 max-w-xs mx-auto mt-1 mb-4">
+        <p className="text-[13px] text-zinc-400 dark:text-zinc-500 max-w-xs mx-auto mt-1 mb-4">
           Crie seu primeiro deck para começar a organizar seus flashcards com agendamento FSRS.
         </p>
       </div>
@@ -248,18 +243,11 @@ export const DeckList: React.FC<DeckListProps> = ({
   }
 
   return (
-    <div className="space-y-1">
-      {/* Legend bar */}
-      <div className="flex items-center justify-between px-4 py-2 text-[11px] text-zinc-400 font-medium border-b border-zinc-100 dark:border-zinc-800/80 mb-2">
-        <span>Deck</span>
-        <div className="flex items-center gap-4 pr-10">
-          <span className="text-blue-600 dark:text-blue-400 font-semibold">Novo</span>
-          <span className="text-amber-600 dark:text-amber-400 font-semibold">Aprender</span>
-          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Revisar</span>
-        </div>
+    <div>
+      {/* Root-level hairline separators (iOS inset grouped feel) */}
+      <div className="divide-y divide-black/[0.05] dark:divide-white/[0.07]">
+        {treeNodes.map((node) => renderNode(node))}
       </div>
-
-      <div className="space-y-0.5">{treeNodes.map((node) => renderNode(node))}</div>
 
       {/* Portal context menu: never clipped or covered by deck rows */}
       {activeMenu &&
@@ -268,7 +256,7 @@ export const DeckList: React.FC<DeckListProps> = ({
             ref={menuRef}
             onClick={(e) => e.stopPropagation()}
             style={{ position: 'fixed', left: activeMenu.x, top: activeMenu.y, zIndex: 60 }}
-            className="w-44 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl p-1.5 text-xs text-zinc-700 dark:text-zinc-200 animate-in fade-in zoom-in-95 duration-150"
+            className="w-48 rounded-[14px] bg-white/95 dark:bg-[#2c2c2e]/95 backdrop-blur-xl border border-black/[0.08] dark:border-white/[0.1] shadow-[0_10px_40px_rgba(0,0,0,0.18)] p-1.5 text-[13px] text-zinc-800 dark:text-zinc-100 ios-fade-in"
           >
             <button
               type="button"
@@ -277,9 +265,9 @@ export const DeckList: React.FC<DeckListProps> = ({
                 setActiveMenu(null);
                 onCreateSubdeck(fullName);
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[9px] hover:bg-black/[0.05] dark:hover:bg-white/[0.1] transition-colors text-left"
             >
-              <Plus className="w-3.5 h-3.5 text-blue-500" />
+              <Plus className="w-4 h-4 text-ios-blue" />
               <span>Criar Subdeck</span>
             </button>
 
@@ -290,22 +278,22 @@ export const DeckList: React.FC<DeckListProps> = ({
                 setActiveMenu(null);
                 onEditDeck(deck);
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[9px] hover:bg-black/[0.05] dark:hover:bg-white/[0.1] transition-colors text-left"
             >
-              <Edit2 className="w-3.5 h-3.5 text-amber-500" />
+              <Edit2 className="w-4 h-4 text-ios-orange" />
               <span>Opções / FSRS</span>
             </button>
 
-            <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
+            <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
 
             <button
               type="button"
               onClick={(e) =>
                 handleDeleteClick({ id: activeMenu.deck.id, name: activeMenu.deck.name }, e)
               }
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 transition-colors text-left"
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[9px] hover:bg-ios-red/10 text-ios-red transition-colors text-left"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className="w-4 h-4" />
               <span>Excluir Deck</span>
             </button>
           </div>,

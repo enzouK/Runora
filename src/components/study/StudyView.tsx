@@ -1,15 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import {
-  ArrowLeft,
-  Lightbulb,
+  ChevronLeft,
   CheckCircle2,
   Sparkles,
   Info,
-  ChevronDown,
-  ChevronUp,
   RotateCcw,
-  Volume2,
   AlertTriangle,
   Edit,
 } from 'lucide-react';
@@ -514,27 +510,34 @@ export const StudyView: React.FC<StudyViewProps> = ({
   // Deck finished view
   if (!currentCard || cards.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[500px] p-6 text-center animate-in fade-in duration-300">
-        <div className="w-20 h-20 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-6 shadow-sm">
+      <div className="flex flex-col items-center justify-center min-h-[500px] p-6 text-center ios-fade-in">
+        <div className="w-20 h-20 rounded-full bg-ios-green/10 border border-ios-green/20 flex items-center justify-center text-ios-green mb-6">
           <CheckCircle2 className="w-10 h-10 stroke-[2.2]" />
         </div>
 
-        <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 mb-2">
-          Parabéns! Revisão Concluída
+        <h2 className="text-[28px] font-bold tracking-tight text-zinc-900 dark:text-white mb-2">
+          Parabéns!
         </h2>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-sm mb-6">
-          Você revisou todas as cartas programadas para hoje no deck <span className="font-semibold text-zinc-700 dark:text-zinc-300">"{deck.name}"</span>. O algoritmo FSRS recalculou a estabilidade e os novos intervalos.
+        <p className="text-[15px] text-zinc-500 dark:text-zinc-400 max-w-sm mb-6">
+          Você revisou todas as cartas programadas para hoje no deck{' '}
+          <span className="font-semibold text-zinc-700 dark:text-zinc-200">"{deck.name}"</span>.
         </p>
 
-        <div className="flex items-center gap-4 p-4 rounded-2xl bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 mb-8 text-left text-xs">
+        <div className="flex items-center gap-6 p-4 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.05] dark:border-white/[0.08] mb-8 text-left">
           <div>
-            <div className="text-zinc-400 dark:text-zinc-500 font-medium">Revisados nesta sessão</div>
-            <div className="text-lg font-bold text-zinc-800 dark:text-zinc-100">{sessionReviewedCount} cards</div>
+            <div className="text-[11px] font-medium text-zinc-400 dark:text-zinc-500">
+              Revisados nesta sessão
+            </div>
+            <div className="text-[19px] font-bold tabular-nums text-zinc-900 dark:text-white">
+              {sessionReviewedCount}
+            </div>
           </div>
-          <div className="h-8 w-px bg-zinc-300 dark:bg-zinc-700" />
+          <div className="h-8 w-px bg-black/[0.08] dark:bg-white/[0.12]" />
           <div>
-            <div className="text-zinc-400 dark:text-zinc-500 font-medium">Retenção FSRS</div>
-            <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
+            <div className="text-[11px] font-medium text-zinc-400 dark:text-zinc-500">
+              Retenção alvo
+            </div>
+            <div className="text-[19px] font-bold tabular-nums text-ios-blue">
               {Math.round(fsrsEngine.getParameters().requestRetention * 100)}%
             </div>
           </div>
@@ -544,7 +547,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
           <button
             type="button"
             onClick={onBack}
-            className="px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-all shadow-md active:scale-95"
+            className="px-6 py-2.5 rounded-full bg-ios-blue hover:bg-[#0071eb] text-white font-semibold text-[15px] transition-all shadow-[0_2px_10px_rgba(0,122,255,0.35)] active:scale-95"
           >
             Voltar aos Decks
           </button>
@@ -554,7 +557,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
               loadDueCards();
               setSessionReviewedCount(0);
             }}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 font-medium text-sm transition-all active:scale-95"
+            className="flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-black/[0.06] dark:bg-white/[0.1] hover:bg-black/[0.1] dark:hover:bg-white/[0.15] text-zinc-800 dark:text-zinc-100 font-semibold text-[15px] transition-all active:scale-95"
           >
             <RotateCcw className="w-4 h-4" />
             <span>Recarregar</span>
@@ -569,72 +572,76 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-3 flex flex-col min-h-[calc(100vh-80px)]">
-      {/* Top Header bar */}
-      <div className="flex items-center justify-between mb-4">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors py-1 px-2 -ml-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Decks</span>
-        </button>
-
-        <div className="flex items-center gap-2">
-          <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 truncate max-w-[200px]">
-            {deck.name}
-          </div>
-          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-[11px] font-mono">
-            <span className="text-blue-600 dark:text-blue-400 font-bold">{cards.length}</span>
-            <span className="text-zinc-400">restantes</span>
-          </div>
+      {/* iOS Navigation Bar */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center mb-4">
+        <div>
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center text-ios-blue font-medium text-[15px] pl-1 pr-2.5 py-1 -ml-1 rounded-full hover:bg-ios-blue/10 transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" strokeWidth={2.5} />
+            <span>Decks</span>
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowFSRSDetails((prev) => !prev)}
-          className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-          title="Ver Parâmetros FSRS do Card"
-        >
-          <Info className="w-4 h-4" />
-        </button>
+        <div className="text-[15px] font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[220px] text-center">
+          {deck.name}
+        </div>
+
+        <div className="flex items-center justify-end gap-1.5">
+          <span
+            className="px-2.5 py-1 rounded-full bg-black/[0.05] dark:bg-white/[0.1] text-[12px] font-semibold tabular-nums text-zinc-600 dark:text-zinc-300"
+            title="Cards restantes na sessão"
+          >
+            {cards.length}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowFSRSDetails((prev) => !prev)}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] transition-colors"
+            title="Ver Parâmetros do Card"
+          >
+            <Info className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      {/* FSRS Live Inspector Popup / Panel */}
+      {/* Live card params inspector */}
       {showFSRSDetails && (
-        <div className="mb-4 p-3.5 rounded-2xl bg-zinc-100/90 dark:bg-zinc-800/80 border border-zinc-200/80 dark:border-zinc-700/80 text-xs backdrop-blur-sm animate-in slide-in-from-top-2 duration-200">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-              Parâmetros FSRS em Tempo Real
+        <div className="mb-4 p-4 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.05] dark:border-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.05)] ios-fade-in">
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-semibold text-[13px] text-zinc-800 dark:text-zinc-100 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-ios-blue" />
+              Parâmetros em Tempo Real
             </span>
-            <span className="font-mono text-[10px] text-zinc-400">
-              Estado: {currentCard.fsrs.state === 0 ? 'Novo' : currentCard.fsrs.state === 1 ? 'Aprendizado' : currentCard.fsrs.state === 2 ? 'Revisão' : 'Reaprendizado'}
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-black/[0.05] dark:bg-white/[0.1] text-zinc-500 dark:text-zinc-400">
+              {currentCard.fsrs.state === 0 ? 'Novo' : currentCard.fsrs.state === 1 ? 'Aprendizado' : currentCard.fsrs.state === 2 ? 'Revisão' : 'Reaprendizado'}
             </span>
           </div>
-          <div className="grid grid-cols-4 gap-2 text-center font-mono text-[11px]">
-            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
-              <div className="text-zinc-400 text-[10px]">Estabilidade (S)</div>
-              <div className="font-bold text-blue-600 dark:text-blue-400">{currentCard.fsrs.stability.toFixed(2)}d</div>
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <div className="p-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06]">
+              <div className="text-zinc-400 dark:text-zinc-500 text-[10px] font-medium">Estabilidade</div>
+              <div className="font-bold tabular-nums text-[13px] text-ios-blue">{currentCard.fsrs.stability.toFixed(2)}d</div>
             </div>
-            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
-              <div className="text-zinc-400 text-[10px]">Dificuldade (D)</div>
-              <div className="font-bold text-amber-600 dark:text-amber-400">{currentCard.fsrs.difficulty.toFixed(2)}/10</div>
+            <div className="p-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06]">
+              <div className="text-zinc-400 dark:text-zinc-500 text-[10px] font-medium">Dificuldade</div>
+              <div className="font-bold tabular-nums text-[13px] text-ios-orange">{currentCard.fsrs.difficulty.toFixed(2)}<span className="text-zinc-400 font-medium">/10</span></div>
             </div>
-            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
-              <div className="text-zinc-400 text-[10px]">Repetições</div>
-              <div className="font-bold text-zinc-700 dark:text-zinc-300">{currentCard.fsrs.reps}</div>
+            <div className="p-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06]">
+              <div className="text-zinc-400 dark:text-zinc-500 text-[10px] font-medium">Repetições</div>
+              <div className="font-bold tabular-nums text-[13px] text-zinc-700 dark:text-zinc-200">{currentCard.fsrs.reps}</div>
             </div>
-            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
-              <div className="text-zinc-400 text-[10px]">Lapses (Erros)</div>
-              <div className="font-bold text-rose-600 dark:text-rose-400">{currentCard.fsrs.lapses}</div>
+            <div className="p-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06]">
+              <div className="text-zinc-400 dark:text-zinc-500 text-[10px] font-medium">Lapses</div>
+              <div className="font-bold tabular-nums text-[13px] text-ios-red">{currentCard.fsrs.lapses}</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Main Flashcard Container (Apple Inset Frosted Card) */}
-      <div className="flex-1 flex flex-col justify-between p-6 sm:p-8 rounded-3xl bg-white/95 dark:bg-zinc-900/90 border border-zinc-200/90 dark:border-zinc-800/90 shadow-xl shadow-black/5 backdrop-blur-xl relative overflow-hidden transition-all duration-200 min-h-[380px]">
+      {/* Main Flashcard Container */}
+      <div className="flex-1 flex flex-col justify-between p-6 sm:p-8 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.06)] relative overflow-hidden transition-shadow min-h-[380px]">
         {/* Dynamic NoteType Custom CSS */}
         {noteType?.css && (
           <style dangerouslySetInnerHTML={{ __html: noteType.css }} />
@@ -645,8 +652,8 @@ export const StudyView: React.FC<StudyViewProps> = ({
           <button
             type="button"
             onClick={() => currentCard && setEditNoteId(currentCard.noteId)}
-            className="absolute top-3.5 right-3.5 z-40 p-2.5 rounded-xl bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border border-zinc-200/80 dark:border-zinc-700/80 text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 transition-all active:scale-95 shadow-sm"
-            title="Editar este card (Anki: tecla E)"
+            className="absolute top-3.5 right-3.5 z-40 w-9 h-9 rounded-full bg-black/[0.04] dark:bg-white/[0.08] backdrop-blur-md text-zinc-500 dark:text-zinc-400 hover:text-ios-blue transition-colors active:scale-95 flex items-center justify-center"
+            title="Editar este card"
           >
             <Edit className="w-4 h-4" />
           </button>
@@ -666,7 +673,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
               />
             </div>
           ) : (
-            <div className="anki-back-wrapper prose prose-zinc dark:prose-invert max-w-none text-zinc-900 dark:text-zinc-100 font-sans leading-relaxed animate-in fade-in duration-200">
+            <div className="anki-back-wrapper prose prose-zinc dark:prose-invert max-w-none text-zinc-900 dark:text-zinc-100 font-sans leading-relaxed ios-fade-in">
               <CardContentRenderer
                 key={`back-${currentCard.id}`}
                 html={backHtml}
@@ -680,15 +687,15 @@ export const StudyView: React.FC<StudyViewProps> = ({
         </div>
 
         {/* Bottom Actions Bar */}
-        <div className="mt-8 pt-4">
+        <div className="mt-8">
           {!isAnswerRevealed ? (
             <button
               type="button"
               onClick={handleRevealAnswer}
-              className="w-full py-3.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-base shadow-lg shadow-blue-500/20 transition-all active:scale-[0.99] flex items-center justify-center gap-2"
+              className="w-full h-12 rounded-[16px] bg-ios-blue hover:bg-[#0071eb] text-white font-semibold text-[16px] shadow-[0_4px_14px_rgba(0,122,255,0.35)] transition-all active:scale-[0.98] flex items-center justify-center gap-2"
             >
               <span>Mostrar Resposta</span>
-              <span className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[11px] font-mono bg-white/20">
+              <span className="hidden sm:inline-block px-1.5 py-0.5 rounded-md text-[11px] font-semibold bg-white/20">
                 Espaço
               </span>
             </button>
@@ -703,7 +710,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
       {/* Leech notice toast */}
       {leechNotice && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full bg-amber-500 text-white text-xs font-semibold shadow-xl shadow-amber-500/30 animate-in fade-in slide-in-from-bottom-3 duration-300">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full bg-ios-orange text-white text-[13px] font-semibold shadow-[0_8px_24px_rgba(255,149,0,0.4)] ios-fade-in">
           <AlertTriangle className="w-4 h-4" />
           <span>{leechNotice}</span>
         </div>

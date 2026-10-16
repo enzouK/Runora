@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, FolderPlus, Sparkles, BookOpen, Layers } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Plus, FolderPlus, Inbox, GraduationCap, Repeat } from 'lucide-react';
 import { Deck, NoteType } from './types/anki';
 import { StorageService } from './services/storage';
 import { Header, MainNavTab } from './components/navbar/Header';
@@ -47,6 +47,21 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Global study summary across all decks (iOS Health-style strip)
+  const totals = useMemo(() => {
+    return decks.reduce(
+      (acc, d) => {
+        const c = StorageService.getDeckCounts(d.id);
+        acc.new += c.newCount;
+        acc.learning += c.learningCount;
+        acc.review += c.reviewCount;
+        return acc;
+      },
+      { new: 0, learning: 0, review: 0 }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decks, refreshKey]);
+
   const handleOpenAddCard = () => {
     setEditingNoteId(null);
     setIsAddCardModalOpen(true);
@@ -78,7 +93,7 @@ export default function App() {
   // If in review mode, render StudyView exclusively
   if (activeStudyDeck) {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans selection:bg-blue-500/20 selection:text-blue-600">
+      <div className="min-h-screen bg-ios-bg dark:bg-ios-bg-dark text-zinc-900 dark:text-zinc-100 font-sans selection:bg-ios-blue/20 selection:text-ios-blue">
         <StudyView
           deck={activeStudyDeck}
           onBack={() => {
@@ -94,7 +109,13 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50/80 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans selection:bg-blue-500/20 selection:text-blue-600 flex flex-col">
+    <div className="min-h-screen bg-ios-bg dark:bg-ios-bg-dark text-zinc-900 dark:text-zinc-100 font-sans selection:bg-ios-blue/20 selection:text-ios-blue flex flex-col">
+      {/* Ambient top glow (subtle depth behind translucent surfaces) */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-x-0 top-0 h-80 bg-[radial-gradient(ellipse_55%_50%_at_50%_-12%,rgba(0,122,255,0.08),transparent)] dark:bg-[radial-gradient(ellipse_55%_50%_at_50%_-12%,rgba(64,156,255,0.14),transparent)]"
+      />
+
       {/* Top iOS Header */}
       <Header
         activeTab={activeTab}
@@ -107,46 +128,69 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-6">
         {activeTab === 'decks' && (
-          <div className="space-y-5 animate-in fade-in duration-200">
-            {/* iOS Inset Card Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800/90 shadow-sm">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-                    Seus Decks de Estudo
-                  </h2>
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-semibold border border-blue-200 dark:border-blue-800">
-                    FSRS Nativo
-                  </span>
-                </div>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  Clique em um deck para iniciar a revisão ou use os botões de ação para subdecks.
-                </p>
-              </div>
+          <div className="space-y-6 ios-fade-in">
+            {/* iOS Large Title header */}
+            <div className="flex items-end justify-between gap-4 px-1 pt-1">
+              <h1 className="text-[32px] leading-none font-bold tracking-tight text-zinc-900 dark:text-white">
+                Decks
+              </h1>
 
-              <div className="flex items-center gap-2">
+              {/* Circular actions (iOS Files pattern) */}
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
                   onClick={handleOpenCreateDeck}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs font-semibold transition-all active:scale-95"
+                  title="Novo Deck"
+                  className="w-9 h-9 rounded-full flex items-center justify-center bg-black/[0.06] dark:bg-white/[0.12] text-ios-blue hover:bg-black/[0.1] dark:hover:bg-white/[0.18] transition-all active:scale-90"
                 >
-                  <FolderPlus className="w-4 h-4 text-blue-500" />
-                  <span>Novo Deck</span>
+                  <FolderPlus className="w-[18px] h-[18px]" />
                 </button>
-
                 <button
                   type="button"
                   onClick={handleOpenAddCard}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all active:scale-95"
+                  title="Novo Card (Ctrl+N)"
+                  className="w-9 h-9 rounded-full flex items-center justify-center bg-ios-blue text-white shadow-[0_2px_8px_rgba(0,122,255,0.4)] hover:bg-[#0071eb] transition-all active:scale-90"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Novo Card</span>
+                  <Plus className="w-[18px] h-[18px]" strokeWidth={2.5} />
                 </button>
               </div>
             </div>
 
-            {/* Hierarchical Deck List Container */}
-            <div className="p-2 sm:p-4 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800/90 shadow-sm">
+            {/* Study summary strip (iOS Health-style tinted cards) */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-[16px] p-4 bg-ios-blue/10 dark:bg-ios-blue/[0.16] border border-ios-blue/[0.12] dark:border-ios-blue/20">
+                <div className="flex items-center gap-1.5 text-ios-blue">
+                  <Inbox className="w-3.5 h-3.5" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wide">Novos</span>
+                </div>
+                <p className="text-[26px] leading-none font-bold tabular-nums text-zinc-900 dark:text-white mt-2.5">
+                  {totals.new}
+                </p>
+              </div>
+
+              <div className="rounded-[16px] p-4 bg-ios-orange/10 dark:bg-ios-orange/[0.16] border border-ios-orange/[0.12] dark:border-ios-orange/20">
+                <div className="flex items-center gap-1.5 text-ios-orange">
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wide">Aprendendo</span>
+                </div>
+                <p className="text-[26px] leading-none font-bold tabular-nums text-zinc-900 dark:text-white mt-2.5">
+                  {totals.learning}
+                </p>
+              </div>
+
+              <div className="rounded-[16px] p-4 bg-ios-green/10 dark:bg-ios-green/[0.16] border border-ios-green/[0.12] dark:border-ios-green/20">
+                <div className="flex items-center gap-1.5 text-ios-green">
+                  <Repeat className="w-3.5 h-3.5" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wide">Revisar</span>
+                </div>
+                <p className="text-[26px] leading-none font-bold tabular-nums text-zinc-900 dark:text-white mt-2.5">
+                  {totals.review}
+                </p>
+              </div>
+            </div>
+
+            {/* iOS Inset Grouped Deck List */}
+            <div className="rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] overflow-hidden">
               <DeckList
                 decks={decks}
                 onSelectDeckToStudy={(deck) => setActiveStudyDeck(deck)}
@@ -156,21 +200,11 @@ export default function App() {
               />
             </div>
 
-            {/* FSRS Architecture Explanation Footer Badge */}
-            <div className="p-4 rounded-2xl bg-zinc-100/70 dark:bg-zinc-900/60 border border-zinc-200/60 dark:border-zinc-800/60 flex items-start gap-3 text-xs text-zinc-500 dark:text-zinc-400">
-              <Sparkles className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-semibold text-zinc-700 dark:text-zinc-300">
-                  Algoritmo FSRS-4.5 / FSRS-5 Ativo:
-                </span>{' '}
-                Sem SM-2. Cada card possui estabilidade contínua e curva de esquecimento calculada diretamente da retenção alvo configurada (90%). Cards com Voice Recording habilitado exibem o botão de gravação na frente e comparação direta no verso.
-              </div>
-            </div>
           </div>
         )}
 
         {activeTab === 'browser' && (
-          <div className="animate-in fade-in duration-200">
+          <div className="ios-fade-in">
             <CardBrowser
               key={refreshKey}
               onEditNote={handleEditNoteFromBrowser}
@@ -180,7 +214,7 @@ export default function App() {
         )}
 
         {activeTab === 'notetypes' && (
-          <div className="animate-in fade-in duration-200">
+          <div className="ios-fade-in">
             <NoteTypeManager onRefresh={refreshAll} />
           </div>
         )}
