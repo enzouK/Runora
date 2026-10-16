@@ -718,7 +718,12 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                                 playingUrl={playingUrl}
                                 onToggle={toggleAudio}
                               />
-                              {primaryShown || '—'}
+                              {/* Furigana fields render real <ruby> markup (same as secondary blocks) */}
+                              {primaryTextBlock.html !== undefined ? (
+                                <span dangerouslySetInnerHTML={{ __html: primaryTextBlock.html }} />
+                              ) : (
+                                primaryShown || '—'
+                              )}
                             </div>
                           </div>
                         )}
