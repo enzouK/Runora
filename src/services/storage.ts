@@ -452,6 +452,56 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
   }
 
+  /**
+   * CardBrowser display fields per note type: { [noteTypeId]: fieldName[] }.
+   * Field values are the field NAMES (that is how note.fields is keyed).
+   * Tolerates the previous { front, back } shape by converting it to a list.
+   */
+  public static getBrowserFieldPrefs(): Record<string, string[]> {
+    const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
+    if (!raw) return {};
+    try {
+      const prefs = JSON.parse(raw) as { browserFields?: unknown };
+      const bf = prefs.browserFields;
+      if (!bf || typeof bf !== 'object') return {};
+      const out: Record<string, string[]> = {};
+      for (const [ntId, val] of Object.entries(bf as Record<string, unknown>)) {
+        if (Array.isArray(val)) {
+          out[ntId] = val.filter((v): v is string => typeof v === 'string');
+        } else if (val && typeof val === 'object') {
+          const obj = val as { front?: unknown; back?: unknown };
+          const list: string[] = [];
+          if (typeof obj.front === 'string' && obj.front) list.push(obj.front);
+          if (typeof obj.back === 'string' && obj.back && !list.includes(obj.back)) {
+            list.push(obj.back);
+          }
+          if (list.length > 0) out[ntId] = list;
+        }
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  public static setBrowserFieldPref(noteTypeId: string, fieldNames: string[]): void {
+    const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
+    let prefs: Record<string, unknown> = {};
+    try {
+      prefs = raw ? JSON.parse(raw) : {};
+    } catch {
+      prefs = {};
+    }
+    const bf = (prefs.browserFields as Record<string, unknown> | undefined) ?? {};
+    if (fieldNames.length === 0) {
+      delete bf[noteTypeId]; // empty selection → back to the default (first two fields)
+    } else {
+      bf[noteTypeId] = fieldNames;
+    }
+    prefs.browserFields = bf;
+    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+  }
+
   /** All ancestors of a deck (from root to itself), by name prefix. */
   public static getDeckLineage(decks: Deck[], deck: Deck): Deck[] {
     const parts = deck.name.split('::');

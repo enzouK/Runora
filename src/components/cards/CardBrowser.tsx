@@ -1,8 +1,19 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Filter, Trash2, Edit3, Sparkles, Folder, Tag } from 'lucide-react';
-import { Card, Deck, Note, NoteType } from '../../types/anki';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import {
+  Search,
+  X,
+  Trash2,
+  Edit3,
+  SlidersHorizontal,
+  Star,
+  Check,
+  Headphones,
+} from 'lucide-react';
+import { Card, Note, NoteType } from '../../types/anki';
 import { StorageService } from '../../services/storage';
 import { FSRS } from '../../fsrs/algorithm';
+import { MediaStore } from '../../services/mediaStore';
+import { stripHtml, extractFirstImage, extractFirstAudio } from '../../services/cardPreview';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSelect } from '../common/IOSSelect';
 
@@ -10,6 +21,92 @@ interface CardBrowserProps {
   onEditNote: (noteId: string) => void;
   onRefresh: () => void;
 }
+
+/** Resolves a media reference (bare filename → blob URL; absolute/data → as-is). */
+async function resolveMedia(ref: string): Promise<string | null> {
+  if (!ref) return null;
+  if (MediaStore.isMediaReference(ref)) {
+    try {
+      return await MediaStore.getUrl(ref);
+    } catch {
+      return null;
+    }
+  }
+  return ref;
+}
+
+/** Image thumbnail: keeps the original aspect ratio, sits left of the text. */
+const RowImage: React.FC<{ imageRef: string | null; fallbackImage?: string }> = ({
+  imageRef,
+  fallbackImage,
+}) => {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setUrl(null);
+    (async () => {
+      const u = imageRef ? await resolveMedia(imageRef) : null;
+      if (cancelled) return;
+      setUrl(u ?? (imageRef ? null : fallbackImage ?? null));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [imageRef, fallbackImage]);
+
+  if (!url) return null;
+  return (
+    <img
+      src={url}
+      alt=""
+      className="max-h-28 max-w-44 w-auto h-auto object-contain rounded-xl border border-black/[0.06] dark:border-white/[0.1] shrink-0"
+    />
+  );
+};
+
+/** AnkiDroid-style headphone button: plays the card audio inline with the text. */
+const RowAudioButton: React.FC<{
+  audioRef: string | null;
+  fallbackAudio?: string;
+  playingUrl: string | null;
+  onToggle: (url: string) => void;
+}> = ({ audioRef, fallbackAudio, playingUrl, onToggle }) => {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setUrl(null);
+    (async () => {
+      const u = audioRef ? await resolveMedia(audioRef) : null;
+      if (cancelled) return;
+      setUrl(u ?? (audioRef ? null : fallbackAudio ?? null));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [audioRef, fallbackAudio]);
+
+  if (!url) return null;
+  const isPlaying = playingUrl === url;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(url);
+      }}
+      title={isPlaying ? 'Pausar áudio' : 'Tocar áudio'}
+      className={`inline-flex items-center justify-center w-6 h-6 rounded-full align-[-4px] mr-1.5 transition-all active:scale-90 ${
+        isPlaying
+          ? 'bg-ios-blue text-white shadow-[0_1px_6px_rgba(0,122,255,0.45)]'
+          : 'bg-ios-blue/10 text-ios-blue hover:bg-ios-blue/20'
+      }`}
+    >
+      <Headphones className={`w-3.5 h-3.5 ${isPlaying ? 'animate-pulse' : ''}`} />
+    </button>
+  );
+};
 
 export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,6 +117,34 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
     preview: string;
     deckName: string;
   } | null>(null);
+  const [showFieldPicker, setShowFieldPicker] = useState(false);
+  const [fieldPrefs, setFieldPrefs] = useState<Record<string, string[]>>(
+    () => StorageService.getBrowserFieldPrefs()
+  );
+
+  // Single shared audio element so only one preview plays at a time
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const [playingUrl, setPlayingUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      audioElRef.current?.pause();
+    };
+  }, []);
+
+  const toggleAudio = (url: string) => {
+    if (playingUrl === url) {
+      audioElRef.current?.pause();
+      setPlayingUrl(null);
+      return;
+    }
+    audioElRef.current?.pause();
+    const el = new Audio(url);
+    el.onended = () => setPlayingUrl(null);
+    el.play().catch(() => setPlayingUrl(null));
+    audioElRef.current = el;
+    setPlayingUrl(url);
+  };
 
   const decks = useMemo(() => StorageService.getDecks(), []);
   const noteTypes = useMemo(() => StorageService.getNoteTypes(), []);
@@ -31,6 +156,44 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   const noteTypeMap = useMemo(() => new Map(noteTypes.map((nt) => [nt.id, nt])), [noteTypes]);
 
   const fsrsEngine = useMemo(() => new FSRS(StorageService.getFSRSSettings()), []);
+
+  /** Sorted field definitions of a note type. */
+  const sortedFields = (nt: NoteType) => [...nt.fields].sort((a, b) => a.ord - b.ord);
+
+  /**
+   * Effective display field NAMES for a note type. The FIRST one is the
+   * primary field. Falls back to first two fields by ord when no preference.
+   */
+  const effectiveFields = (nt: NoteType): string[] => {
+    const defs = sortedFields(nt);
+    const names = defs.map((f) => f.name);
+    const pref = fieldPrefs[nt.id];
+    if (pref && pref.length > 0) {
+      const chosen = names.filter((n) => pref.includes(n));
+      if (chosen.length > 0) return chosen;
+    }
+    return names.slice(0, 2);
+  };
+
+  const toggleFieldPref = (noteTypeId: string, fieldName: string) => {
+    const nt = noteTypes.find((n) => n.id === noteTypeId);
+    if (!nt) return;
+    const current = fieldPrefs[noteTypeId] ?? sortedFields(nt).slice(0, 2).map((f) => f.name);
+    const next = current.includes(fieldName)
+      ? current.filter((n) => n !== fieldName)
+      : [...current, fieldName];
+    setFieldPrefs((prev) => ({ ...prev, [noteTypeId]: next }));
+    StorageService.setBrowserFieldPref(noteTypeId, next);
+  };
+
+  /** Promotes a field to primary: moves it to the front of the selection. */
+  const setPrimaryFieldPref = (noteTypeId: string, fieldName: string) => {
+    const current = fieldPrefs[noteTypeId];
+    if (!current || current.length === 0 || current[0] === fieldName) return;
+    const next = [fieldName, ...current.filter((n) => n !== fieldName)];
+    setFieldPrefs((prev) => ({ ...prev, [noteTypeId]: next }));
+    StorageService.setBrowserFieldPref(noteTypeId, next);
+  };
 
   // Filtered card items
   const filteredCards = useMemo(() => {
@@ -83,33 +246,34 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   };
 
   return (
-    <div className="space-y-4">
-      {/* Search and Filters Bar */}
-      <div className="p-4 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800/90 shadow-sm space-y-3">
-        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-sm">
-          <Search className="w-4 h-4 text-zinc-400" />
+    <div className="space-y-4 ios-fade-in">
+      {/* Search and Filters Card */}
+      <div className="p-4 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] space-y-3">
+        {/* iOS Search Field */}
+        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] focus-within:ring-2 focus-within:ring-ios-blue/40 transition-shadow">
+          <Search className="w-4 h-4 text-zinc-400 shrink-0" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Pesquisar em perguntas, respostas, tags..."
-            className="flex-1 bg-transparent border-none outline-none text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 text-xs sm:text-sm"
+            className="flex-1 bg-transparent border-none outline-none text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 text-[14px]"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="text-xs text-zinc-400 hover:text-zinc-600"
+              className="w-5 h-5 rounded-full bg-black/[0.12] dark:bg-white/[0.2] flex items-center justify-center text-white hover:bg-black/[0.2] dark:hover:bg-white/[0.3] transition-colors shrink-0"
+              title="Limpar busca"
             >
-              Limpar
+              <X className="w-3 h-3" strokeWidth={3} />
             </button>
           )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-            <Filter className="w-3.5 h-3.5" />
-            <span>Deck:</span>
+          <div className="flex items-center gap-2 text-[13px] text-zinc-500 dark:text-zinc-400">
+            <span className="font-medium">Deck:</span>
             <IOSSelect
               value={selectedDeckFilter}
               onChange={setSelectedDeckFilter}
@@ -120,8 +284,8 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
             />
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-            <span>Status FSRS:</span>
+          <div className="flex items-center gap-2 text-[13px] text-zinc-500 dark:text-zinc-400">
+            <span className="font-medium">Status:</span>
             <IOSSelect
               value={selectedStateFilter}
               onChange={setSelectedStateFilter}
@@ -135,133 +299,273 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
             />
           </div>
 
-          <div className="ml-auto text-xs font-mono text-zinc-400">
-            {filteredCards.length} cards encontrados
+          {/* Field display preferences */}
+          <button
+            type="button"
+            onClick={() => setShowFieldPicker((v) => !v)}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-semibold transition-all active:scale-95 ${
+              showFieldPicker
+                ? 'bg-ios-blue text-white shadow-[0_2px_8px_rgba(0,122,255,0.35)]'
+                : 'bg-black/[0.06] dark:bg-white/[0.1] text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.1] dark:hover:bg-white/[0.15]'
+            }`}
+            title="Escolher campos exibidos por Note Type"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Campos</span>
+          </button>
+
+          <div className="ml-auto text-[12px] font-medium tabular-nums text-zinc-400 dark:text-zinc-500">
+            {filteredCards.length} cards
           </div>
         </div>
       </div>
 
-      {/* Cards Table / List */}
-      <div className="space-y-2">
+      {/* Field Display Preferences Panel (multi-select chips + primary star) */}
+      {showFieldPicker && (
+        <div className="p-4 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] ios-fade-in">
+          <div className="flex items-start justify-between mb-1">
+            <div>
+              <h3 className="text-[15px] font-semibold text-zinc-900 dark:text-zinc-50">
+                Campos exibidos
+              </h3>
+              <p className="text-[12px] text-zinc-400 dark:text-zinc-500 mt-0.5">
+                Toque para incluir ou remover campos. A estrela{' '}
+                <Star className="w-3 h-3 inline text-ios-orange fill-current -mt-0.5" /> define o
+                campo principal — ele aparece primeiro e com o texto destacado.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowFieldPicker(false)}
+              className="w-7 h-7 rounded-full flex items-center justify-center text-zinc-400 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] transition-colors"
+              title="Fechar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.07] mt-2">
+            {noteTypes.map((nt) => {
+              const selected = effectiveFields(nt);
+              return (
+                <div key={nt.id} className="py-3">
+                  <div className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100 mb-2">
+                    {nt.name}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {sortedFields(nt).map((f) => {
+                      const isOn = selected.includes(f.name);
+                      const isPrimary = isOn && selected[0] === f.name;
+                      return (
+                        <span
+                          key={f.id}
+                          className={`flex items-center rounded-full border transition-all ${
+                            isOn
+                              ? 'bg-ios-blue/10 border-ios-blue/30'
+                              : 'bg-black/[0.04] dark:bg-white/[0.07] border-transparent'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleFieldPref(nt.id, f.name)}
+                            className={`flex items-center gap-1 pl-3 pr-2 py-1.5 text-[12px] font-semibold rounded-l-full transition-colors active:scale-95 ${
+                              isOn
+                                ? 'text-ios-blue'
+                                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                            }`}
+                          >
+                            {isOn && <Check className="w-3 h-3" strokeWidth={3} />}
+                            <span>{f.name}</span>
+                          </button>
+
+                          {isOn && (
+                            <button
+                              type="button"
+                              onClick={() => setPrimaryFieldPref(nt.id, f.name)}
+                              title="Definir como campo principal"
+                              className={`pr-2.5 pl-0.5 py-1.5 rounded-r-full transition-colors ${
+                                isPrimary
+                                  ? 'text-ios-orange'
+                                  : 'text-ios-blue/40 hover:text-ios-orange'
+                              }`}
+                            >
+                              <Star
+                                className={`w-3.5 h-3.5 ${isPrimary ? 'fill-current' : ''}`}
+                              />
+                            </button>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Cards Grouped List (iOS inset grouped) */}
+      <div className="rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] overflow-hidden">
         {filteredCards.length === 0 ? (
-          <div className="text-center py-12 text-zinc-400 text-xs">
-            Nenhum card corresponde aos critérios da busca.
+          <div className="text-center py-14 px-4">
+            <Search className="w-8 h-8 text-zinc-300 dark:text-zinc-600 mx-auto mb-3" strokeWidth={1.5} />
+            <p className="text-[15px] font-semibold text-zinc-800 dark:text-zinc-200">
+              Nenhum card encontrado
+            </p>
+            <p className="text-[13px] text-zinc-400 dark:text-zinc-500 mt-1">
+              Ajuste a busca ou os filtros para ver seus cards.
+            </p>
           </div>
         ) : (
-          filteredCards.map((card) => {
-            const note = noteMap.get(card.noteId);
-            const deck = deckMap.get(card.deckId);
-            const noteType = note ? noteTypeMap.get(note.noteTypeId) : null;
-            if (!note) return null;
+          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.07]">
+            {filteredCards.map((card) => {
+              const note = noteMap.get(card.noteId);
+              const deck = deckMap.get(card.deckId);
+              const noteType = note ? noteTypeMap.get(note.noteTypeId) : null;
+              if (!note) return null;
 
-            const firstField = Object.values(note.fields)[0] || '';
-            const secondField = Object.values(note.fields)[1] || '';
-            const strippedFirst = firstField.replace(/<[^>]+>/g, '').slice(0, 120);
-            const strippedSecond = secondField.replace(/<[^>]+>/g, '').slice(0, 80);
+              // Chosen display fields (names); the first one is the primary field
+              const chosenNames = noteType
+                ? effectiveFields(noteType)
+                : Object.keys(note.fields).slice(0, 2);
 
-            const r =
-              card.fsrs.stability > 0
-                ? (fsrsEngine.retrievability(card.fsrs.elapsedDays, card.fsrs.stability) * 100).toFixed(0) + '%'
-                : '100%';
+              const allBlocks = chosenNames.map((name) => {
+                const html = note.fields[name] ?? '';
+                return { name, html, text: stripHtml(html) };
+              });
 
-            return (
-              <div
-                key={card.id}
-                onClick={() => onEditNote(note.id)}
-                className="group p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 hover:border-blue-400/60 dark:hover:border-blue-500/60 transition-all cursor-pointer shadow-sm hover:shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-              >
-                {/* Content preview */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-                      {deck?.name || 'Deck'}
-                    </span>
-                    <span className="text-[10px] text-zinc-400">
-                      {noteType?.name || 'Nota'}
-                    </span>
-                    {note.tags.map((t) => (
-                      <span
-                        key={t}
-                        className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
-                      >
-                        #{t}
-                      </span>
-                    ))}
-                  </div>
+              // Fields that are pure media (or empty) are represented by the
+              // image preview / headphone button — never as raw text blocks.
+              const blocks = allBlocks.filter((b) => b.text.length > 0);
 
-                  <div className="font-medium text-xs sm:text-sm text-zinc-900 dark:text-zinc-100 line-clamp-1">
-                    {strippedFirst || 'Card sem texto'}
-                  </div>
-                  {strippedSecond && (
-                    <div className="text-xs text-zinc-400 line-clamp-1 mt-0.5">
-                      {strippedSecond}
+              // Media refs scanned across the chosen fields, in display order
+              const joined = allBlocks.map((b) => b.html).join(' ');
+              const imageRef = extractFirstImage(joined);
+              const audioRef = extractFirstAudio(joined);
+              const mediaImage = note.media?.find((m) => m.type === 'image')?.dataUrl;
+              const mediaAudio = note.media?.find((m) => m.type === 'audio')?.dataUrl;
+
+              const r =
+                card.fsrs.stability > 0
+                  ? (fsrsEngine.retrievability(card.fsrs.elapsedDays, card.fsrs.stability) * 100).toFixed(0) + '%'
+                  : '100%';
+
+              // Primary text shows at least the first 2 <br>-separated lines
+              const primaryBlock = blocks[0];
+              const primaryLines = primaryBlock ? primaryBlock.text.split('\n') : [];
+              const primaryShown = primaryLines.slice(0, 2).join('\n');
+
+              return (
+                <div
+                  key={card.id}
+                  onClick={() => onEditNote(note.id)}
+                  className="group flex flex-col sm:flex-row sm:items-start justify-between gap-3 px-4 py-4 cursor-pointer select-none transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
+                >
+                  {/* Left: image + field texts (headphone button inline) */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start gap-3.5">
+                      <RowImage imageRef={imageRef} fallbackImage={mediaImage} />
+
+                      <div className="flex-1 min-w-0 space-y-2">
+                        {primaryBlock && (
+                          <div>
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <Star className="w-2.5 h-2.5 text-ios-orange fill-current" />
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-600">
+                                {primaryBlock.name}
+                              </span>
+                            </div>
+                            <div className="whitespace-pre-line font-semibold text-[15px] leading-relaxed text-zinc-900 dark:text-white line-clamp-6">
+                              <RowAudioButton
+                                audioRef={audioRef}
+                                fallbackAudio={mediaAudio}
+                                playingUrl={playingUrl}
+                                onToggle={toggleAudio}
+                              />
+                              {primaryShown || '—'}
+                            </div>
+                          </div>
+                        )}
+
+                        {blocks.slice(1).map((b) => (
+                          <div key={b.name}>
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-600 mb-0.5">
+                              {b.name}
+                            </div>
+                            <div className="whitespace-pre-line text-[13px] leading-relaxed text-zinc-400 dark:text-zinc-500 line-clamp-2">
+                              {b.text}
+                            </div>
+                          </div>
+                        ))}
+
+                        {blocks.length === 0 && !imageRef && !audioRef && (
+                          <div className="text-[13px] text-zinc-400 py-1">Card sem conteúdo</div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-
-                {/* FSRS Stats Pills */}
-                <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
-                  <div
-                    className="px-2 py-1 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
-                    title="Estabilidade FSRS (dias de memória)"
-                  >
-                    <span className="text-zinc-400 text-[10px] mr-1">S:</span>
-                    <span className="font-bold text-blue-600 dark:text-blue-400">
-                      {card.fsrs.stability.toFixed(1)}d
-                    </span>
                   </div>
 
-                  <div
-                    className="px-2 py-1 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
-                    title="Dificuldade FSRS (1 a 10)"
-                  >
-                    <span className="text-zinc-400 text-[10px] mr-1">D:</span>
-                    <span className="font-bold text-amber-600 dark:text-amber-400">
-                      {card.fsrs.difficulty.toFixed(1)}
-                    </span>
-                  </div>
+                  {/* Right: stats + actions */}
+                  <div className="flex items-center gap-3 shrink-0 sm:pt-0.5">
+                    <div className="flex items-center gap-2.5 text-[12px] font-semibold tabular-nums pr-1">
+                      <span
+                        className="text-zinc-400 dark:text-zinc-500"
+                        title="Estabilidade (dias de memória)"
+                      >
+                        <span className="font-medium">S</span>{' '}
+                        <span className="text-ios-blue">{card.fsrs.stability.toFixed(1)}d</span>
+                      </span>
+                      <span
+                        className="text-zinc-400 dark:text-zinc-500"
+                        title="Dificuldade (1 a 10)"
+                      >
+                        <span className="font-medium">D</span>{' '}
+                        <span className="text-ios-orange">{card.fsrs.difficulty.toFixed(1)}</span>
+                      </span>
+                      <span
+                        className="text-zinc-400 dark:text-zinc-500 hidden md:inline"
+                        title="Probabilidade de lembrança"
+                      >
+                        <span className="font-medium">R</span>{' '}
+                        <span className="text-ios-green">{r}</span>
+                      </span>
+                    </div>
 
-                  <div
-                    className="px-2 py-1 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hidden md:block"
-                    title="Retrievability (Probabilidade de Lembrança)"
-                  >
-                    <span className="text-zinc-400 text-[10px] mr-1">R:</span>
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400">{r}</span>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 ml-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEditNote(note.id);
-                      }}
-                      className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                      title="Editar"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) =>
-                        handleDeleteCardClick(
-                          card,
-                          strippedFirst || 'Card sem título',
-                          deck?.name || 'Deck',
-                          e
-                        )
-                      }
-                      className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-                      title="Excluir"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {/* Actions */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditNote(note.id);
+                        }}
+                        className="p-1.5 rounded-full text-zinc-400 hover:text-ios-blue hover:bg-ios-blue/10 transition-colors"
+                        title="Editar"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) =>
+                          handleDeleteCardClick(
+                            card,
+                            primaryBlock?.text || 'Card sem título',
+                            deck?.name || 'Deck',
+                            e
+                          )
+                        }
+                        className="p-1.5 rounded-full text-zinc-400 hover:text-ios-red hover:bg-ios-red/10 transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         )}
       </div>
 

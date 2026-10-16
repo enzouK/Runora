@@ -118,7 +118,8 @@ export const parseFieldSegments = (raw: string): FieldSegment[] => {
         segments.push({
           id: `seg-text-${counter++}`,
           type: 'text',
-          content: textChunk,
+          // <br> tags become real newlines so the textarea shows line breaks
+          content: textChunk.replace(/<br\s*\/?>/gi, '\n'),
         });
       }
     }
@@ -186,7 +187,8 @@ export const parseFieldSegments = (raw: string): FieldSegment[] => {
       segments.push({
         id: `seg-text-${counter++}`,
         type: 'text',
-        content: trailing,
+        // <br> tags become real newlines so the textarea shows line breaks
+        content: trailing.replace(/<br\s*\/?>/gi, '\n'),
       });
     }
   }
@@ -206,7 +208,8 @@ export const serializeSegments = (segments: FieldSegment[]): string => {
   return segments
     .map((seg) => {
       if (seg.type === 'text') {
-        return seg.content || '';
+        // Newlines typed in the textarea are stored as <br> (Anki-compatible HTML)
+        return (seg.content || '').replace(/\n/g, '<br>');
       } else if (seg.type === 'audio') {
         // Standard Anki sound tag format
         return `[sound:${seg.url}]`;
