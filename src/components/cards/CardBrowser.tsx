@@ -35,7 +35,7 @@ async function resolveMedia(ref: string): Promise<string | null> {
   return ref;
 }
 
-/** Image thumbnail: keeps the original aspect ratio, sits left of the text. */
+/** Fixed-size image box: every image (any aspect ratio) centers inside, so text alignment never shifts. */
 const RowImage: React.FC<{ imageRef: string | null; fallbackImage?: string }> = ({
   imageRef,
   fallbackImage,
@@ -55,23 +55,30 @@ const RowImage: React.FC<{ imageRef: string | null; fallbackImage?: string }> = 
     };
   }, [imageRef, fallbackImage]);
 
-  if (!url) return null;
+  // No media source at all → no box (text-only rows keep full width)
+  if (!imageRef && !fallbackImage) return null;
+
   return (
-    <img
-      src={url}
-      alt=""
-      className="max-h-28 max-w-44 w-auto h-auto object-contain rounded-xl border border-black/[0.06] dark:border-white/[0.1] shrink-0"
-    />
+    <div className="w-44 h-28 rounded-xl border border-black/[0.06] dark:border-white/[0.1] bg-black/[0.03] dark:bg-white/[0.05] flex items-center justify-center overflow-hidden shrink-0">
+      {url && (
+        <img
+          src={url}
+          alt=""
+          className="max-w-full max-h-full w-auto h-auto object-contain"
+        />
+      )}
+    </div>
   );
 };
 
-/** AnkiDroid-style headphone button: plays the card audio inline with the text. */
+/** AnkiDroid-style headphone button: plays the card audio inline with the text (sm) or standalone (lg). */
 const RowAudioButton: React.FC<{
   audioRef: string | null;
   fallbackAudio?: string;
   playingUrl: string | null;
   onToggle: (url: string) => void;
-}> = ({ audioRef, fallbackAudio, playingUrl, onToggle }) => {
+  size?: 'sm' | 'lg';
+}> = ({ audioRef, fallbackAudio, playingUrl, onToggle, size = 'sm' }) => {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -97,13 +104,17 @@ const RowAudioButton: React.FC<{
         onToggle(url);
       }}
       title={isPlaying ? 'Pausar áudio' : 'Tocar áudio'}
-      className={`inline-flex items-center justify-center w-6 h-6 rounded-full align-[-4px] mr-1.5 transition-all active:scale-90 ${
+      className={`inline-flex items-center justify-center rounded-full transition-all active:scale-90 shrink-0 ${
+        size === 'lg' ? 'w-10 h-10 self-start' : 'w-6 h-6 align-[-4px] mr-1.5'
+      } ${
         isPlaying
           ? 'bg-ios-blue text-white shadow-[0_1px_6px_rgba(0,122,255,0.45)]'
           : 'bg-ios-blue/10 text-ios-blue hover:bg-ios-blue/20'
       }`}
     >
-      <Headphones className={`w-3.5 h-3.5 ${isPlaying ? 'animate-pulse' : ''}`} />
+      <Headphones
+        className={`w-3.5 h-3.5 ${size === 'lg' ? 'w-[18px] h-[18px]' : ''} ${isPlaying ? 'animate-pulse' : ''}`}
+      />
     </button>
   );
 };
@@ -499,7 +510,22 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                           </div>
                         ))}
 
-                        {blocks.length === 0 && !imageRef && !audioRef && (
+                        {blocks.length === 0 && (audioRef || mediaAudio) && (
+                          <div className="flex items-center gap-2.5 py-1">
+                            <RowAudioButton
+                              size="lg"
+                              audioRef={audioRef}
+                              fallbackAudio={mediaAudio}
+                              playingUrl={playingUrl}
+                              onToggle={toggleAudio}
+                            />
+                            <span className="text-[13px] text-zinc-400 dark:text-zinc-500">
+                              Card somente áudio — toque no botão para ouvir
+                            </span>
+                          </div>
+                        )}
+
+                        {blocks.length === 0 && !imageRef && !audioRef && !mediaAudio && !mediaImage && (
                           <div className="text-[13px] text-zinc-400 py-1">Card sem conteúdo</div>
                         )}
                       </div>
