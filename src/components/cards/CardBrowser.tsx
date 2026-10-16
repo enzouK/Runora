@@ -13,7 +13,18 @@ import { Card, Note, NoteType } from '../../types/anki';
 import { StorageService } from '../../services/storage';
 import { FSRS } from '../../fsrs/algorithm';
 import { MediaStore } from '../../services/mediaStore';
-import { stripHtml, extractFirstImage, extractFirstAudio } from '../../services/cardPreview';
+import { ClozeService } from '../../services/clozeService';
+import {
+  stripHtml,
+  extractFirstImage,
+  extractFirstAudio,
+  detectFieldModes,
+  furiganaPreviewHtml,
+  kanjiPreviewText,
+  kanaPreviewText,
+  revealSoundAndCloze,
+  FieldRenderMode,
+} from '../../services/cardPreview';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSelect } from '../common/IOSSelect';
 
@@ -167,6 +178,15 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   const noteTypeMap = useMemo(() => new Map(noteTypes.map((nt) => [nt.id, nt])), [noteTypes]);
 
   const fsrsEngine = useMemo(() => new FSRS(StorageService.getFSRSSettings()), []);
+
+  // Per-note-type render modes detected from the TEMPLATES ({{furigana:}}, {{kanji:}}, {{kana:}})
+  const fieldModesCache = useMemo(() => {
+    const map: Record<string, Record<string, FieldRenderMode>> = {};
+    for (const nt of noteTypes) {
+      map[nt.id] = detectFieldModes(nt.templates, nt.fields.map((f) => f.name));
+    }
+    return map;
+  }, [noteTypes]);
 
   /** Sorted field definitions of a note type. */
   const sortedFields = (nt: NoteType) => [...nt.fields].sort((a, b) => a.ord - b.ord);
@@ -441,17 +461,34 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                 ? effectiveFields(noteType)
                 : Object.keys(note.fields).slice(0, 2);
 
+              // Render mode per field, as requested by the note type's TEMPLATE
+              const modes = noteType ? fieldModesCache[noteType.id] : undefined;
+
               const allBlocks = chosenNames.map((name) => {
-                const html = note.fields[name] ?? '';
-                return { name, html, text: stripHtml(html) };
+                const raw = note.fields[name] ?? '';
+                const mode: FieldRenderMode = modes?.[name] ?? 'plain';
+                if (mode === 'furigana') {
+                  const html = furiganaPreviewHtml(raw);
+                  // Readable fallback text: reading shown in parentheses
+                  const text = stripHtml(html.replace(/<rt[^>]*>([\s\S]*?)<\/rt>/gi, '($1)'));
+                  return { name, mode, raw, html, text };
+                }
+                if (mode === 'kanji') {
+                  return { name, mode, raw, html: undefined, text: kanjiPreviewText(raw) };
+                }
+                if (mode === 'kana') {
+                  return { name, mode, raw, html: undefined, text: kanaPreviewText(raw) };
+                }
+                return { name, mode, raw, html: undefined, text: stripHtml(raw) };
               });
 
               // Fields that are pure media (or empty) are represented by the
               // image preview / headphone button — never as raw text blocks.
               const blocks = allBlocks.filter((b) => b.text.length > 0);
 
-              // Media refs scanned across the chosen fields, in display order
-              const joined = allBlocks.map((b) => b.html).join(' ');
+              // Media refs scanned across the chosen RAW field contents, in display order
+              // (raw — NOT the preview html, which has media tags already stripped)
+              const joined = allBlocks.map((b) => b.raw).join(' ');
               const imageRef = extractFirstImage(joined);
               const audioRef = extractFirstAudio(joined);
               const mediaImage = note.media?.find((m) => m.type === 'image')?.dataUrl;
@@ -494,7 +531,11 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                                 playingUrl={playingUrl}
                                 onToggle={toggleAudio}
                               />
-                              {primaryShown || '—'}
+                              {primaryBlock.html !== undefined ? (
+                                <span dangerouslySetInnerHTML={{ __html: primaryBlock.html }} />
+                              ) : (
+                                primaryShown || '—'
+                              )}
                             </div>
                           </div>
                         )}
@@ -505,7 +546,11 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                               {b.name}
                             </div>
                             <div className="whitespace-pre-line text-[13px] leading-relaxed text-zinc-400 dark:text-zinc-500 line-clamp-2">
-                              {b.text}
+                              {b.html !== undefined ? (
+                                <span dangerouslySetInnerHTML={{ __html: b.html }} />
+                              ) : (
+                                b.text
+                              )}
                             </div>
                           </div>
                         ))}
