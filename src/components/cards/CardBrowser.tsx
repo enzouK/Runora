@@ -20,6 +20,7 @@ import {
   extractFirstAudio,
   detectFieldModes,
   resolveDisplayFields,
+  promoteFieldToPrimary,
   furiganaPreviewHtml,
   kanjiPreviewText,
   kanaPreviewText,
@@ -213,11 +214,17 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
     StorageService.setBrowserFieldPref(noteTypeId, next);
   };
 
-  /** Promotes a field to primary: moves it to the front of the selection. */
+  /** Promotes a field to primary: moves it to the front of the selection.
+   *  Works even when no preference exists yet (falls back to first two by ord). */
   const setPrimaryFieldPref = (noteTypeId: string, fieldName: string) => {
-    const current = fieldPrefs[noteTypeId];
-    if (!current || current.length === 0 || current[0] === fieldName) return;
-    const next = [fieldName, ...current.filter((n) => n !== fieldName)];
+    const nt = noteTypes.find((n) => n.id === noteTypeId);
+    if (!nt) return;
+    const next = promoteFieldToPrimary(
+      fieldPrefs[noteTypeId],
+      sortedFields(nt).map((f) => f.name),
+      fieldName
+    );
+    if (!next) return; // already primary (or nothing to change)
     setFieldPrefs((prev) => ({ ...prev, [noteTypeId]: next }));
     StorageService.setBrowserFieldPref(noteTypeId, next);
   };

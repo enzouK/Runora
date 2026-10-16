@@ -65,6 +65,26 @@ export function resolveDisplayFields(fieldNamesByOrd: string[], pref?: string[])
   return fieldNamesByOrd.slice(0, 2);
 }
 
+/**
+ * Promotes a field to primary (front of the selection). Works even when no
+ * preference exists yet — the default selection (first two by ord) is used
+ * as the starting point, exactly like the chips' fallback.
+ * Returns the new ordered list, or null when nothing would change
+ * (no fields, or the field is already the primary).
+ */
+export function promoteFieldToPrimary(
+  pref: string[] | undefined,
+  fieldNamesByOrd: string[],
+  fieldName: string
+): string[] | null {
+  const current =
+    pref && pref.length > 0
+      ? pref.filter((n) => fieldNamesByOrd.includes(n))
+      : fieldNamesByOrd.slice(0, 2);
+  if (current.length === 0 || current[0] === fieldName) return null;
+  return [fieldName, ...current.filter((n) => n !== fieldName)];
+}
+
 /** Decodes the common HTML entities produced by rich-text editors. */
 function decodeEntities(s: string): string {
   return s.replace(/&(nbsp|amp|lt|gt|quot|apos|#39|#x27|#x2f);/gi, (_ent, name: string) => {
