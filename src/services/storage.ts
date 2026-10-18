@@ -502,6 +502,37 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
   }
 
+  /** CardBrowser list ordering modes. */
+  private static readonly BROWSER_SORT_MODES = ['newest', 'oldest', 'hardest', 'easiest'];
+
+  /** CardBrowser sort order. Default: 'newest' (most recently created first). */
+  public static getBrowserSortPref(): string {
+    const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
+    if (!raw) return 'newest';
+    try {
+      const prefs = JSON.parse(raw) as { browserSort?: unknown };
+      const s = prefs.browserSort;
+      return typeof s === 'string' && (this.BROWSER_SORT_MODES as readonly string[]).includes(s)
+        ? s
+        : 'newest';
+    } catch {
+      return 'newest';
+    }
+  }
+
+  public static setBrowserSortPref(sort: string): void {
+    if (!(this.BROWSER_SORT_MODES as readonly string[]).includes(sort)) return;
+    const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
+    let prefs: Record<string, unknown> = {};
+    try {
+      prefs = raw ? JSON.parse(raw) : {};
+    } catch {
+      prefs = {};
+    }
+    prefs.browserSort = sort;
+    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+  }
+
   /** All ancestors of a deck (from root to itself), by name prefix. */
   public static getDeckLineage(decks: Deck[], deck: Deck): Deck[] {
     const parts = deck.name.split('::');

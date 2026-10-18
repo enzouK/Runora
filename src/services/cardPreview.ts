@@ -21,6 +21,43 @@ const CH_APOS = String.fromCharCode(39); // '
 /** How a note type's template asks for a field to be rendered. */
 export type FieldRenderMode = 'plain' | 'furigana' | 'kanji' | 'kana';
 
+/** CardBrowser list ordering modes. */
+export type CardSortMode = 'newest' | 'oldest' | 'hardest' | 'easiest';
+
+/** Structural minimum needed to sort preview cards (works with the Card type). */
+interface SortableCard {
+  id: string;
+  createdAt: number;
+  fsrs: { difficulty: number };
+}
+
+/**
+ * Sorts cards for the CardBrowser list.
+ * - newest/oldest: by createdAt (id as stable tie-break)
+ * - hardest/easiest: by FSRS difficulty; ties (e.g. unseen cards sharing the
+ *   default D) broken by createdAt DESC
+ * Returns a new array; the input is not mutated.
+ */
+export function sortCardsByMode<T extends SortableCard>(cards: T[], mode: CardSortMode): T[] {
+  const arr = [...cards];
+  switch (mode) {
+    case 'oldest':
+      arr.sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1));
+      break;
+    case 'hardest':
+      arr.sort((a, b) => b.fsrs.difficulty - a.fsrs.difficulty || b.createdAt - a.createdAt);
+      break;
+    case 'easiest':
+      arr.sort((a, b) => a.fsrs.difficulty - b.fsrs.difficulty || b.createdAt - a.createdAt);
+      break;
+    case 'newest':
+    default:
+      arr.sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? -1 : 1));
+      break;
+  }
+  return arr;
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

@@ -23,10 +23,12 @@ import {
   detectFieldModes,
   resolveDisplayFields,
   promoteFieldToPrimary,
+  sortCardsByMode,
   furiganaPreviewHtml,
   kanjiPreviewText,
   kanaPreviewText,
   FieldRenderMode,
+  CardSortMode,
 } from '../../services/cardPreview';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSelect } from '../common/IOSSelect';
@@ -271,6 +273,14 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   const [fieldPrefs, setFieldPrefs] = useState<Record<string, string[]>>(
     () => StorageService.getBrowserFieldPrefs()
   );
+  const [sortMode, setSortMode] = useState<CardSortMode>(
+    () => StorageService.getBrowserSortPref() as CardSortMode
+  );
+
+  const handleSortChange = (value: string) => {
+    setSortMode(value as CardSortMode);
+    StorageService.setBrowserSortPref(value);
+  };
 
   // Single shared audio element so only one headphone-button preview plays at a time
   const audioElRef = useRef<HTMLAudioElement | null>(null);
@@ -387,6 +397,12 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
     });
   }, [cards, noteMap, searchQuery, selectedDeckFilter, selectedStateFilter]);
 
+  // List ordering (user preference, persisted between sessions)
+  const sortedCards = useMemo(
+    () => sortCardsByMode(filteredCards, sortMode),
+    [filteredCards, sortMode]
+  );
+
   const handleDeleteCardClick = (
     card: Card,
     preview: string,
@@ -455,6 +471,20 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                 { value: '1', label: 'Aprendizado (Learning)' },
                 { value: '2', label: 'Revisão (Review)' },
                 { value: '3', label: 'Reaprendizado (Relearning)' },
+              ]}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 text-[13px] text-zinc-500 dark:text-zinc-400">
+            <span className="font-medium">Ordenar:</span>
+            <IOSSelect
+              value={sortMode}
+              onChange={handleSortChange}
+              options={[
+                { value: 'newest', label: 'Mais recentes primeiro' },
+                { value: 'oldest', label: 'Mais antigos primeiro' },
+                { value: 'hardest', label: 'Mais difíceis primeiro' },
+                { value: 'easiest', label: 'Mais fáceis primeiro' },
               ]}
             />
           </div>
@@ -580,7 +610,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
           </div>
         ) : (
           <div className="divide-y divide-black/[0.05] dark:divide-white/[0.07]">
-            {filteredCards.map((card) => {
+            {sortedCards.map((card) => {
               const note = noteMap.get(card.noteId);
               const deck = deckMap.get(card.deckId);
               const noteType = note ? noteTypeMap.get(note.noteTypeId) : null;
