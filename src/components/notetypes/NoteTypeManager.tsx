@@ -287,7 +287,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
               </div>
 
               {/* Fields list */}
-              <div className="mt-2 pt-3 border-t border-black/[0.05] dark:border-white/[0.07]">
+              <div className="mt-2 pt-3 pb-3 border-t border-black/[0.05] dark:border-white/[0.07]">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block mb-1.5">
                   Campos
                 </span>
