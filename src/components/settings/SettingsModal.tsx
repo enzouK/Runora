@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import {
   X,
+  Clock,
   Download,
   Upload,
   RotateCcw,
   Puzzle,
-  Sparkles,
   Check,
   AlertCircle,
 } from 'lucide-react';
@@ -31,7 +31,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [activeTab, setActiveTab] = useState<'fsrs' | 'data' | 'addons'>('fsrs');
   const [params, setParams] = useState<FSRSParameters>(() => StorageService.getFSRSSettings());
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [showWeightsEditor, setShowWeightsEditor] = useState(false);
   const [addons, setAddons] = useState(() => AddonSystem.getAddons());
   const [confirmResetFSRS, setConfirmResetFSRS] = useState(false);
   const [confirmResetData, setConfirmResetData] = useState(false);
@@ -166,14 +165,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {activeTab === 'fsrs' && (
             <div className="space-y-5">
-              <div className="p-4 rounded-[16px] bg-ios-blue/10 text-[13px] text-blue-900 dark:text-blue-200">
-                <span className="font-bold flex items-center gap-1.5 mb-1 text-ios-blue">
-                  <Sparkles className="w-4 h-4" />
-                  Free Spaced Repetition Scheduler (FSRS)
-                </span>
-                O Anki 2.0 utiliza exclusivamente a arquitetura moderna FSRS em vez do antigo SM-2. O FSRS modela a estabilidade e dificuldade com retrievabilidade contínua baseada em retenção desejada.
-              </div>
-
               {/* Retention slider */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -197,94 +188,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
                 <div className="flex justify-between text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
                   <span>70% (Menor carga)</span>
-                  <span>90% (Recomendado)</span>
                   <span>98% (Máxima)</span>
                 </div>
               </div>
 
-              {/* Maximum interval */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">
-                  Intervalo Máximo (Dias)
-                </label>
-                <input
-                  type="number"
-                  min="30"
-                  max="36500"
-                  value={params.maximumInterval}
-                  onChange={(e) =>
-                    setParams((p) => ({ ...p, maximumInterval: parseInt(e.target.value, 10) || 36500 }))
-                  }
-                  className="w-full px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm font-mono tabular-nums text-zinc-900 dark:text-zinc-100"
-                />
-              </div>
-
-              {/* Interval fuzz toggle (Anki) */}
-              <div className="flex items-center justify-between gap-3 px-3.5 py-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06]">
-                <div className="min-w-0">
-                  <div className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
-                    Variação de intervalo (Fuzz)
-                  </div>
-                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5 leading-relaxed">
-                    Aleatoriza levemente as revisões (±25% até 7 dias; ±5% acima, sem efeito abaixo
-                    de 2,5 dias) para evitar acúmulo no mesmo dia — igual ao Anki.
-                  </p>
+              {/* Day rollover — when the study day starts */}
+              <div className="px-3.5 py-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06]">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="w-4 h-4 text-ios-blue shrink-0" />
+                  <span className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
+                    Início do dia de estudo
+                  </span>
                 </div>
-                <IOSSwitch
-                  checked={params.enableFuzz}
-                  onChange={(checked) => setParams((p) => ({ ...p, enableFuzz: checked }))}
-                />
-              </div>
-
-              {/* Day rollover (virada do dia) — Anki default 4 AM */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">
-                  Virada do dia (Rollover)
-                </label>
-                <div className="flex items-center gap-3">
+                <p className="text-[13px] text-zinc-600 dark:text-zinc-300 leading-relaxed">
+                  O dia de estudo começa{' '}
                   <input
                     type="number"
                     min="0"
                     max="23"
                     value={rolloverHour}
                     onChange={(e) =>
-                      setRolloverHour(
-                        Math.min(23, Math.max(0, parseInt(e.target.value, 10) || 0))
-                      )
+                      setRolloverHour(Math.min(23, Math.max(0, parseInt(e.target.value, 10) || 0)))
                     }
-                    className="w-20 px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm font-mono tabular-nums text-center text-zinc-900 dark:text-zinc-100"
-                  />
-                  <span className="text-sm text-zinc-600 dark:text-zinc-300">
-                    horas (00–23)
+                    className="w-14 px-2 py-1 mx-0.5 rounded-[8px] bg-white dark:bg-zinc-900 border border-black/[0.08] dark:border-white/[0.12] text-center font-mono font-semibold tabular-nums text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-ios-blue"
+                  />{' '}
+                  horas após a meia-noite — ou seja, às{' '}
+                  <span className="font-semibold text-ios-blue tabular-nums">
+                    {String(rolloverHour).padStart(2, '0')}:00
                   </span>
-                </div>
-                <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1 leading-relaxed">
-                  Define a que horas começa um "novo dia" para limites diários. Padrão do Anki:
-                  <strong> 4h da manhã</strong>. Ex.: estudar às 2:30 com rollover 4 conta para o
-                  dia anterior.
+                  .
                 </p>
-              </div>
-
-              {/* FSRS Weights Inspector */}
-              <div className="pt-2 border-t border-black/[0.05] dark:border-white/[0.07]">
-                <button
-                  type="button"
-                  onClick={() => setShowWeightsEditor(!showWeightsEditor)}
-                  className="text-[13px] font-semibold text-ios-blue hover:text-[#0071eb] flex items-center gap-1 transition-colors"
-                >
-                  <span>{showWeightsEditor ? 'Ocultar' : 'Exibir'} os 19 Pesos w[0..18] do FSRS</span>
-                </button>
-
-                {showWeightsEditor && (
-                  <div className="mt-3 p-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] text-[11px] font-mono grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
-                    {params.w.map((weight, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-1.5 rounded-lg bg-white dark:bg-zinc-900">
-                        <span className="text-zinc-400">w[{idx}]:</span>
-                        <span className="font-bold text-zinc-800 dark:text-zinc-200">{weight}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
+                  Ex.: com 4, revisar às 2:30 ainda conta para o dia anterior (padrão do Anki).
+                </p>
               </div>
 
               <div className="flex items-center justify-between pt-3">

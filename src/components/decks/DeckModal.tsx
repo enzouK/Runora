@@ -47,6 +47,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [targetRetention, setTargetRetention] = useState(0.90);
+  const [maxInterval, setMaxInterval] = useState('');
   const [newCardsPerDay, setNewCardsPerDay] = useState('');
   const [maxReviewsPerDay, setMaxReviewsPerDay] = useState('');
   // Scheduler options (Anki): '' / 'inherit' = herdar do pai ou do padrão
@@ -70,6 +71,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       setName(editDeck.name);
       setDescription(editDeck.description);
       setTargetRetention(editDeck.fsrsParams?.requestRetention ?? 0.90);
+      setMaxInterval(editDeck.fsrsParams?.maximumInterval?.toString() ?? '');
       setNewCardsPerDay(editDeck.dailyLimits?.newCardsPerDay?.toString() ?? '');
       setMaxReviewsPerDay(editDeck.dailyLimits?.maxReviewsPerDay?.toString() ?? '');
       setLearningSteps(editDeck.schedulerConfig?.learningSteps ?? '');
@@ -93,6 +95,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       setName(`${parentDeckName}::`);
       setDescription('');
       setTargetRetention(0.90);
+      setMaxInterval('');
       setNewCardsPerDay('');
       setMaxReviewsPerDay('');
       setLearningSteps('');
@@ -110,6 +113,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       setName('');
       setDescription('');
       setTargetRetention(0.90);
+      setMaxInterval('');
       setNewCardsPerDay('');
       setMaxReviewsPerDay('');
       setLearningSteps('');
@@ -157,6 +161,15 @@ export const DeckModal: React.FC<DeckModalProps> = ({
     const audioConfig = {
       disableAutoplay: audioAutoplay === 'inherit' ? null : audioAutoplay === 'dont',
     };
+    // Per-deck FSRS overrides: only fields the user set are saved;
+    // anything left empty falls back to the global settings at runtime.
+    const fsrsParams: { requestRetention: number; maximumInterval?: number } = {
+      requestRetention: targetRetention,
+    };
+    const parsedMaxInterval = parseInt(maxInterval, 10);
+    if (Number.isFinite(parsedMaxInterval) && parsedMaxInterval > 0) {
+      fsrsParams.maximumInterval = parsedMaxInterval;
+    }
 
     if (editDeck) {
       const updated = decks.map((d) =>
@@ -165,7 +178,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               ...d,
               name: name.trim(),
               description: description.trim(),
-              fsrsParams: { requestRetention: targetRetention },
+              fsrsParams,
               dailyLimits,
               schedulerConfig,
               displayOrder,
@@ -266,6 +279,25 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <span>90% (Padrão)</span>
               <span>98% (Alta retenção)</span>
             </div>
+          </div>
+
+          {/* Maximum interval (per-deck FSRS override; empty = global) */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">
+              Intervalo Máximo (dias)
+            </label>
+            <input
+              type="number"
+              min="30"
+              max="36500"
+              value={maxInterval}
+              onChange={(e) => setMaxInterval(e.target.value)}
+              placeholder="Padrão: 36500"
+              className="w-full px-3.5 py-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-[10px] text-zinc-400 mt-0.5">
+              Nenhum intervalo de revisão deste deck passará desse valor. Vazio = usa o padrão global (36500).
+            </p>
           </div>
 
           {/* ── Daily Limits (estilo iOS, como no Anki) ── */}
