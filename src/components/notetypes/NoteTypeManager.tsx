@@ -285,9 +285,10 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                   </span>
                 )}
               </div>
+            </div>
 
-              {/* Fields list */}
-              <div className="mt-2 pt-3 pb-3 border-t border-black/[0.05] dark:border-white/[0.07]">
+            {/* Fields list (vertically centered in the card's leftover space) */}
+            <div className="my-auto pt-3 pb-3 border-t border-black/[0.05] dark:border-white/[0.07]">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block mb-1.5">
                   Campos
                 </span>
@@ -302,10 +303,9 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                   ))}
                 </div>
               </div>
-            </div>
 
-            {/* Edit HTML Templates Action Button (pinned to the card bottom) */}
-            <div className="mt-auto pt-3 border-t border-black/[0.05] dark:border-white/[0.07]">
+            {/* Edit HTML Templates Action Button */}
+            <div className="pt-3 border-t border-black/[0.05] dark:border-white/[0.07]">
               <button
                 type="button"
                 onClick={() => setTemplateEditingNoteType(nt)}
