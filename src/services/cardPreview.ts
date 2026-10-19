@@ -68,6 +68,19 @@ export function toggleMultiFilter(values: string[], value: string): string[] {
   return values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
 }
 
+/**
+ * Union of all note tags, sorted alphabetically (for the tag filter dropdown).
+ */
+export function collectTags<T extends { tags: string[] }>(notes: T[]): string[] {
+  const set = new Set<string>();
+  for (const n of notes) {
+    for (const t of n.tags) {
+      if (t) set.add(t);
+    }
+  }
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

@@ -24,6 +24,7 @@ import {
   resolveDisplayFields,
   promoteFieldToPrimary,
   sortCardsByMode,
+  collectTags,
   furiganaPreviewHtml,
   kanjiPreviewText,
   kanaPreviewText,
@@ -268,6 +269,9 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   const [statusFilterSelection, setStatusFilterSelection] = useState<string[]>(() =>
     StorageService.getBrowserStatusFilter()
   );
+  const [tagFilterSelection, setTagFilterSelection] = useState<string[]>(() =>
+    StorageService.getBrowserTagFilter()
+  );
   const [cardToDelete, setCardToDelete] = useState<{
     card: Card;
     preview: string;
@@ -316,6 +320,9 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   const cards = useMemo(() => StorageService.getCards(), [onRefresh]);
 
   const noteMap = useMemo(() => new Map(notes.map((n) => [n.id, n])), [notes]);
+
+  // All distinct tags across notes (for the tag filter dropdown)
+  const availableTags = useMemo(() => collectTags(notes), [notes]);
   const deckMap = useMemo(() => new Map(decks.map((d) => [d.id, d])), [decks]);
   const noteTypeMap = useMemo(() => new Map(noteTypes.map((nt) => [nt.id, nt])), [noteTypes]);
 
@@ -378,6 +385,11 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
     () => statusFilterSelection.filter((v) => ['0', '1', '2', '3'].includes(v)),
     [statusFilterSelection]
   );
+  // Saved tags that no note uses anymore are ignored
+  const activeTagFilter = useMemo(
+    () => tagFilterSelection.filter((t) => availableTags.includes(t)),
+    [tagFilterSelection, availableTags]
+  );
 
   // Filtered card items
   const filteredCards = useMemo(() => {
@@ -398,6 +410,11 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
         return false;
       }
 
+      // Tag filter (multi-select OR; empty = all; matches ANY selected tag)
+      if (activeTagFilter.length > 0 && !note.tags.some((t) => activeTagFilter.includes(t))) {
+        return false;
+      }
+
       // Search text in fields or tags
       if (q) {
         const fieldsText = Object.values(note.fields).join(' ').toLowerCase();
@@ -409,7 +426,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
 
       return true;
     });
-  }, [cards, noteMap, searchQuery, activeDeckFilter, activeStatusFilter]);
+  }, [cards, noteMap, searchQuery, activeDeckFilter, activeStatusFilter, activeTagFilter]);
 
   // List ordering (user preference, persisted between sessions)
   const sortedCards = useMemo(
@@ -493,6 +510,22 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                 { value: '1', label: 'Aprendizado (Learning)' },
                 { value: '2', label: 'Revisão (Review)' },
                 { value: '3', label: 'Reaprendizado (Relearning)' },
+              ]}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 text-[13px] text-zinc-500 dark:text-zinc-400">
+            <span className="font-medium">Tags:</span>
+            <IOSSelect
+              multiple
+              values={tagFilterSelection}
+              onValuesChange={(v) => {
+                setTagFilterSelection(v);
+                StorageService.setBrowserTagFilter(v);
+              }}
+              options={[
+                { value: 'all', label: 'Todas as tags' },
+                ...availableTags.map((t) => ({ value: t, label: `#${t}` })),
               ]}
             />
           </div>
