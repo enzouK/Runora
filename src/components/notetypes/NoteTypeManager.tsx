@@ -223,7 +223,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
         {noteTypes.map((nt) => (
           <div
             key={nt.id}
-            className="p-5 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] flex flex-col justify-between"
+            className="p-5 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] flex flex-col"
           >
             <div>
               <div className="flex items-start justify-between gap-3 mb-2">
@@ -302,18 +302,18 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                   ))}
                 </div>
               </div>
+            </div>
 
-              {/* Edit HTML Templates Action Button */}
-              <div className="mt-4 pt-3 border-t border-black/[0.05] dark:border-white/[0.07]">
-                <button
-                  type="button"
-                  onClick={() => setTemplateEditingNoteType(nt)}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-[12px] bg-ios-blue/10 hover:bg-ios-blue/[0.16] text-ios-blue font-semibold text-[13px] transition-all active:scale-[0.99]"
-                >
-                  <Code2 className="w-4 h-4" />
-                  <span>Editar Templates HTML</span>
-                </button>
-              </div>
+            {/* Edit HTML Templates Action Button (pinned to the card bottom) */}
+            <div className="mt-auto pt-3 border-t border-black/[0.05] dark:border-white/[0.07]">
+              <button
+                type="button"
+                onClick={() => setTemplateEditingNoteType(nt)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-[12px] bg-ios-blue/10 hover:bg-ios-blue/[0.16] text-ios-blue font-semibold text-[13px] transition-all active:scale-[0.99]"
+              >
+                <Code2 className="w-4 h-4" />
+                <span>Editar Templates HTML</span>
+              </button>
             </div>
           </div>
         ))}
