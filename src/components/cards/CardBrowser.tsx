@@ -1050,9 +1050,8 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
         variant="danger"
       />
 
-      {/* Floating bulk action bar (iOS Mail style) */}
+      {/* Floating bulk action bar (iOS Mail style) — appears as soon as selection mode is on */}
       {selectionMode &&
-        selectedCount > 0 &&
         createPortal(
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 px-3 py-2 rounded-full bg-ios-card/95 dark:bg-[#2c2c2e]/95 backdrop-blur-xl border border-black/10 dark:border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.25)] ios-fade-in">
             <span className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100 px-2 tabular-nums whitespace-nowrap">
@@ -1069,12 +1068,13 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
             <div className="w-px h-5 bg-black/[0.1] dark:bg-white/[0.12]" />
             <button
               type="button"
+              disabled={selectedCount === 0}
               onClick={() => {
                 setBulkTagSelection([]);
                 setNewBulkTag('');
                 setShowTagModal(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold text-ios-blue hover:bg-ios-blue/10 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold text-ios-blue hover:bg-ios-blue/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               title="Adicionar ou remover tags dos cards selecionados"
             >
               <Tags className="w-4 h-4" />
@@ -1082,8 +1082,9 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
             </button>
             <button
               type="button"
+              disabled={selectedCount === 0}
               onClick={() => setConfirmBulkDelete(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold text-ios-red hover:bg-ios-red/10 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold text-ios-red hover:bg-ios-red/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               title="Excluir cards selecionados"
             >
               <Trash2 className="w-4 h-4" />
