@@ -13,6 +13,8 @@ interface IOSSelectProps {
   placeholder?: string;
   className?: string;
   maxMenuHeight?: number;
+  /** Blue-tinted trigger: signals that this filter has an active selection. */
+  active?: boolean;
   /**
    * Multi-select mode: options render with a checkbox and clicking toggles
    * them WITHOUT closing the menu. Uses `values`/`onValuesChange` instead of
@@ -43,6 +45,7 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
   multiple = false,
   values = [],
   onValuesChange,
+  active = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; up: boolean } | null>(null);
@@ -123,7 +126,11 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
         ref={triggerRef}
         type="button"
         onClick={toggle}
-        className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-800 dark:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${className}`}
+        className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+          active
+            ? 'bg-ios-blue/10 border-ios-blue/40 text-ios-blue'
+            : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-600'
+        } ${className}`}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >

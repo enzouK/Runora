@@ -528,8 +528,8 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
 
   return (
     <div className="space-y-4">
-      {/* Search and Filters Card */}
-      <div className="p-4 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] space-y-3">
+      {/* Search Card */}
+      <div className="p-4 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
         {/* iOS Search Field */}
         <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] focus-within:ring-2 focus-within:ring-ios-blue/40 transition-shadow">
           <Search className="w-4 h-4 text-zinc-400 shrink-0" />
@@ -551,74 +551,82 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
             </button>
           )}
         </div>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 text-[13px] text-zinc-500 dark:text-zinc-400">
-            <span className="font-medium">Deck:</span>
-            <IOSSelect
-              multiple
-              values={deckFilterSelection}
-              onValuesChange={(v) => {
-                setDeckFilterSelection(v);
-                StorageService.setBrowserDeckFilter(v);
-              }}
-              options={[
-                { value: 'all', label: `Todos os Decks (${cards.length})` },
-                ...decks.map((d) => ({ value: d.id, label: d.name })),
-              ]}
-            />
-          </div>
+      {/* Filters Box: WHICH cards appear */}
+      <div className="px-4 py-3.5 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] flex flex-wrap items-center gap-2.5">
+        <IOSSelect
+          multiple
+          active={activeDeckFilter.length > 0}
+          values={deckFilterSelection}
+          onValuesChange={(v) => {
+            setDeckFilterSelection(v);
+            StorageService.setBrowserDeckFilter(v);
+          }}
+          options={[
+            { value: 'all', label: 'Todos os Decks' },
+            ...decks.map((d) => ({ value: d.id, label: d.name })),
+          ]}
+        />
 
-          <div className="flex items-center gap-2 text-[13px] text-zinc-500 dark:text-zinc-400">
-            <span className="font-medium">Status:</span>
-            <IOSSelect
-              multiple
-              values={statusFilterSelection}
-              onValuesChange={(v) => {
-                setStatusFilterSelection(v);
-                StorageService.setBrowserStatusFilter(v);
-              }}
-              options={[
-                { value: 'all', label: 'Todos os Estados' },
-                { value: '0', label: 'Novo (New)' },
-                { value: '1', label: 'Aprendizado (Learning)' },
-                { value: '2', label: 'Revisão (Review)' },
-                { value: '3', label: 'Reaprendizado (Relearning)' },
-              ]}
-            />
-          </div>
+        <IOSSelect
+          multiple
+          active={activeStatusFilter.length > 0}
+          values={statusFilterSelection}
+          onValuesChange={(v) => {
+            setStatusFilterSelection(v);
+            StorageService.setBrowserStatusFilter(v);
+          }}
+          options={[
+            { value: 'all', label: 'Todos os Estados' },
+            { value: '0', label: 'Novo (New)' },
+            { value: '1', label: 'Aprendizado (Learning)' },
+            { value: '2', label: 'Revisão (Review)' },
+            { value: '3', label: 'Reaprendizado (Relearning)' },
+          ]}
+        />
 
-          <div className="flex items-center gap-2 text-[13px] text-zinc-500 dark:text-zinc-400">
-            <span className="font-medium">Tags:</span>
-            <IOSSelect
-              multiple
-              values={tagFilterSelection}
-              onValuesChange={(v) => {
-                setTagFilterSelection(v);
-                StorageService.setBrowserTagFilter(v);
-              }}
-              options={[
-                { value: 'all', label: 'Todas as tags' },
-                ...availableTags.map((t) => ({ value: t, label: `#${t}` })),
-              ]}
-            />
-          </div>
+        <IOSSelect
+          multiple
+          active={activeTagFilter.length > 0}
+          values={tagFilterSelection}
+          onValuesChange={(v) => {
+            setTagFilterSelection(v);
+            StorageService.setBrowserTagFilter(v);
+          }}
+          options={[
+            { value: 'all', label: 'Todas as tags' },
+            ...availableTags.map((t) => ({ value: t, label: `#${t}` })),
+          ]}
+        />
 
-          <div className="flex items-center gap-2 text-[13px] text-zinc-500 dark:text-zinc-400">
-            <span className="font-medium">Ordenar:</span>
-            <IOSSelect
-              value={sortMode}
-              onChange={handleSortChange}
-              options={[
-                { value: 'newest', label: 'Mais recentes primeiro' },
-                { value: 'oldest', label: 'Mais antigos primeiro' },
-                { value: 'hardest', label: 'Mais difíceis primeiro' },
-                { value: 'easiest', label: 'Mais fáceis primeiro' },
-              ]}
-            />
-          </div>
+        <span className="ml-auto text-[12px] font-medium tabular-nums text-zinc-400 dark:text-zinc-500">
+          {filteredCards.length} cards
+        </span>
+      </div>
 
-          {/* Bulk selection mode */}
+      {/* Order + Tools row */}
+      <div className="grid sm:grid-cols-2 gap-3">
+        {/* Order Box: in WHICH order they appear */}
+        <div className="px-4 py-3.5 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] flex items-center gap-2.5">
+          <span className="text-[13px] font-medium text-zinc-500 dark:text-zinc-400 shrink-0">
+            Ordenar:
+          </span>
+          <IOSSelect
+            value={sortMode}
+            onChange={handleSortChange}
+            className="flex-1"
+            options={[
+              { value: 'newest', label: 'Mais recentes primeiro' },
+              { value: 'oldest', label: 'Mais antigos primeiro' },
+              { value: 'hardest', label: 'Mais difíceis primeiro' },
+              { value: 'easiest', label: 'Mais fáceis primeiro' },
+            ]}
+          />
+        </div>
+
+        {/* Tools Box: what you are doing right now */}
+        <div className="px-4 py-3.5 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] flex items-center gap-2.5">
           <button
             type="button"
             onClick={toggleSelectionMode}
@@ -633,18 +641,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
             <span>Selecionar</span>
           </button>
 
-          {selectionMode && (
-            <button
-              type="button"
-              onClick={toggleSelectAllFiltered}
-              disabled={sortedCards.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold text-ios-blue hover:bg-ios-blue/10 transition-all active:scale-95 disabled:opacity-40"
-              title={allFilteredSelected ? 'Desmarcar todos os filtrados' : 'Selecionar todos os cards filtrados'}
-            >
-              <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
-              <span>{allFilteredSelected ? 'Desmarcar todos' : `Selecionar todos (${sortedCards.length})`}</span>
-            </button>
-          )}
+          <div className="w-px h-5 bg-black/[0.08] dark:bg-white/[0.1]" />
 
           {/* Field display preferences */}
           <button
@@ -660,10 +657,6 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
             <SlidersHorizontal className="w-3.5 h-3.5" />
             <span>Campos</span>
           </button>
-
-          <div className="ml-auto text-[12px] font-medium tabular-nums text-zinc-400 dark:text-zinc-500">
-            {filteredCards.length} cards
-          </div>
         </div>
       </div>
 
@@ -1065,6 +1058,14 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
             <span className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100 px-2 tabular-nums whitespace-nowrap">
               {selectedCount} selecionado{selectedCount > 1 ? 's' : ''}
             </span>
+            <button
+              type="button"
+              onClick={toggleSelectAllFiltered}
+              className="px-3 py-1.5 rounded-full text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] transition-colors whitespace-nowrap"
+              title="Selecionar/desmarcar todos os cards filtrados"
+            >
+              {allFilteredSelected ? 'Desmarcar todos' : `Selecionar todos (${sortedCards.length})`}
+            </button>
             <div className="w-px h-5 bg-black/[0.1] dark:bg-white/[0.12]" />
             <button
               type="button"
