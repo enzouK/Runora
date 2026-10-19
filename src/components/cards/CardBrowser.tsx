@@ -881,7 +881,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                       </div>
                     )}
 
-                    <div className={layout === 'image' ? '' : 'flex items-start gap-3.5'}>
+                    <div className={layout === 'image' ? '' : 'flex items-center gap-3.5'}>
                       {/* Normal left box (text and audio-primary layouts) */}
                       {layout !== 'image' && (
                         <RowImage imageRef={imageRef} fallbackImage={mediaImage} />
