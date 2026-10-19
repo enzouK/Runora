@@ -152,7 +152,13 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
             className="overflow-y-auto rounded-2xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-zinc-200 dark:border-zinc-700/80 shadow-2xl p-1.5 animate-in fade-in zoom-in-95 duration-150"
           >
             {options.map((opt) => {
-              const isSelected = multiple ? values.includes(opt.value) : opt.value === value;
+              // Multi mode: the 'all' option shows checked when nothing is
+              // selected (empty selection = show everything)
+              const isSelected = multiple
+                ? opt.value === 'all'
+                  ? values.length === 0
+                  : values.includes(opt.value)
+                : opt.value === value;
               return (
                 <button
                   key={opt.value}
