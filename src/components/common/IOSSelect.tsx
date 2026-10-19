@@ -9,18 +9,29 @@ export interface IOSSelectOption {
 }
 
 interface IOSSelectProps {
-  value: string;
   options: IOSSelectOption[];
-  onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
   maxMenuHeight?: number;
+  /**
+   * Multi-select mode: options render with a checkbox and clicking toggles
+   * them WITHOUT closing the menu. Uses `values`/`onValuesChange` instead of
+   * `value`/`onChange`. The option with value 'all' clears the selection.
+   */
+  multiple?: boolean;
+  values?: string[];
+  onValuesChange?: (values: string[]) => void;
+  /** Single-select value (ignored when `multiple`). */
+  value?: string;
+  /** Single-select change handler (ignored when `multiple`). */
+  onChange?: (value: string) => void;
 }
 
 /**
  * Elegant iOS-style dropdown: rounded pill trigger with chevron and a
  * floating frosted-glass option list with a checkmark on the selection.
  * Rendered in a portal so it is never clipped by overflow containers.
+ * Supports single-select (default) and checkbox multi-select (`multiple`).
  */
 export const IOSSelect: React.FC<IOSSelectProps> = ({
   value,
@@ -29,6 +40,9 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
   placeholder = 'Selecionar…',
   className = '',
   maxMenuHeight = 240,
+  multiple = false,
+  values = [],
+  onValuesChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; up: boolean } | null>(null);
@@ -36,6 +50,24 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const selected = options.find((o) => o.value === value);
+
+  // Trigger label for multi mode: selected option labels, or the 'all'
+  // option label when nothing is selected.
+  let triggerLabel = selected?.label ?? placeholder;
+  let triggerMuted = !selected;
+  if (multiple) {
+    if (values.length === 0) {
+      const allOpt = options.find((o) => o.value === 'all');
+      triggerLabel = allOpt?.label ?? placeholder;
+      triggerMuted = !allOpt;
+    } else if (values.length === 1) {
+      triggerLabel = options.find((o) => o.value === values[0])?.label ?? '1 selecionado';
+      triggerMuted = false;
+    } else {
+      triggerLabel = `${values.length} selecionados`;
+      triggerMuted = false;
+    }
+  }
 
   useEffect(() => {
     if (!isOpen) return;
@@ -95,9 +127,7 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <span className={selected ? '' : 'text-zinc-400'}>
-          {selected?.label ?? placeholder}
-        </span>
+        <span className={triggerMuted ? 'text-zinc-400' : ''}>{triggerLabel}</span>
         <ChevronDown
           className={`w-3.5 h-3.5 text-zinc-400 shrink-0 transition-transform duration-150 ${
             isOpen ? 'rotate-180' : ''
@@ -122,7 +152,7 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
             className="overflow-y-auto rounded-2xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-zinc-200 dark:border-zinc-700/80 shadow-2xl p-1.5 animate-in fade-in zoom-in-95 duration-150"
           >
             {options.map((opt) => {
-              const isSelected = opt.value === value;
+              const isSelected = multiple ? values.includes(opt.value) : opt.value === value;
               return (
                 <button
                   key={opt.value}
@@ -130,7 +160,20 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
                   role="option"
                   aria-selected={isSelected}
                   onClick={() => {
-                    onChange(opt.value);
+                    if (multiple) {
+                      // Toggle without closing: the checkbox list is the point
+                      if (opt.value === 'all') {
+                        onValuesChange?.([]);
+                      } else if (onValuesChange) {
+                        onValuesChange(
+                          values.includes(opt.value)
+                            ? values.filter((v) => v !== opt.value)
+                            : [...values, opt.value]
+                        );
+                      }
+                      return;
+                    }
+                    onChange?.(opt.value);
                     setIsOpen(false);
                   }}
                   className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs text-left transition-colors ${
@@ -139,13 +182,26 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
                       : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                   }`}
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate">{opt.label}</span>
-                    {opt.hint && (
-                      <span className="block text-[10px] text-zinc-400 mt-0.5">{opt.hint}</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    {multiple && (
+                      <span
+                        className={`w-4 h-4 rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800'
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3 h-3" strokeWidth={3} />}
+                      </span>
                     )}
+                    <span className="min-w-0">
+                      <span className="block truncate">{opt.label}</span>
+                      {opt.hint && (
+                        <span className="block text-[10px] text-zinc-400 mt-0.5">{opt.hint}</span>
+                      )}
+                    </span>
                   </span>
-                  {isSelected && (
+                  {!multiple && isSelected && (
                     <Check className="w-3.5 h-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
                   )}
                 </button>

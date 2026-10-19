@@ -262,8 +262,12 @@ const RowAudioPlayer: React.FC<{ audioRef: string | null; fallbackAudio?: string
 
 export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDeckFilter, setSelectedDeckFilter] = useState('all');
-  const [selectedStateFilter, setSelectedStateFilter] = useState('all');
+  const [deckFilterSelection, setDeckFilterSelection] = useState<string[]>(() =>
+    StorageService.getBrowserDeckFilter()
+  );
+  const [statusFilterSelection, setStatusFilterSelection] = useState<string[]>(() =>
+    StorageService.getBrowserStatusFilter()
+  );
   const [cardToDelete, setCardToDelete] = useState<{
     card: Card;
     preview: string;
@@ -365,6 +369,16 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
     StorageService.setBrowserFieldPref(noteTypeId, next);
   };
 
+  // Active multi-select filters (saved deck ids that no longer exist are ignored)
+  const activeDeckFilter = useMemo(
+    () => deckFilterSelection.filter((id) => deckMap.has(id)),
+    [deckFilterSelection, deckMap]
+  );
+  const activeStatusFilter = useMemo(
+    () => statusFilterSelection.filter((v) => ['0', '1', '2', '3'].includes(v)),
+    [statusFilterSelection]
+  );
+
   // Filtered card items
   const filteredCards = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -373,15 +387,15 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
       const note = noteMap.get(card.noteId);
       if (!note) return false;
 
-      // Deck filter
-      if (selectedDeckFilter !== 'all' && card.deckId !== selectedDeckFilter) {
+      // Deck filter (multi-select OR; empty = all; saved ids that no longer
+      // exist are ignored so a stale filter can never hide everything)
+      if (activeDeckFilter.length > 0 && !activeDeckFilter.includes(card.deckId)) {
         return false;
       }
 
-      // State filter
-      if (selectedStateFilter !== 'all') {
-        const stateNum = parseInt(selectedStateFilter, 10);
-        if (card.fsrs.state !== stateNum) return false;
+      // State filter (multi-select OR; empty = all)
+      if (activeStatusFilter.length > 0 && !activeStatusFilter.includes(String(card.fsrs.state))) {
+        return false;
       }
 
       // Search text in fields or tags
@@ -395,7 +409,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
 
       return true;
     });
-  }, [cards, noteMap, searchQuery, selectedDeckFilter, selectedStateFilter]);
+  }, [cards, noteMap, searchQuery, activeDeckFilter, activeStatusFilter]);
 
   // List ordering (user preference, persisted between sessions)
   const sortedCards = useMemo(
@@ -451,8 +465,12 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
           <div className="flex items-center gap-2 text-[13px] text-zinc-500 dark:text-zinc-400">
             <span className="font-medium">Deck:</span>
             <IOSSelect
-              value={selectedDeckFilter}
-              onChange={setSelectedDeckFilter}
+              multiple
+              values={deckFilterSelection}
+              onValuesChange={(v) => {
+                setDeckFilterSelection(v);
+                StorageService.setBrowserDeckFilter(v);
+              }}
               options={[
                 { value: 'all', label: `Todos os Decks (${cards.length})` },
                 ...decks.map((d) => ({ value: d.id, label: d.name })),
@@ -463,8 +481,12 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
           <div className="flex items-center gap-2 text-[13px] text-zinc-500 dark:text-zinc-400">
             <span className="font-medium">Status:</span>
             <IOSSelect
-              value={selectedStateFilter}
-              onChange={setSelectedStateFilter}
+              multiple
+              values={statusFilterSelection}
+              onValuesChange={(v) => {
+                setStatusFilterSelection(v);
+                StorageService.setBrowserStatusFilter(v);
+              }}
               options={[
                 { value: 'all', label: 'Todos os Estados' },
                 { value: '0', label: 'Novo (New)' },

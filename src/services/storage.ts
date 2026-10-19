@@ -533,6 +533,66 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
   }
 
+  /** CardBrowser multi-select deck filter (deck ids). Empty list = all decks. */
+  public static getBrowserDeckFilter(): string[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
+    if (!raw) return [];
+    try {
+      const prefs = JSON.parse(raw) as { browserDeckFilter?: unknown };
+      const v = prefs.browserDeckFilter;
+      return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  public static setBrowserDeckFilter(deckIds: string[]): void {
+    const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
+    let prefs: Record<string, unknown> = {};
+    try {
+      prefs = raw ? JSON.parse(raw) : {};
+    } catch {
+      prefs = {};
+    }
+    prefs.browserDeckFilter = deckIds.filter((x) => typeof x === 'string' && !!x);
+    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+  }
+
+  /** Valid FSRS state values for the CardBrowser status filter. */
+  private static readonly BROWSER_STATUS_VALUES = ['0', '1', '2', '3'];
+
+  /** CardBrowser multi-select status filter (FSRS states '0'..'3'). Empty list = all. */
+  public static getBrowserStatusFilter(): string[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
+    if (!raw) return [];
+    try {
+      const prefs = JSON.parse(raw) as { browserStatusFilter?: unknown };
+      const v = prefs.browserStatusFilter;
+      return Array.isArray(v)
+        ? v.filter(
+            (x): x is string => typeof x === 'string' && this.BROWSER_STATUS_VALUES.includes(x)
+          )
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  public static setBrowserStatusFilter(values: string[]): void {
+    const sanitized = values.filter((x) =>
+      (this.BROWSER_STATUS_VALUES as readonly string[]).includes(x)
+    );
+    const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
+    let prefs: Record<string, unknown> = {};
+    try {
+      prefs = raw ? JSON.parse(raw) : {};
+    } catch {
+      prefs = {};
+    }
+    prefs.browserStatusFilter = sanitized;
+    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+  }
+
   /** All ancestors of a deck (from root to itself), by name prefix. */
   public static getDeckLineage(decks: Deck[], deck: Deck): Deck[] {
     const parts = deck.name.split('::');

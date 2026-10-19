@@ -58,6 +58,16 @@ export function sortCardsByMode<T extends SortableCard>(cards: T[], mode: CardSo
   return arr;
 }
 
+/**
+ * Multi-select filter toggle used by the CardBrowser dropdowns.
+ * The special value 'all' clears the selection (shows everything);
+ * any other value toggles its membership. Returns a new array.
+ */
+export function toggleMultiFilter(values: string[], value: string): string[] {
+  if (value === 'all') return [];
+  return values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
