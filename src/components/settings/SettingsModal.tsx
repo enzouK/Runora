@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   X,
-  Sliders,
   Download,
   Upload,
   RotateCcw,
@@ -9,14 +8,14 @@ import {
   Sparkles,
   Check,
   AlertCircle,
-  HelpCircle,
 } from 'lucide-react';
 import { FSRSParameters } from '../../types/anki';
 import { StorageService } from '../../services/storage';
 import { ExportImportService } from '../../services/exportImport';
-import { DEFAULT_FSRS_PARAMETERS, DEFAULT_FSRS_WEIGHTS } from '../../fsrs/constants';
+import { DEFAULT_FSRS_PARAMETERS } from '../../fsrs/constants';
 import { AddonSystem } from '../../services/addonSystem';
 import { ConfirmationModal } from '../common/ConfirmationModal';
+import { IOSSwitch } from '../common/IOSSwitch';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -97,77 +96,61 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setAddons(AddonSystem.getAddons());
   };
 
+  const TABS: { id: 'fsrs' | 'data' | 'addons'; label: string }[] = [
+    { id: 'fsrs', label: 'Algoritmo FSRS' },
+    { id: 'data', label: 'Importar / Exportar' },
+    { id: 'addons', label: 'Addons JS' },
+  ];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-xl bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-xl bg-white dark:bg-ios-card-dark rounded-[20px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col max-h-[88vh] ios-fade-in">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-              <Sliders className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                Configurações do Anki 2.0
-              </h3>
-              <p className="text-xs text-zinc-400">Motor FSRS e Gerenciamento de Coleção</p>
-            </div>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.05] dark:border-white/[0.07]">
+          <div>
+            <h3 className="text-[17px] font-bold text-zinc-900 dark:text-zinc-50">
+              Configurações do Anki 2.0
+            </h3>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              Motor FSRS e Gerenciamento de Coleção
+            </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tab switcher (iOS segmented pill) */}
+        {/* Tab switcher (iOS segmented control) */}
         <div className="px-6 pt-4">
-          <div className="flex p-1 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setActiveTab('fsrs')}
-              className={`flex-1 py-1.5 rounded-xl transition-all ${
-                activeTab === 'fsrs'
-                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-sm'
-                  : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
-              }`}
-            >
-              Algoritmo FSRS
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('data')}
-              className={`flex-1 py-1.5 rounded-xl transition-all ${
-                activeTab === 'data'
-                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-sm'
-                  : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
-              }`}
-            >
-              Importar / Exportar
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('addons')}
-              className={`flex-1 py-1.5 rounded-xl transition-all ${
-                activeTab === 'addons'
-                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-sm'
-                  : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
-              }`}
-            >
-              Addons JS
-            </button>
+          <div className="flex items-center rounded-[10px] bg-black/[0.06] dark:bg-white/[0.08] p-[2px]">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 py-[7px] rounded-[8px] text-xs font-semibold transition-all active:scale-[0.98] ${
+                  activeTab === tab.id
+                    ? 'bg-white dark:bg-[#636366] text-zinc-900 dark:text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)]'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Status message banner */}
         {statusMsg && (
           <div
-            className={`mx-6 mt-3 p-3 rounded-2xl text-xs flex items-center gap-2 ${
+            className={`mx-6 mt-3 p-3 rounded-[12px] text-xs flex items-center gap-2 ${
               statusMsg.type === 'success'
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                ? 'bg-ios-green/10 text-emerald-700 dark:text-ios-green'
+                : 'bg-ios-red/10 text-ios-red'
             }`}
           >
             {statusMsg.type === 'success' ? (
@@ -175,7 +158,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             ) : (
               <AlertCircle className="w-4 h-4 shrink-0" />
             )}
-            <span>{statusMsg.text}</span>
+            <span className="font-medium">{statusMsg.text}</span>
           </div>
         )}
 
@@ -183,9 +166,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {activeTab === 'fsrs' && (
             <div className="space-y-5">
-              <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-900/40 text-xs text-blue-900 dark:text-blue-200">
-                <span className="font-bold flex items-center gap-1.5 mb-1 text-blue-700 dark:text-blue-300">
-                  <Sparkles className="w-4 h-4 text-blue-500" />
+              <div className="p-4 rounded-[16px] bg-ios-blue/10 text-[13px] text-blue-900 dark:text-blue-200">
+                <span className="font-bold flex items-center gap-1.5 mb-1 text-ios-blue">
+                  <Sparkles className="w-4 h-4" />
                   Free Spaced Repetition Scheduler (FSRS)
                 </span>
                 O Anki 2.0 utiliza exclusivamente a arquitetura moderna FSRS em vez do antigo SM-2. O FSRS modela a estabilidade e dificuldade com retrievabilidade contínua baseada em retenção desejada.
@@ -194,10 +177,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Retention slider */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300">
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                     Retenção Desejada (Request Retention)
                   </label>
-                  <span className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">
+                  <span className="text-sm font-mono font-bold tabular-nums text-ios-blue">
                     {Math.round(params.requestRetention * 100)}%
                   </span>
                 </div>
@@ -210,18 +193,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(e) =>
                     setParams((p) => ({ ...p, requestRetention: parseFloat(e.target.value) }))
                   }
-                  className="w-full accent-blue-600 cursor-pointer"
+                  className="w-full accent-ios-blue cursor-pointer"
                 />
-                <div className="flex justify-between text-[11px] text-zinc-400 mt-1">
-                  <span>70% (Menor carga de estudo)</span>
+                <div className="flex justify-between text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
+                  <span>70% (Menor carga)</span>
                   <span>90% (Recomendado)</span>
-                  <span>98% (Máxima precisão)</span>
+                  <span>98% (Máxima)</span>
                 </div>
               </div>
 
               {/* Maximum interval */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300 mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">
                   Intervalo Máximo (Dias)
                 </label>
                 <input
@@ -232,42 +215,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(e) =>
                     setParams((p) => ({ ...p, maximumInterval: parseInt(e.target.value, 10) || 36500 }))
                   }
-                  className="w-full px-3.5 py-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-sm font-mono text-zinc-900 dark:text-zinc-100"
+                  className="w-full px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm font-mono tabular-nums text-zinc-900 dark:text-zinc-100"
                 />
               </div>
 
               {/* Interval fuzz toggle (Anki) */}
-              <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700">
+              <div className="flex items-center justify-between gap-3 px-3.5 py-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06]">
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                  <div className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
                     Variação de intervalo (Fuzz)
                   </div>
-                  <p className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">
+                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5 leading-relaxed">
                     Aleatoriza levemente as revisões (±25% até 7 dias; ±5% acima, sem efeito abaixo
                     de 2,5 dias) para evitar acúmulo no mesmo dia — igual ao Anki.
                   </p>
                 </div>
-                {/* iOS switch */}
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={params.enableFuzz}
-                  onClick={() => setParams((p) => ({ ...p, enableFuzz: !p.enableFuzz }))}
-                  className={`relative w-11 h-7 rounded-full transition-colors shrink-0 ${
-                    params.enableFuzz ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-600'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform ${
-                      params.enableFuzz ? 'translate-x-4' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
+                <IOSSwitch
+                  checked={params.enableFuzz}
+                  onChange={(checked) => setParams((p) => ({ ...p, enableFuzz: checked }))}
+                />
               </div>
 
               {/* Day rollover (virada do dia) — Anki default 4 AM */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300 mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1.5">
                   Virada do dia (Rollover)
                 </label>
                 <div className="flex items-center gap-3">
@@ -281,13 +252,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         Math.min(23, Math.max(0, parseInt(e.target.value, 10) || 0))
                       )
                     }
-                    className="w-20 px-3.5 py-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-sm font-mono text-zinc-900 dark:text-zinc-100 text-center"
+                    className="w-20 px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm font-mono tabular-nums text-center text-zinc-900 dark:text-zinc-100"
                   />
                   <span className="text-sm text-zinc-600 dark:text-zinc-300">
                     horas (00–23)
                   </span>
                 </div>
-                <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1 leading-relaxed">
                   Define a que horas começa um "novo dia" para limites diários. Padrão do Anki:
                   <strong> 4h da manhã</strong>. Ex.: estudar às 2:30 com rollover 4 conta para o
                   dia anterior.
@@ -295,17 +266,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* FSRS Weights Inspector */}
-              <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800">
+              <div className="pt-2 border-t border-black/[0.05] dark:border-white/[0.07]">
                 <button
                   type="button"
                   onClick={() => setShowWeightsEditor(!showWeightsEditor)}
-                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                  className="text-[13px] font-semibold text-ios-blue hover:text-[#0071eb] flex items-center gap-1 transition-colors"
                 >
                   <span>{showWeightsEditor ? 'Ocultar' : 'Exibir'} os 19 Pesos w[0..18] do FSRS</span>
                 </button>
 
                 {showWeightsEditor && (
-                  <div className="mt-3 p-3 rounded-2xl bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 text-[11px] font-mono grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                  <div className="mt-3 p-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] text-[11px] font-mono grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
                     {params.w.map((weight, idx) => (
                       <div key={idx} className="flex items-center justify-between p-1.5 rounded-lg bg-white dark:bg-zinc-900">
                         <span className="text-zinc-400">w[{idx}]:</span>
@@ -320,7 +291,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={handleResetFSRS}
-                  className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 underline"
+                  className="text-[13px] font-medium text-zinc-500 hover:text-ios-red dark:hover:text-ios-red transition-colors"
                 >
                   Restaurar Padrão Oficial
                 </button>
@@ -328,7 +299,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveFSRS}
-                  className="px-5 py-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-md transition-all active:scale-95"
+                  className="px-5 py-2 rounded-full bg-ios-blue hover:bg-[#0071eb] text-white font-semibold text-[13px] shadow-[0_2px_8px_rgba(0,122,255,0.35)] transition-all active:scale-95"
                 >
                   Salvar Parâmetros FSRS
                 </button>
@@ -338,33 +309,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {activeTab === 'data' && (
             <div className="space-y-4">
-              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+              <div className="p-4 rounded-[16px] bg-ios-blue/10 space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-ios-blue">
                   Exportar Coleção (.colpkg)
                 </h4>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
                   Gera um pacote com todos os decks, subdecks, notas, cards com parâmetros FSRS e histórico de revisões.
                 </p>
                 <button
                   type="button"
                   onClick={handleExport}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all active:scale-95"
+                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-ios-blue hover:bg-[#0071eb] text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(0,122,255,0.35)] transition-all active:scale-95"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Baixar Coleção (.colpkg / FSRS)</span>
                 </button>
               </div>
 
-              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+              <div className="p-4 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300">
                   Importar Coleção (.colpkg / .apkg / .json)
                 </h4>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
                   Carregue um pacote de cartas exportado. Os parâmetros FSRS serão automaticamente sincronizados.
                 </p>
-                <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 text-zinc-800 dark:text-zinc-100 text-xs font-semibold cursor-pointer transition-all active:scale-95">
+                <label className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-black/[0.06] dark:bg-white/[0.1] hover:bg-black/[0.1] dark:hover:bg-white/[0.15] text-zinc-800 dark:text-zinc-100 text-[13px] font-semibold cursor-pointer transition-all active:scale-95">
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Selecionar Arquivo .colpkg / .json</span>
+                  <span>Selecionar Arquivo</span>
                   <input
                     type="file"
                     accept=".colpkg,.apkg,.json"
@@ -374,11 +345,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </label>
               </div>
 
-              <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800">
+              <div className="pt-3 border-t border-black/[0.05] dark:border-white/[0.07]">
                 <button
                   type="button"
                   onClick={handleResetDefaultData}
-                  className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 font-semibold"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold text-ios-red hover:bg-ios-red/10 transition-colors"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Resetar Coleção (apaga todos os dados)</span>
@@ -389,9 +360,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {activeTab === 'addons' && (
             <div className="space-y-4">
-              <div className="p-3.5 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-900 dark:text-purple-200">
-                <span className="font-bold flex items-center gap-1.5 mb-1">
-                  <Puzzle className="w-4 h-4 text-purple-500" />
+              <div className="p-4 rounded-[16px] bg-purple-500/10 text-[13px] text-purple-900 dark:text-purple-200">
+                <span className="font-bold flex items-center gap-1.5 mb-1 text-purple-600 dark:text-purple-300">
+                  <Puzzle className="w-4 h-4" />
                   Sistema de Addons em JavaScript
                 </span>
                 Arquitetura preparada para plugins em JS multiplataforma (Windows 11 e Android). O sistema expõe ganchos como <code>beforeCardRender</code> e <code>afterReviewSubmit</code>.
@@ -401,31 +372,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {addons.map((addon) => (
                   <div
                     key={addon.id}
-                    className="p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 flex items-center justify-between"
+                    className="p-3.5 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between gap-3"
                   >
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                        <span className="text-[13px] font-bold text-zinc-900 dark:text-zinc-100">
                           {addon.name}
                         </span>
-                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300">
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/[0.05] dark:bg-white/[0.1] text-zinc-500 dark:text-zinc-400">
                           v{addon.version}
                         </span>
                       </div>
-                      <p className="text-[11px] text-zinc-500 mt-0.5">{addon.description}</p>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{addon.description}</p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleToggleAddon(addon.id)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                        addon.enabled
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'
-                      }`}
-                    >
-                      {addon.enabled ? 'Ativo' : 'Desativado'}
-                    </button>
+                    <IOSSwitch
+                      checked={addon.enabled}
+                      onChange={() => handleToggleAddon(addon.id)}
+                    />
                   </div>
                 ))}
               </div>
