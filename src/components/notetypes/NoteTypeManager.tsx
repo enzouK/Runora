@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Layers,
   Plus,
@@ -9,13 +9,13 @@ import {
   Volume2,
   Lightbulb,
   Scissors,
-  ChevronRight,
   Code2,
 } from 'lucide-react';
 import { FieldDefinition, NoteType } from '../../types/anki';
 import { StorageService } from '../../services/storage';
 import { CardTemplateEditorModal } from './CardTemplateEditorModal';
 import { ConfirmationModal } from '../common/ConfirmationModal';
+import { IOSSwitch } from '../common/IOSSwitch';
 
 export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const [noteTypes, setNoteTypes] = useState<NoteType[]>(() => StorageService.getNoteTypes());
@@ -24,6 +24,17 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
   const [templateEditingNoteType, setTemplateEditingNoteType] = useState<NoteType | null>(null);
   const [noteTypeToDelete, setNoteTypeToDelete] = useState<NoteType | null>(null);
   const [showMinNoteTypeWarning, setShowMinNoteTypeWarning] = useState(false);
+
+  const notes = useMemo(() => StorageService.getNotes(), [onRefresh]);
+
+  // How many notes use each note type (helps decide what is safe to delete)
+  const usageByType = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const n of notes) {
+      map[n.noteTypeId] = (map[n.noteTypeId] || 0) + 1;
+    }
+    return map;
+  }, [notes]);
 
   // New Note Type form state
   const [typeName, setTypeName] = useState('');
@@ -185,23 +196,25 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 ios-fade-in">
+      {/* Large Title header */}
+      <div className="flex items-end justify-between gap-4 px-1 pt-1">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-            Tipos de Nota (Note Types)
+          <h2 className="text-[32px] leading-none font-bold tracking-tight text-zinc-900 dark:text-white">
+            Note Types
           </h2>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Configure modelos de cards, campos ricos e ative recursos como Dicas e Gravação de Voz por tipo.
+          <p className="text-[15px] text-zinc-500 dark:text-zinc-400 mt-1.5">
+            Modelos de cards, campos e recursos por tipo.
           </p>
         </div>
+
         <button
           type="button"
           onClick={openCreateModal}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all active:scale-95"
+          title="Novo Tipo de Nota"
+          className="w-9 h-9 rounded-full flex items-center justify-center bg-ios-blue text-white shadow-[0_2px_8px_rgba(0,122,255,0.4)] hover:bg-[#0071eb] transition-all active:scale-90"
         >
-          <Plus className="w-4 h-4" />
-          <span>Criar Tipo de Nota</span>
+          <Plus className="w-[18px] h-[18px]" strokeWidth={2.5} />
         </button>
       </div>
 
@@ -210,20 +223,24 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
         {noteTypes.map((nt) => (
           <div
             key={nt.id}
-            className="p-5 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800/90 shadow-sm flex flex-col justify-between"
+            className="p-5 rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] flex flex-col"
           >
             <div>
               <div className="flex items-start justify-between gap-3 mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                    <Layers className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Layers
+                    className="w-5 h-5 text-purple-500 shrink-0"
+                    fill="currentColor"
+                    strokeWidth={0}
+                  />
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-[15px] text-zinc-900 dark:text-zinc-50 truncate">
                       {nt.name}
                     </h3>
-                    <span className="text-[11px] text-zinc-400">
-                      {nt.fields.length} campos • {nt.templates.length} templates
+                    <span className="text-[12px] text-zinc-400 dark:text-zinc-500">
+                      {nt.fields.length} campos • {nt.templates.length} template
+                      {nt.templates.length > 1 ? 's' : ''} • {usageByType[nt.id] || 0} nota
+                      {(usageByType[nt.id] || 0) === 1 ? '' : 's'} em uso
                     </span>
                   </div>
                 </div>
@@ -232,7 +249,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                   <button
                     type="button"
                     onClick={() => openEditModal(nt)}
-                    className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    className="p-1.5 rounded-full text-zinc-400 hover:text-ios-blue hover:bg-ios-blue/10 transition-colors"
                     title="Editar"
                   >
                     <Edit2 className="w-4 h-4" />
@@ -240,7 +257,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                   <button
                     type="button"
                     onClick={() => handleDeleteClick(nt)}
-                    className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                    className="p-1.5 rounded-full text-zinc-400 hover:text-ios-red hover:bg-ios-red/10 transition-colors"
                     title="Excluir"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -251,34 +268,35 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
               {/* Feature Tags */}
               <div className="flex flex-wrap gap-1.5 my-3">
                 {nt.isCloze && (
-                  <span className="px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 text-[11px] font-medium border border-purple-500/20">
-                    Cloze Deletion
+                  <span className="px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 text-[11px] font-semibold">
+                    Cloze
                   </span>
                 )}
                 {nt.hintsEnabled && (
-                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[11px] font-medium border border-amber-500/20">
+                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-ios-orange/10 text-ios-orange text-[11px] font-semibold">
                     <Lightbulb className="w-3 h-3" />
-                    Show Hint Ativo
+                    Dicas (Hint)
                   </span>
                 )}
                 {nt.voiceRecordingEnabled && (
-                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[11px] font-medium border border-rose-500/20">
+                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-ios-red/10 text-ios-red text-[11px] font-semibold">
                     <Volume2 className="w-3 h-3" />
-                    Voice Recording Ativo
+                    Gravação de Voz
                   </span>
                 )}
               </div>
+            </div>
 
-              {/* Fields list */}
-              <div className="mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800 text-xs">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 block mb-1">
-                  Campos:
+            {/* Fields list (vertically centered in the card's leftover space) */}
+            <div className="my-auto pt-3 pb-3 border-t border-black/[0.05] dark:border-white/[0.07]">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block mb-1.5">
+                  Campos
                 </span>
                 <div className="flex flex-wrap gap-1">
                   {nt.fields.map((f) => (
                     <span
                       key={f.id}
-                      className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-[11px]"
+                      className="px-2 py-0.5 rounded-md bg-black/[0.04] dark:bg-white/[0.08] text-zinc-600 dark:text-zinc-300 text-[11px] font-medium"
                     >
                       {f.name}
                     </span>
@@ -286,17 +304,16 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                 </div>
               </div>
 
-              {/* Edit HTML Templates Action Button */}
-              <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => setTemplateEditingNoteType(nt)}
-                  className="w-full flex items-center justify-center gap-2 py-2 px-3.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-semibold text-xs transition-all border border-blue-200/60 dark:border-blue-800/60 active:scale-[0.99]"
-                >
-                  <Code2 className="w-4 h-4" />
-                  <span>Editar Templates HTML (Frente e Verso)</span>
-                </button>
-              </div>
+            {/* Edit HTML Templates Action Button */}
+            <div className="pt-3 border-t border-black/[0.05] dark:border-white/[0.07]">
+              <button
+                type="button"
+                onClick={() => setTemplateEditingNoteType(nt)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-[12px] bg-ios-blue/10 hover:bg-ios-blue/[0.16] text-ios-blue font-semibold text-[13px] transition-all active:scale-[0.99]"
+              >
+                <Code2 className="w-4 h-4" />
+                <span>Editar Templates HTML</span>
+              </button>
             </div>
           </div>
         ))}
@@ -304,16 +321,16 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
 
       {/* Note Type Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
-              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-white dark:bg-ios-card-dark rounded-[20px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col max-h-[90vh] ios-fade-in">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.05] dark:border-white/[0.07]">
+              <h3 className="text-[17px] font-bold text-zinc-900 dark:text-zinc-50">
                 {editingType ? 'Editar Tipo de Nota' : 'Novo Tipo de Nota'}
               </h3>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 rounded-full text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -321,7 +338,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
 
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">
                   Nome do Tipo de Nota
                 </label>
                 <input
@@ -329,90 +346,75 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                   value={typeName}
                   onChange={(e) => setTypeName(e.target.value)}
                   placeholder="ex: Vocabulário Alemão"
-                  className="w-full px-3.5 py-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400"
                 />
               </div>
 
               {/* Special Note Type Feature Switches */}
-              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-700/60 space-y-3">
-                <div className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                  Recursos do Note Type (Anki 2.0)
+              <div className="p-4 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] space-y-1">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 pb-2">
+                  Recursos do Note Type
                 </div>
 
                 {/* Cloze Toggle */}
-                <label className="flex items-center justify-between cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <Scissors className="w-4 h-4 text-purple-500" />
-                    <div>
-                      <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
-                        Suporte a Omissão (Cloze)
+                <label className="flex items-center justify-between gap-3 cursor-pointer py-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Scissors className="w-4 h-4 text-purple-500 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
+                        Omissão de Palavras (Cloze)
                       </div>
-                      <div className="text-[11px] text-zinc-400">
-                        Processa tags do tipo {'{{c1::palavra}}'}
+                      <div className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                        Processa marcações {'{{c1::palavra}}'}
                       </div>
                     </div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={isCloze}
-                    onChange={(e) => setIsCloze(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                  />
+                  <IOSSwitch checked={isCloze} onChange={setIsCloze} />
                 </label>
 
                 {/* Hints Toggle */}
-                <label className="flex items-center justify-between cursor-pointer pt-2 border-t border-zinc-200/60 dark:border-zinc-700/60">
-                  <div className="flex items-center gap-2">
-                    <Lightbulb className="w-4 h-4 text-amber-500" />
-                    <div>
-                      <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
-                        Habilitar Dicas (Show Hint)
+                <label className="flex items-center justify-between gap-3 cursor-pointer py-2 border-t border-black/[0.05] dark:border-white/[0.07]">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Lightbulb className="w-4 h-4 text-ios-orange shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
+                        Dicas (Show Hint)
                       </div>
-                      <div className="text-[11px] text-zinc-400">
-                        Cria automaticamente o campo Hint e ativa a tag {'{{hint}}'} no HTML (frente ou verso)
+                      <div className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                        Cria o campo Hint e ativa {'{{hint}}'} no HTML
                       </div>
                     </div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={hintsEnabled}
-                    onChange={(e) => handleToggleHints(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                  />
+                  <IOSSwitch checked={hintsEnabled} onChange={handleToggleHints} />
                 </label>
 
                 {/* Voice Recording Toggle */}
-                <label className="flex items-center justify-between cursor-pointer pt-2 border-t border-zinc-200/60 dark:border-zinc-700/60">
-                  <div className="flex items-center gap-2">
-                    <Volume2 className="w-4 h-4 text-rose-500" />
-                    <div>
-                      <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
-                        Habilitar Voice Recording
+                <label className="flex items-center justify-between gap-3 cursor-pointer py-2 border-t border-black/[0.05] dark:border-white/[0.07]">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Volume2 className="w-4 h-4 text-ios-red shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
+                        Gravação de Voz
                       </div>
-                      <div className="text-[11px] text-zinc-400">
-                        Ativa gravação e reprodução exclusiva da sua voz via tags {'{{voice:record}}'} e {'{{voice:reproduce}}'} no HTML
+                      <div className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                        Ativa {'{{voice:record}}'} e {'{{voice:reproduce}}'} no HTML
                       </div>
                     </div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={voiceRecordingEnabled}
-                    onChange={(e) => setVoiceRecordingEnabled(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                  />
+                  <IOSSwitch checked={voiceRecordingEnabled} onChange={setVoiceRecordingEnabled} />
                 </label>
               </div>
 
               {/* Fields List */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                     Campos (Fields)
                   </label>
                   <button
                     type="button"
                     onClick={handleAddField}
-                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                    className="flex items-center gap-1 text-[13px] font-semibold text-ios-blue hover:text-[#0071eb] transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Adicionar Campo
@@ -425,26 +427,26 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                     return (
                       <div
                         key={f.id}
-                        className={`flex items-center gap-2 p-2 rounded-2xl border transition-all ${
+                        className={`flex items-center gap-2 p-2 rounded-[12px] border transition-all ${
                           isHintField
-                            ? 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-800/60'
-                            : 'bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700'
+                            ? 'bg-ios-orange/10 border-ios-orange/25'
+                            : 'bg-black/[0.04] dark:bg-white/[0.07] border-transparent'
                         }`}
                       >
-                        <span className="text-xs font-mono font-bold text-zinc-400 w-5 text-center">
+                        <span className="text-xs font-mono font-bold text-zinc-400 w-5 text-center shrink-0">
                           {idx + 1}
                         </span>
 
                         {isHintField ? (
-                          <div className="flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-white/90 dark:bg-zinc-900/90 border border-amber-300/60 dark:border-amber-700/60 text-xs font-medium text-amber-900 dark:text-amber-200 shadow-xs">
+                          <div className="flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-[10px] bg-white/90 dark:bg-zinc-900/90 border border-ios-orange/40 text-xs font-medium text-ios-orange">
                             <div className="flex items-center gap-1.5">
                               <span>💡</span>
                               <span className="font-semibold">Hint</span>
-                              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                              <span className="text-[10px] font-normal opacity-70">
                                 (Dica automática do sistema)
                               </span>
                             </div>
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-ios-orange/15 text-ios-orange">
                               Fixo
                             </span>
                           </div>
@@ -458,7 +460,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                                 prev.map((item) => (item.id === f.id ? { ...item, name: newName } : item))
                               );
                             }}
-                            className="flex-1 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="flex-1 px-2.5 py-1.5 rounded-[10px] bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-ios-blue"
                           />
                         )}
 
@@ -472,7 +474,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                             }
                           }}
                           disabled={!isHintField && fields.length <= 1}
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 disabled:opacity-30 transition-colors"
+                          className="p-1.5 rounded-full text-zinc-400 hover:text-ios-red hover:bg-ios-red/10 disabled:opacity-30 transition-colors"
                           title={isHintField ? 'Remover campo Hint e desativar Show Hint' : 'Excluir campo'}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -484,11 +486,11 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
+            <div className="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-black/[0.05] dark:border-white/[0.07]">
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="px-4 py-2 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="px-4 py-2 rounded-full text-[13px] font-semibold text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] transition-colors"
               >
                 Cancelar
               </button>
@@ -496,7 +498,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                 type="button"
                 onClick={handleSave}
                 disabled={!typeName.trim()}
-                className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-md transition-all active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-ios-blue hover:bg-[#0071eb] text-white font-semibold text-[13px] shadow-[0_2px_8px_rgba(0,122,255,0.35)] transition-all active:scale-95 disabled:opacity-50"
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Salvar Note Type</span>
