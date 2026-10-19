@@ -835,7 +835,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                 <div
                   key={card.id}
                   onClick={() => (selectionMode ? toggleCardSelection(card.id) : onEditNote(note.id))}
-                  className={`group flex flex-col sm:flex-row sm:items-start justify-between gap-3 px-4 py-4 cursor-pointer select-none transition-colors ${
+                  className={`group flex flex-col sm:flex-row sm:items-end justify-between gap-3 px-4 py-4 cursor-pointer select-none transition-colors ${
                     isCardSelected
                       ? 'bg-ios-blue/[0.07] dark:bg-ios-blue/[0.1]'
                       : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'
@@ -960,7 +960,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                   </div>
 
                   {/* Right: stats + actions */}
-                  <div className="flex items-center gap-3 shrink-0 sm:pt-0.5">
+                  <div className="flex items-center gap-3 shrink-0">
                     <div className="flex items-center gap-2.5 text-[12px] font-semibold tabular-nums pr-1">
                       <span
                         className="text-zinc-400 dark:text-zinc-500"
