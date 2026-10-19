@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search,
   X,
@@ -10,6 +11,8 @@ import {
   Headphones,
   Play,
   Pause,
+  ListChecks,
+  Tags,
 } from 'lucide-react';
 import { Card, Note, NoteType } from '../../types/anki';
 import { StorageService } from '../../services/storage';
@@ -285,6 +288,14 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
     () => StorageService.getBrowserSortPref() as CardSortMode
   );
 
+  // ---- Bulk selection (checkbox mode) ----
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [bulkTagSelection, setBulkTagSelection] = useState<string[]>([]);
+  const [newBulkTag, setNewBulkTag] = useState('');
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+
   const handleSortChange = (value: string) => {
     setSortMode(value as CardSortMode);
     StorageService.setBrowserSortPref(value);
@@ -434,6 +445,69 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
     [filteredCards, sortMode]
   );
 
+  // ---- Bulk selection logic ----
+  const cardToNoteId = useMemo(
+    () => new Map(cards.map((c) => [c.id, c.noteId])),
+    [cards]
+  );
+  const selectedCount = selectedIds.size;
+  const selectedNoteIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const cardId of selectedIds) {
+      const noteId = cardToNoteId.get(cardId);
+      if (noteId) set.add(noteId);
+    }
+    return set;
+  }, [selectedIds, cardToNoteId]);
+
+  const allFilteredSelected =
+    sortedCards.length > 0 && sortedCards.every((c) => selectedIds.has(c.id));
+
+  // Selection resets when the visible set changes (filters/search) — sorting keeps it
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [searchQuery, activeDeckFilter, activeStatusFilter, activeTagFilter]);
+
+  const toggleSelectionMode = () => {
+    setSelectionMode((v) => {
+      if (v) setSelectedIds(new Set()); // leaving selection mode clears it
+      return !v;
+    });
+  };
+
+  const toggleCardSelection = (cardId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cardId)) next.delete(cardId);
+      else next.add(cardId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    if (allFilteredSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(sortedCards.map((c) => c.id)));
+  };
+
+  const applyBulkTags = (mode: 'add' | 'remove') => {
+    if (bulkTagSelection.length === 0 || selectedNoteIds.size === 0) return;
+    if (mode === 'add') StorageService.addTagsToCards([...selectedIds], bulkTagSelection);
+    else StorageService.removeTagsFromCards([...selectedIds], bulkTagSelection);
+    setShowTagModal(false);
+    setBulkTagSelection([]);
+    setNewBulkTag('');
+    onRefresh();
+  };
+
+  const handleConfirmBulkDelete = () => {
+    for (const noteId of selectedNoteIds) {
+      StorageService.deleteNote(noteId);
+    }
+    setConfirmBulkDelete(false);
+    setSelectedIds(new Set());
+    onRefresh();
+  };
+
   const handleDeleteCardClick = (
     card: Card,
     preview: string,
@@ -543,6 +617,34 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
               ]}
             />
           </div>
+
+          {/* Bulk selection mode */}
+          <button
+            type="button"
+            onClick={toggleSelectionMode}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-semibold transition-all active:scale-95 ${
+              selectionMode
+                ? 'bg-ios-blue text-white shadow-[0_2px_8px_rgba(0,122,255,0.35)]'
+                : 'bg-black/[0.06] dark:bg-white/[0.1] text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.1] dark:hover:bg-white/[0.15]'
+            }`}
+            title="Selecionar vários cards para ações em massa"
+          >
+            <ListChecks className="w-3.5 h-3.5" />
+            <span>Selecionar</span>
+          </button>
+
+          {selectionMode && (
+            <button
+              type="button"
+              onClick={toggleSelectAllFiltered}
+              disabled={sortedCards.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold text-ios-blue hover:bg-ios-blue/10 transition-all active:scale-95 disabled:opacity-40"
+              title={allFilteredSelected ? 'Desmarcar todos os filtrados' : 'Selecionar todos os cards filtrados'}
+            >
+              <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
+              <span>{allFilteredSelected ? 'Desmarcar todos' : `Selecionar todos (${sortedCards.length})`}</span>
+            </button>
+          )}
 
           {/* Field display preferences */}
           <button
@@ -734,12 +836,37 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
               const hasAnyVisual =
                 !!imageRef || !!mediaImage || !!audioRef || !!mediaAudio || !!pImage || !!pAudio;
 
+              const isCardSelected = selectionMode && selectedIds.has(card.id);
+
               return (
                 <div
                   key={card.id}
-                  onClick={() => onEditNote(note.id)}
-                  className="group flex flex-col sm:flex-row sm:items-start justify-between gap-3 px-4 py-4 cursor-pointer select-none transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
+                  onClick={() => (selectionMode ? toggleCardSelection(card.id) : onEditNote(note.id))}
+                  className={`group flex flex-col sm:flex-row sm:items-start justify-between gap-3 px-4 py-4 cursor-pointer select-none transition-colors ${
+                    isCardSelected
+                      ? 'bg-ios-blue/[0.07] dark:bg-ios-blue/[0.1]'
+                      : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'
+                  }`}
                 >
+                  {/* Selection checkbox (selection mode only) */}
+                  {selectionMode && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCardSelection(card.id);
+                      }}
+                      className={`w-5 h-5 rounded-[6px] border-2 flex items-center justify-center shrink-0 transition-colors sm:mt-1 ${
+                        isCardSelected
+                          ? 'bg-ios-blue border-ios-blue text-white'
+                          : 'border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 hover:border-ios-blue'
+                      }`}
+                      title={isCardSelected ? 'Desmarcar card' : 'Selecionar card'}
+                    >
+                      {isCardSelected && <Check className="w-3 h-3" strokeWidth={3.5} />}
+                    </button>
+                  )}
+
                   {/* Left: media + field contents (layout driven by primary field) */}
                   <div className="flex-1 min-w-0">
                     {/* IMAGE-PRIMARY: featured centered image above the texts */}
@@ -917,6 +1044,158 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
         cancelText="Cancelar"
         variant="danger"
       />
+
+      {/* Bulk delete confirmation */}
+      <ConfirmationModal
+        isOpen={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={handleConfirmBulkDelete}
+        title={`Excluir ${selectedNoteIds.size} ${selectedNoteIds.size === 1 ? 'card' : 'cards'}?`}
+        description="Esta ação excluirá os cartões selecionados e suas notas originais — permanentemente."
+        confirmText="Excluir"
+        cancelText="Cancelar"
+        variant="danger"
+      />
+
+      {/* Floating bulk action bar (iOS Mail style) */}
+      {selectionMode &&
+        selectedCount > 0 &&
+        createPortal(
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 px-3 py-2 rounded-full bg-ios-card/95 dark:bg-[#2c2c2e]/95 backdrop-blur-xl border border-black/10 dark:border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.25)] ios-fade-in">
+            <span className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100 px-2 tabular-nums whitespace-nowrap">
+              {selectedCount} selecionado{selectedCount > 1 ? 's' : ''}
+            </span>
+            <div className="w-px h-5 bg-black/[0.1] dark:bg-white/[0.12]" />
+            <button
+              type="button"
+              onClick={() => {
+                setBulkTagSelection([]);
+                setNewBulkTag('');
+                setShowTagModal(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold text-ios-blue hover:bg-ios-blue/10 transition-colors"
+              title="Adicionar ou remover tags dos cards selecionados"
+            >
+              <Tags className="w-4 h-4" />
+              <span>Tags</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmBulkDelete(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold text-ios-red hover:bg-ios-red/10 transition-colors"
+              title="Excluir cards selecionados"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Excluir</span>
+            </button>
+            <div className="w-px h-5 bg-black/[0.1] dark:bg-white/[0.12]" />
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="p-1.5 rounded-full text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] transition-colors"
+              title="Desmarcar todos"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>,
+          document.body
+        )}
+
+      {/* Bulk tag modal (add/remove tags on the notes behind selected cards) */}
+      {showTagModal &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowTagModal(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl space-y-4 ios-fade-in"
+            >
+              <div>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
+                  Tags em massa
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  {selectedCount} card{selectedCount > 1 ? 's' : ''} selecionado
+                  {selectedCount > 1 ? 's' : ''} ({selectedNoteIds.size}{' '}
+                  {selectedNoteIds.size === 1 ? 'nota' : 'notas'}). Marque as tags e escolha
+                  adicionar ou remover.
+                </p>
+              </div>
+
+              {/* Existing tags as toggleable chips */}
+              <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
+                {availableTags.length === 0 && (
+                  <span className="text-[13px] text-zinc-400">Nenhuma tag existente ainda.</span>
+                )}
+                {availableTags.map((t) => {
+                  const isOn = bulkTagSelection.includes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() =>
+                        setBulkTagSelection((prev) =>
+                          prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
+                        )
+                      }
+                      className={`px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-all active:scale-95 ${
+                        isOn
+                          ? 'bg-ios-blue/10 text-ios-blue border-ios-blue/30'
+                          : 'bg-black/[0.04] dark:bg-white/[0.07] text-zinc-500 dark:text-zinc-400 border-transparent hover:bg-black/[0.08] dark:hover:bg-white/[0.12]'
+                      }`}
+                    >
+                      #{t}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* New tag input */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newBulkTag}
+                  onChange={(e) => setNewBulkTag(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.stopPropagation();
+                      const trimmed = newBulkTag.trim();
+                      if (trimmed && !bulkTagSelection.includes(trimmed)) {
+                        setBulkTagSelection((prev) => [...prev, trimmed]);
+                        setNewBulkTag('');
+                      }
+                    }
+                  }}
+                  placeholder="Criar tag nova..."
+                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-[13px] text-zinc-900 dark:text-zinc-100 placeholder-zinc-400"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={bulkTagSelection.length === 0}
+                  onClick={() => applyBulkTags('remove')}
+                  className="px-4 py-2.5 rounded-full text-[13px] font-semibold text-ios-red border border-ios-red/30 hover:bg-ios-red/10 transition-all active:scale-95 disabled:opacity-40"
+                >
+                  Remover das selecionadas
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkTagSelection.length === 0}
+                  onClick={() => applyBulkTags('add')}
+                  className="px-4 py-2.5 rounded-full text-[13px] font-semibold bg-ios-blue text-white hover:bg-[#0071eb] shadow-[0_2px_8px_rgba(0,122,255,0.35)] transition-all active:scale-95 disabled:opacity-40"
+                >
+                  Adicionar às selecionadas
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

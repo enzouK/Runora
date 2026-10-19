@@ -618,6 +618,48 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
   }
 
+  // ---- Bulk operations (CardBrowser selection) ----
+  // Tags live on NOTES (Anki semantics): operating on card ids maps to their
+  // notes, so sibling cards generated from the same note are affected too.
+
+  /** Adds tags to the notes behind the given card ids (deduplicated). */
+  public static addTagsToCards(cardIds: string[], tags: string[]): void {
+    const cleanTags = tags.map((t) => t.trim()).filter(Boolean);
+    if (cardIds.length === 0 || cleanTags.length === 0) return;
+    const cardIdSet = new Set(cardIds);
+    const noteIds = new Set(
+      this.getCards()
+        .filter((c) => cardIdSet.has(c.id))
+        .map((c) => c.noteId)
+    );
+    this.saveNotes(
+      this.getNotes().map((n) =>
+        noteIds.has(n.id)
+          ? { ...n, tags: [...new Set([...n.tags, ...cleanTags])], updatedAt: Date.now() }
+          : n
+      )
+    );
+  }
+
+  /** Removes tags from the notes behind the given card ids. */
+  public static removeTagsFromCards(cardIds: string[], tags: string[]): void {
+    const cleanTags = tags.map((t) => t.trim()).filter(Boolean);
+    if (cardIds.length === 0 || cleanTags.length === 0) return;
+    const cardIdSet = new Set(cardIds);
+    const noteIds = new Set(
+      this.getCards()
+        .filter((c) => cardIdSet.has(c.id))
+        .map((c) => c.noteId)
+    );
+    this.saveNotes(
+      this.getNotes().map((n) =>
+        noteIds.has(n.id)
+          ? { ...n, tags: n.tags.filter((t) => !cleanTags.includes(t)), updatedAt: Date.now() }
+          : n
+      )
+    );
+  }
+
   /** All ancestors of a deck (from root to itself), by name prefix. */
   public static getDeckLineage(decks: Deck[], deck: Deck): Deck[] {
     const parts = deck.name.split('::');
