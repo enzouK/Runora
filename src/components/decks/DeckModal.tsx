@@ -17,6 +17,7 @@ import {
   TimerReset,
   SortAsc,
   Volume2,
+  Hourglass,
 } from 'lucide-react';
 import {
   Deck,
@@ -281,22 +282,40 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             </div>
           </div>
 
-          {/* Maximum interval (per-deck FSRS override; empty = global) */}
+          {/* ── Intervalo Máximo (FSRS por deck; vazio = global) ── */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">
-              Intervalo Máximo (dias)
-            </label>
-            <input
-              type="number"
-              min="30"
-              max="36500"
-              value={maxInterval}
-              onChange={(e) => setMaxInterval(e.target.value)}
-              placeholder="Padrão: 36500"
-              className="w-full px-3.5 py-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-[10px] text-zinc-400 mt-0.5">
-              Nenhum intervalo de revisão deste deck passará desse valor. Vazio = usa o padrão global (36500).
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Hourglass className="w-3.5 h-3.5 text-zinc-400" />
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                Intervalo Máximo
+              </label>
+            </div>
+
+            <div className="rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+              <div className="flex items-center justify-between px-3.5 py-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                    <Hourglass className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                    Máx. dias por intervalo
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  min="30"
+                  max="36500"
+                  value={maxInterval}
+                  onChange={(e) => setMaxInterval(e.target.value)}
+                  placeholder="36500"
+                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-400"
+                />
+              </div>
+            </div>
+
+            <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
+              Nenhuma revisão deste deck será agendada para mais longe que isso. Deixe vazio para
+              usar o padrão global (36500).
             </p>
           </div>
 

@@ -96,7 +96,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const TABS: { id: 'fsrs' | 'data' | 'addons'; label: string }[] = [
-    { id: 'fsrs', label: 'Algoritmo FSRS' },
+    { id: 'fsrs', label: 'Geral' },
     { id: 'data', label: 'Importar / Exportar' },
     { id: 'addons', label: 'Addons JS' },
   ];
@@ -165,33 +165,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {activeTab === 'fsrs' && (
             <div className="space-y-5">
-              {/* Retention slider */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                    Retenção Desejada (Request Retention)
-                  </label>
-                  <span className="text-sm font-mono font-bold tabular-nums text-ios-blue">
-                    {Math.round(params.requestRetention * 100)}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0.70"
-                  max="0.98"
-                  step="0.01"
-                  value={params.requestRetention}
-                  onChange={(e) =>
-                    setParams((p) => ({ ...p, requestRetention: parseFloat(e.target.value) }))
-                  }
-                  className="w-full accent-ios-blue cursor-pointer"
-                />
-                <div className="flex justify-between text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
-                  <span>70% (Menor carga)</span>
-                  <span>98% (Máxima)</span>
-                </div>
-              </div>
-
               {/* Day rollover — when the study day starts */}
               <div className="px-3.5 py-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06]">
                 <div className="flex items-center gap-2 mb-2">
@@ -237,7 +210,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onClick={handleSaveFSRS}
                   className="px-5 py-2 rounded-full bg-ios-blue hover:bg-[#0071eb] text-white font-semibold text-[13px] shadow-[0_2px_8px_rgba(0,122,255,0.35)] transition-all active:scale-95"
                 >
-                  Salvar Parâmetros FSRS
+                  Salvar Configurações
                 </button>
               </div>
             </div>
