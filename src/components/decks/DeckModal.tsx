@@ -257,28 +257,45 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             />
           </div>
 
+          {/* ── FSRS (retenção desejada por deck) ── */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Sparkle className="w-3.5 h-3.5 text-zinc-400" />
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                Retenção FSRS Desejada
+                FSRS
               </label>
-              <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400">
-                {Math.round(targetRetention * 100)}%
-              </span>
             </div>
-            <input
-              type="range"
-              min="0.70"
-              max="0.98"
-              step="0.01"
-              value={targetRetention}
-              onChange={(e) => setTargetRetention(parseFloat(e.target.value))}
-              className="w-full accent-blue-600 cursor-pointer"
-            />
-            <div className="flex justify-between text-[10px] text-zinc-400 mt-0.5">
-              <span>70% (Menos revisões)</span>
-              <span>90% (Padrão)</span>
-              <span>98% (Alta retenção)</span>
+
+            <div className="rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+              <div className="px-3.5 py-3">
+                <div className="flex items-center justify-between mb-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                      <Sparkle className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                      Retenção desejada
+                    </span>
+                  </div>
+                  <span className="text-sm font-mono font-bold tabular-nums text-blue-600 dark:text-blue-400">
+                    {Math.round(targetRetention * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.70"
+                  max="0.98"
+                  step="0.01"
+                  value={targetRetention}
+                  onChange={(e) => setTargetRetention(parseFloat(e.target.value))}
+                  className="w-full accent-blue-600 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
+                  <span>70% (Menos revisões)</span>
+                  <span>90% (Padrão)</span>
+                  <span>98% (Alta retenção)</span>
+                </div>
+              </div>
             </div>
           </div>
 
