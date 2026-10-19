@@ -849,7 +849,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                         e.stopPropagation();
                         toggleCardSelection(card.id);
                       }}
-                      className={`w-5 h-5 rounded-[6px] border-2 flex items-center justify-center shrink-0 transition-colors sm:mt-1 ${
+                      className={`w-5 h-5 rounded-[6px] border-2 flex items-center justify-center shrink-0 transition-colors self-center ${
                         isCardSelected
                           ? 'bg-ios-blue border-ios-blue text-white'
                           : 'border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 hover:border-ios-blue'
