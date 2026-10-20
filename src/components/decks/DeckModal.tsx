@@ -313,6 +313,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Intervalo Máximo
               </label>
+              <InfoHint text="Nenhuma revisão deste deck será agendada para mais longe que isso. Deixe vazio para usar o padrão global (36500 dias)." />
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] overflow-hidden">
@@ -335,11 +336,6 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                 />
               </div>
             </div>
-
-            <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
-              Nenhuma revisão deste deck será agendada para mais longe que isso. Deixe vazio para
-              usar o padrão global (36500).
-            </p>
           </div>
 
           {/* ── Daily Limits (estilo iOS, como no Anki) ── */}
