@@ -681,8 +681,8 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   ],
                 },
               ].map(({ icon, color, label, value, onChange, options }) => (
-                <div key={label} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-                  <div className="flex items-center gap-2.5 min-w-0">
+                <div key={label} className="px-3.5 py-2.5 space-y-2">
+                  <div className="flex items-center gap-2.5">
                     <div className={`w-7 h-7 rounded-lg ${color} flex items-center justify-center shrink-0`}>
                       {icon}
                     </div>
@@ -694,7 +694,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                     value={value}
                     onChange={onChange}
                     options={options.map(([v, l]) => ({ value: v as string, label: l as string }))}
-                    className="min-w-[190px]"
+                    className="w-full"
                   />
                 </div>
               ))}
