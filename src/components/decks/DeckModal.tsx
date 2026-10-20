@@ -414,6 +414,23 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Novos Cards
               </label>
+              <InfoHint>
+                <p>
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Passos de aprendizagem:
+                  </span>{' '}
+                  os atrasos entre repetições de um card novo, em formatos como "1m 10m", "30s 5m"
+                  ou "1h". <strong>Good</strong> avança um passo; <strong>Again</strong> volta ao
+                  primeiro; completar todos gradua o card.
+                </p>
+                <p className="mt-2">
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Ordem de inserção:
+                  </span>{' '}
+                  <strong>Sequencial</strong> introduz os cards na ordem de criação;{' '}
+                  <strong>Aleatório</strong> embaralha — igual ao Anki.
+                </p>
+              </InfoHint>
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
@@ -467,11 +484,6 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                 </div>
               </div>
             </div>
-
-            <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
-              Passos aceitam formatos como "1m 10m", "30s 5m" ou "1h". "Sequencial" introduz os
-              cards na ordem de criação; "Aleatório" embaralha — igual ao Anki.
-            </p>
           </div>
 
           {/* ── Lapses (Anki) ── */}
