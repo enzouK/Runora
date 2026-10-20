@@ -345,6 +345,25 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Limites Diários
               </label>
+              <InfoHint>
+                <p>
+                  Limitam quantos cards aparecem por dia — valem para este deck e todos os
+                  subdecks (padrão do Anki: 20 novos · 200 revisões).
+                </p>
+                <p className="mt-2">
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Novos cards/dia:
+                  </span>{' '}
+                  quantos cards novos entram no estudo. Use 0 para pausar novos cards hoje.
+                </p>
+                <p className="mt-2">
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Máx. revisões/dia:
+                  </span>{' '}
+                  protege você de picos — ex.: voltar depois de uma semana (o que ficou pendente
+                  não se acumula).
+                </p>
+              </InfoHint>
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
@@ -386,11 +405,6 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                 />
               </div>
             </div>
-
-            <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
-              O limite vale para este deck e todos os subdecks — igual ao Anki. Use 0 para pausar
-              novos cards/revisões hoje; limpe o campo para herdar do deck-pai.
-            </p>
           </div>
 
           {/* ── Novos Cards (Anki) ── */}

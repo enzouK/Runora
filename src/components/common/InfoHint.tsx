@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
 
 interface InfoHintProps {
-  /** Explicação exibida no cartão ao clicar no ⓘ. */
-  text: string;
+  /** Explicação exibida no cartão ao clicar no ⓘ (texto simples ou parágrafos). */
+  text?: string;
+  /** Alternativa rica ao `text`: JSX com múltiplos parágrafos, negritos etc. */
+  children?: React.ReactNode;
   /** Alinhamento do cartão em relação ao ícone. */
   align?: 'left' | 'right';
 }
@@ -12,7 +14,7 @@ interface InfoHintProps {
  * ⓘ informativo: clique abre/fecha um cartão de explicação no estilo do app.
  * Fecha ao clicar fora ou pressionar Escape. Funciona em desktop e mobile.
  */
-export const InfoHint: React.FC<InfoHintProps> = ({ text, align = 'left' }) => {
+export const InfoHint: React.FC<InfoHintProps> = ({ text, children, align = 'left' }) => {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement | null>(null);
 
@@ -57,7 +59,7 @@ export const InfoHint: React.FC<InfoHintProps> = ({ text, align = 'left' }) => {
             align === 'right' ? 'right-0' : 'left-0'
           }`}
         >
-          {text}
+          {children ?? text}
         </div>
       )}
     </span>
