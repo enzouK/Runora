@@ -427,8 +427,19 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                     Ordem de inserção:
                   </span>{' '}
-                  <strong>Sequencial</strong> introduz os cards na ordem de criação;{' '}
-                  <strong>Aleatório</strong> embaralha — igual ao Anki.
+                  como os cards novos entram na fila.
+                </p>
+                <p className="mt-2">
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Sequencial:
+                  </span>{' '}
+                  seguem a ordem em que foram criados.
+                </p>
+                <p className="mt-2">
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Aleatório:
+                  </span>{' '}
+                  embaralha essa ordem.
                 </p>
               </InfoHint>
             </div>
