@@ -17,6 +17,7 @@ import {
   TimerReset,
   SortAsc,
   Volume2,
+  Hourglass,
 } from 'lucide-react';
 import {
   Deck,
@@ -47,6 +48,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [targetRetention, setTargetRetention] = useState(0.90);
+  const [maxInterval, setMaxInterval] = useState('');
   const [newCardsPerDay, setNewCardsPerDay] = useState('');
   const [maxReviewsPerDay, setMaxReviewsPerDay] = useState('');
   // Scheduler options (Anki): '' / 'inherit' = herdar do pai ou do padrão
@@ -70,6 +72,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       setName(editDeck.name);
       setDescription(editDeck.description);
       setTargetRetention(editDeck.fsrsParams?.requestRetention ?? 0.90);
+      setMaxInterval(editDeck.fsrsParams?.maximumInterval?.toString() ?? '');
       setNewCardsPerDay(editDeck.dailyLimits?.newCardsPerDay?.toString() ?? '');
       setMaxReviewsPerDay(editDeck.dailyLimits?.maxReviewsPerDay?.toString() ?? '');
       setLearningSteps(editDeck.schedulerConfig?.learningSteps ?? '');
@@ -93,6 +96,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       setName(`${parentDeckName}::`);
       setDescription('');
       setTargetRetention(0.90);
+      setMaxInterval('');
       setNewCardsPerDay('');
       setMaxReviewsPerDay('');
       setLearningSteps('');
@@ -110,6 +114,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       setName('');
       setDescription('');
       setTargetRetention(0.90);
+      setMaxInterval('');
       setNewCardsPerDay('');
       setMaxReviewsPerDay('');
       setLearningSteps('');
@@ -157,6 +162,15 @@ export const DeckModal: React.FC<DeckModalProps> = ({
     const audioConfig = {
       disableAutoplay: audioAutoplay === 'inherit' ? null : audioAutoplay === 'dont',
     };
+    // Per-deck FSRS overrides: only fields the user set are saved;
+    // anything left empty falls back to the global settings at runtime.
+    const fsrsParams: { requestRetention: number; maximumInterval?: number } = {
+      requestRetention: targetRetention,
+    };
+    const parsedMaxInterval = parseInt(maxInterval, 10);
+    if (Number.isFinite(parsedMaxInterval) && parsedMaxInterval > 0) {
+      fsrsParams.maximumInterval = parsedMaxInterval;
+    }
 
     if (editDeck) {
       const updated = decks.map((d) =>
@@ -165,7 +179,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               ...d,
               name: name.trim(),
               description: description.trim(),
-              fsrsParams: { requestRetention: targetRetention },
+              fsrsParams,
               dailyLimits,
               schedulerConfig,
               displayOrder,
@@ -243,29 +257,83 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             />
           </div>
 
+          {/* ── FSRS (retenção desejada por deck) ── */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Sparkle className="w-3.5 h-3.5 text-zinc-400" />
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                Retenção FSRS Desejada
+                FSRS
               </label>
-              <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400">
-                {Math.round(targetRetention * 100)}%
-              </span>
             </div>
-            <input
-              type="range"
-              min="0.70"
-              max="0.98"
-              step="0.01"
-              value={targetRetention}
-              onChange={(e) => setTargetRetention(parseFloat(e.target.value))}
-              className="w-full accent-blue-600 cursor-pointer"
-            />
-            <div className="flex justify-between text-[10px] text-zinc-400 mt-0.5">
-              <span>70% (Menos revisões)</span>
-              <span>90% (Padrão)</span>
-              <span>98% (Alta retenção)</span>
+
+            <div className="rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+              <div className="px-3.5 py-3">
+                <div className="flex items-center justify-between mb-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                      <Sparkle className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                      Retenção desejada
+                    </span>
+                  </div>
+                  <span className="text-sm font-mono font-bold tabular-nums text-blue-600 dark:text-blue-400">
+                    {Math.round(targetRetention * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.70"
+                  max="0.98"
+                  step="0.01"
+                  value={targetRetention}
+                  onChange={(e) => setTargetRetention(parseFloat(e.target.value))}
+                  className="w-full accent-blue-600 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
+                  <span>70% (Menos revisões)</span>
+                  <span>90% (Padrão)</span>
+                  <span>98% (Alta retenção)</span>
+                </div>
+              </div>
             </div>
+          </div>
+
+          {/* ── Intervalo Máximo (FSRS por deck; vazio = global) ── */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Hourglass className="w-3.5 h-3.5 text-zinc-400" />
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                Intervalo Máximo
+              </label>
+            </div>
+
+            <div className="rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+              <div className="flex items-center justify-between px-3.5 py-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                    <Hourglass className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                    Máx. dias por intervalo
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  min="30"
+                  max="36500"
+                  value={maxInterval}
+                  onChange={(e) => setMaxInterval(e.target.value)}
+                  placeholder="36500"
+                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-400"
+                />
+              </div>
+            </div>
+
+            <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
+              Nenhuma revisão deste deck será agendada para mais longe que isso. Deixe vazio para
+              usar o padrão global (36500).
+            </p>
           </div>
 
           {/* ── Daily Limits (estilo iOS, como no Anki) ── */}
