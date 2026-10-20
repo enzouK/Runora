@@ -127,18 +127,54 @@ export const StudyView: React.FC<StudyViewProps> = ({
       if (order === 'after') return [...primary, ...extra];
       return shuffle([...primary, ...extra]); // 'mix'
     };
+    const deckNameOf = (deckId: string): string =>
+      allDecks.find((d) => d.id === deckId)?.name ?? '';
 
     const learning = dueList
       .filter((c) => c.fsrs.state === 1 || c.fsrs.state === 3)
       .sort((a, b) => a.due - b.due);
     const reviews = dueList.filter((c) => c.fsrs.state === 2);
-    const newCards = dueList.filter((c) => c.fsrs.state === 0);
+    let newCards = dueList.filter((c) => c.fsrs.state === 0);
 
     // 1) New card gather order
     switch (displayOrder.newGatherOrder) {
       case 'random':
         shuffle(newCards);
         break;
+      case 'deckThenRandomNotes': {
+        // Anki: "Deck, then random notes" — decks in order, notes shuffled inside
+        const deckIds = [...new Set(newCards.map((c) => c.deckId))].sort();
+        const out: Card[] = [];
+        for (const deckId of deckIds) {
+          const inDeck = newCards.filter((c) => c.deckId === deckId);
+          const noteIds = [...new Set(inDeck.map((c) => c.noteId))];
+          shuffle(noteIds);
+          for (const noteId of noteIds) {
+            out.push(
+              ...inDeck
+                .filter((c) => c.noteId === noteId)
+                .sort((a, b) => a.templateOrd - b.templateOrd)
+            );
+          }
+        }
+        newCards = out;
+        break;
+      }
+      case 'randomNotes': {
+        // Anki: "Random notes" — notes picked at random, their cards kept together
+        const noteIds = [...new Set(newCards.map((c) => c.noteId))];
+        shuffle(noteIds);
+        const out: Card[] = [];
+        for (const noteId of noteIds) {
+          out.push(
+            ...newCards
+              .filter((c) => c.noteId === noteId)
+              .sort((a, b) => a.templateOrd - b.templateOrd)
+          );
+        }
+        newCards = out;
+        break;
+      }
       case 'positionAsc':
         newCards.sort((a, b) => a.createdAt - b.createdAt);
         break;
@@ -162,6 +198,29 @@ export const StudyView: React.FC<StudyViewProps> = ({
       shuffle(newCards);
     } else if (displayOrder.newSortOrder === 'template') {
       newCards.sort((a, b) => a.templateOrd - b.templateOrd);
+    } else if (displayOrder.newSortOrder === 'templateRandom') {
+      // Anki: "Card type, then random" — template groups in order, shuffled inside
+      const ords = [...new Set(newCards.map((c) => c.templateOrd))].sort((a, b) => a - b);
+      const out: Card[] = [];
+      for (const ord of ords) {
+        const group = newCards.filter((c) => c.templateOrd === ord);
+        shuffle(group);
+        out.push(...group);
+      }
+      newCards = out;
+    } else if (displayOrder.newSortOrder === 'noteThenCardType') {
+      // Anki: "Random note, then card type"
+      const noteIds = [...new Set(newCards.map((c) => c.noteId))];
+      shuffle(noteIds);
+      const out: Card[] = [];
+      for (const noteId of noteIds) {
+        out.push(
+          ...newCards
+            .filter((c) => c.noteId === noteId)
+            .sort((a, b) => a.templateOrd - b.templateOrd)
+        );
+      }
+      newCards = out;
     }
     // 'gathered' → keep gather order
 
@@ -176,6 +235,26 @@ export const StudyView: React.FC<StudyViewProps> = ({
       case 'dueDesc':
         reviews.sort((a, b) => b.due - a.due);
         break;
+      case 'dueDeck': {
+        // Anki: "Due date, then deck"
+        reviews.sort((a, b) => {
+          if (a.due !== b.due) return a.due - b.due;
+          const na = deckNameOf(a.deckId);
+          const nb = deckNameOf(b.deckId);
+          return na < nb ? -1 : na > nb ? 1 : 0;
+        });
+        break;
+      }
+      case 'deckThenDue': {
+        // Anki: "Deck, then due date"
+        reviews.sort((a, b) => {
+          const na = deckNameOf(a.deckId);
+          const nb = deckNameOf(b.deckId);
+          if (na !== nb) return na < nb ? -1 : 1;
+          return a.due - b.due;
+        });
+        break;
+      }
       case 'intervalAsc':
         reviews.sort((a, b) => a.fsrs.scheduledDays - b.fsrs.scheduledDays);
         break;
@@ -188,6 +267,15 @@ export const StudyView: React.FC<StudyViewProps> = ({
       case 'easeDesc': // highest ease first
         reviews.sort((a, b) => a.fsrs.difficulty - b.fsrs.difficulty);
         break;
+      case 'retrievabilityAsc': {
+        // FSRS equivalent of Anki's "Relative overdueness": most-forgettable first
+        const rOf = (c: Card): number =>
+          c.fsrs.stability > 0
+            ? fsrsEngine.retrievability(c.fsrs.elapsedDays, c.fsrs.stability)
+            : 1;
+        reviews.sort((a, b) => rOf(a) - rOf(b));
+        break;
+      }
       case 'dueRandom':
       default: {
         // Due date ascending, random within the same day (Anki default)
@@ -208,7 +296,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
     setCurrentIndex(0);
     setIsAnswerRevealed(false);
     setTemporaryRecordingUrl(null);
-  }, [deck, schedulerConfig]);
+  }, [deck, schedulerConfig, fsrsEngine]);
 
   useEffect(() => {
     loadDueCards();

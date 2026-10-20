@@ -107,13 +107,31 @@ export interface SchedulerConfig {
 }
 
 // ---- Display Order (Anki) ----
-export type NewGatherOrder = 'deck' | 'positionAsc' | 'positionDesc' | 'random';
-export type NewSortOrder = 'gathered' | 'template' | 'random';
+export type NewGatherOrder =
+  | 'deck'
+  | 'positionAsc'
+  | 'positionDesc'
+  | 'random'
+  | 'deckThenRandomNotes'
+  | 'randomNotes';
+export type NewSortOrder =
+  | 'gathered'
+  | 'template'
+  | 'random'
+  | 'templateRandom'
+  | 'noteThenCardType';
 export type MixOrder = 'mix' | 'before' | 'after';
 export type ReviewSortOrder =
-  | 'dueRandom' | 'dueAsc' | 'dueDesc'
-  | 'intervalAsc' | 'intervalDesc'
-  | 'easeAsc' | 'easeDesc'
+  | 'dueRandom'
+  | 'dueAsc'
+  | 'dueDesc'
+  | 'dueDeck'
+  | 'deckThenDue'
+  | 'intervalAsc'
+  | 'intervalDesc'
+  | 'easeAsc'
+  | 'easeDesc'
+  | 'retrievabilityAsc'
   | 'random';
 
 /**
