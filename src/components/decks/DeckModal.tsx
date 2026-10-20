@@ -22,6 +22,8 @@ import {
 import {
   Deck,
   DisplayOrderConfig,
+  InsertionOrder,
+  LeechAction,
   MixOrder,
   NewGatherOrder,
   NewSortOrder,
@@ -48,91 +50,91 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [targetRetention, setTargetRetention] = useState(0.90);
-  const [maxInterval, setMaxInterval] = useState('');
-  const [newCardsPerDay, setNewCardsPerDay] = useState('');
-  const [maxReviewsPerDay, setMaxReviewsPerDay] = useState('');
-  // Scheduler options (Anki): '' / 'inherit' = herdar do pai ou do padrão
-  const [learningSteps, setLearningSteps] = useState('');
-  const [insertionOrder, setInsertionOrder] = useState<'inherit' | 'sequential' | 'random'>('inherit');
-  const [relearningSteps, setRelearningSteps] = useState('');
-  const [leechThreshold, setLeechThreshold] = useState('');
-  const [leechAction, setLeechAction] = useState<'inherit' | 'suspend' | 'tag'>('inherit');
-  // Display Order (Anki): 'inherit' = herdar do pai ou do padrão
-  const [newGatherOrder, setNewGatherOrder] = useState<'inherit' | NewGatherOrder>('inherit');
-  const [newSortOrder, setNewSortOrder] = useState<'inherit' | NewSortOrder>('inherit');
-  const [newReviewOrder, setNewReviewOrder] = useState<'inherit' | MixOrder>('inherit');
-  const [learnReviewOrder, setLearnReviewOrder] = useState<'inherit' | MixOrder>('inherit');
-  const [reviewSortOrder, setReviewSortOrder] = useState<'inherit' | ReviewSortOrder>('inherit');
-  // Audio (Anki): 'inherit' = herdar do pai ou do padrão
-  const [audioAutoplay, setAudioAutoplay] = useState<'inherit' | 'play' | 'dont'>('inherit');
+  const [maxInterval, setMaxInterval] = useState('36500');
+  const [newCardsPerDay, setNewCardsPerDay] = useState('20');
+  const [maxReviewsPerDay, setMaxReviewsPerDay] = useState('200');
+  // Scheduler options — always show the REAL effective values (no 'Padrão' pseudo-option)
+  const [learningSteps, setLearningSteps] = useState('1m 10m');
+  const [insertionOrder, setInsertionOrder] = useState<InsertionOrder>('sequential');
+  const [relearningSteps, setRelearningSteps] = useState('10m');
+  const [leechThreshold, setLeechThreshold] = useState('8');
+  const [leechAction, setLeechAction] = useState<LeechAction>('suspend');
+  const [newGatherOrder, setNewGatherOrder] = useState<NewGatherOrder>('deck');
+  const [newSortOrder, setNewSortOrder] = useState<NewSortOrder>('template');
+  const [newReviewOrder, setNewReviewOrder] = useState<MixOrder>('mix');
+  const [learnReviewOrder, setLearnReviewOrder] = useState<MixOrder>('mix');
+  const [reviewSortOrder, setReviewSortOrder] = useState<ReviewSortOrder>('dueRandom');
+  const [audioAutoplay, setAudioAutoplay] = useState<'play' | 'dont'>('play');
 
   useEffect(() => {
     if (!isOpen) return;
+    const decks = StorageService.getDecks();
+
+    // Effective (resolved) values: the deck's own settings where set,
+    // otherwise inherited from the parent lineage or the global defaults.
+    const baseId = editDeck
+      ? editDeck.id
+      : parentDeckName
+        ? decks.find((d) => d.name === parentDeckName)?.id
+        : undefined;
+
+    const effDaily = baseId
+      ? StorageService.getEffectiveDailyLimits(baseId)
+      : {
+          newCardsPerDay: StorageService.DEFAULT_DAILY_LIMITS.newCardsPerDay,
+          maxReviewsPerDay: StorageService.DEFAULT_DAILY_LIMITS.maxReviewsPerDay,
+        };
+    const effSched = baseId
+      ? StorageService.getEffectiveSchedulerConfig(baseId)
+      : {
+          learningSteps: StorageService.DEFAULT_SCHEDULER.learningSteps,
+          insertionOrder: StorageService.DEFAULT_SCHEDULER.insertionOrder,
+          relearningSteps: StorageService.DEFAULT_SCHEDULER.relearningSteps,
+          leechThreshold: StorageService.DEFAULT_SCHEDULER.leechThreshold,
+          leechAction: StorageService.DEFAULT_SCHEDULER.leechAction,
+        };
+    const effOrder = baseId
+      ? StorageService.getEffectiveDisplayOrder(baseId)
+      : { ...StorageService.DEFAULT_DISPLAY_ORDER };
+    const effAudio = baseId
+      ? StorageService.getEffectiveAudioConfig(baseId)
+      : { disableAutoplay: false };
+
     if (editDeck) {
       setName(editDeck.name);
       setDescription(editDeck.description);
-      setTargetRetention(editDeck.fsrsParams?.requestRetention ?? 0.90);
-      setMaxInterval(editDeck.fsrsParams?.maximumInterval?.toString() ?? '');
-      setNewCardsPerDay(editDeck.dailyLimits?.newCardsPerDay?.toString() ?? '');
-      setMaxReviewsPerDay(editDeck.dailyLimits?.maxReviewsPerDay?.toString() ?? '');
-      setLearningSteps(editDeck.schedulerConfig?.learningSteps ?? '');
-      setInsertionOrder(editDeck.schedulerConfig?.insertionOrder ?? 'inherit');
-      setRelearningSteps(editDeck.schedulerConfig?.relearningSteps ?? '');
-      setLeechThreshold(editDeck.schedulerConfig?.leechThreshold?.toString() ?? '');
-      setLeechAction(editDeck.schedulerConfig?.leechAction ?? 'inherit');
-      setNewGatherOrder(editDeck.displayOrder?.newGatherOrder ?? 'inherit');
-      setNewSortOrder(editDeck.displayOrder?.newSortOrder ?? 'inherit');
-      setNewReviewOrder(editDeck.displayOrder?.newReviewOrder ?? 'inherit');
-      setLearnReviewOrder(editDeck.displayOrder?.learnReviewOrder ?? 'inherit');
-      setReviewSortOrder(editDeck.displayOrder?.reviewSortOrder ?? 'inherit');
-      setAudioAutoplay(
-        editDeck.audioConfig?.disableAutoplay === true
-          ? 'dont'
-          : editDeck.audioConfig?.disableAutoplay === false
-            ? 'play'
-            : 'inherit'
-      );
     } else if (parentDeckName) {
       setName(`${parentDeckName}::`);
       setDescription('');
-      setTargetRetention(0.90);
-      setMaxInterval('');
-      setNewCardsPerDay('');
-      setMaxReviewsPerDay('');
-      setLearningSteps('');
-      setInsertionOrder('inherit');
-      setRelearningSteps('');
-      setLeechThreshold('');
-      setLeechAction('inherit');
-      setNewGatherOrder('inherit');
-      setNewSortOrder('inherit');
-      setNewReviewOrder('inherit');
-      setLearnReviewOrder('inherit');
-      setReviewSortOrder('inherit');
-      setAudioAutoplay('inherit');
     } else {
       setName('');
       setDescription('');
-      setTargetRetention(0.90);
-      setMaxInterval('');
-      setNewCardsPerDay('');
-      setMaxReviewsPerDay('');
-      setLearningSteps('');
-      setInsertionOrder('inherit');
-      setRelearningSteps('');
-      setLeechThreshold('');
-      setLeechAction('inherit');
-      setNewGatherOrder('inherit');
-      setNewSortOrder('inherit');
-      setNewReviewOrder('inherit');
-      setLearnReviewOrder('inherit');
-      setReviewSortOrder('inherit');
-      setAudioAutoplay('inherit');
     }
+
+    setTargetRetention(editDeck?.fsrsParams?.requestRetention ?? 0.90);
+    setMaxInterval(
+      String(
+        editDeck?.fsrsParams?.maximumInterval ??
+          StorageService.getFSRSSettings().maximumInterval
+      )
+    );
+    setNewCardsPerDay(String(effDaily.newCardsPerDay));
+    setMaxReviewsPerDay(String(effDaily.maxReviewsPerDay));
+    setLearningSteps(StorageService.formatSteps(effSched.learningSteps));
+    setInsertionOrder(effSched.insertionOrder);
+    setRelearningSteps(StorageService.formatSteps(effSched.relearningSteps));
+    setLeechThreshold(String(effSched.leechThreshold));
+    setLeechAction(effSched.leechAction);
+    setNewGatherOrder(effOrder.newGatherOrder);
+    setNewSortOrder(effOrder.newSortOrder);
+    setNewReviewOrder(effOrder.newReviewOrder);
+    setLearnReviewOrder(effOrder.learnReviewOrder);
+    setReviewSortOrder(effOrder.reviewSortOrder);
+    setAudioAutoplay(effAudio.disableAutoplay ? 'dont' : 'play');
   }, [isOpen, editDeck, parentDeckName]);
 
   const parseLimit = (value: string): number | null => {
-    if (value.trim() === '') return null;
+    if (value.trim() === '') return null; // cleared → inherit from the deck parent
     const n = parseInt(value, 10);
     return Number.isFinite(n) && n >= 0 ? n : null;
   };
@@ -147,20 +149,20 @@ export const DeckModal: React.FC<DeckModalProps> = ({
     };
     const schedulerConfig = {
       learningSteps: learningSteps.trim() || null,
-      insertionOrder: insertionOrder === 'inherit' ? null : insertionOrder,
+      insertionOrder,
       relearningSteps: relearningSteps.trim() || null,
       leechThreshold: parseLimit(leechThreshold),
-      leechAction: leechAction === 'inherit' ? null : leechAction,
+      leechAction,
     };
     const displayOrder: DisplayOrderConfig = {
-      newGatherOrder: newGatherOrder === 'inherit' ? null : newGatherOrder,
-      newSortOrder: newSortOrder === 'inherit' ? null : newSortOrder,
-      newReviewOrder: newReviewOrder === 'inherit' ? null : newReviewOrder,
-      learnReviewOrder: learnReviewOrder === 'inherit' ? null : learnReviewOrder,
-      reviewSortOrder: reviewSortOrder === 'inherit' ? null : reviewSortOrder,
+      newGatherOrder,
+      newSortOrder,
+      newReviewOrder,
+      learnReviewOrder,
+      reviewSortOrder,
     };
     const audioConfig = {
-      disableAutoplay: audioAutoplay === 'inherit' ? null : audioAutoplay === 'dont',
+      disableAutoplay: audioAutoplay === 'dont',
     };
     // Per-deck FSRS overrides: only fields the user set are saved;
     // anything left empty falls back to the global settings at runtime.
@@ -194,7 +196,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
         id: `deck-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         name: name.trim(),
         description: description.trim(),
-        fsrsParams: { requestRetention: targetRetention },
+        fsrsParams,
         dailyLimits,
         schedulerConfig,
         displayOrder,
@@ -212,24 +214,24 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
-          <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-white dark:bg-ios-card-dark rounded-[20px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col max-h-[88vh] ios-fade-in">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.05] dark:border-white/[0.07]">
+          <h3 className="text-[17px] font-bold text-zinc-900 dark:text-zinc-50">
             {editDeck ? 'Editar Deck' : 'Criar Novo Deck'}
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-full text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">
               Nome do Deck
             </label>
             <input
@@ -237,15 +239,15 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="ex: Idiomas::Inglês::Vocabulário"
-              className="w-full px-3.5 py-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400"
             />
-            <p className="text-[11px] text-zinc-400 mt-1">
+            <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
               Dica: Use "::" para criar subdecks hierárquicos (ex: Biologia::Celular).
             </p>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">
               Descrição
             </label>
             <textarea
@@ -253,7 +255,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Objetivo de estudo deste deck..."
-              className="w-full px-3.5 py-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 resize-none"
             />
           </div>
 
@@ -261,12 +263,12 @@ export const DeckModal: React.FC<DeckModalProps> = ({
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <Sparkle className="w-3.5 h-3.5 text-zinc-400" />
-              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 FSRS
               </label>
             </div>
 
-            <div className="rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] overflow-hidden">
               <div className="px-3.5 py-3">
                 <div className="flex items-center justify-between mb-2.5">
                   <div className="flex items-center gap-2.5">
@@ -303,12 +305,12 @@ export const DeckModal: React.FC<DeckModalProps> = ({
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <Hourglass className="w-3.5 h-3.5 text-zinc-400" />
-              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Intervalo Máximo
               </label>
             </div>
 
-            <div className="rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] overflow-hidden">
               <div className="flex items-center justify-between px-3.5 py-2.5">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
@@ -324,8 +326,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   max="36500"
                   value={maxInterval}
                   onChange={(e) => setMaxInterval(e.target.value)}
-                  placeholder="36500"
-                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-400"
+                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -340,13 +341,12 @@ export const DeckModal: React.FC<DeckModalProps> = ({
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <CalendarClock className="w-3.5 h-3.5 text-zinc-400" />
-              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Limites Diários
               </label>
             </div>
 
-            {/* iOS grouped inset list */}
-            <div className="rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700/60 overflow-hidden">
+            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
               <div className="flex items-center justify-between px-3.5 py-2.5">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
@@ -362,8 +362,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   inputMode="numeric"
                   value={newCardsPerDay}
                   onChange={(e) => setNewCardsPerDay(e.target.value)}
-                  placeholder={String(StorageService.DEFAULT_DAILY_LIMITS.newCardsPerDay)}
-                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-400"
+                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -382,16 +381,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   inputMode="numeric"
                   value={maxReviewsPerDay}
                   onChange={(e) => setMaxReviewsPerDay(e.target.value)}
-                  placeholder={String(StorageService.DEFAULT_DAILY_LIMITS.maxReviewsPerDay)}
-                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-400"
+                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
 
             <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
-              Deixe vazio para herdar o padrão ({StorageService.DEFAULT_DAILY_LIMITS.newCardsPerDay} novos ·{' '}
-              {StorageService.DEFAULT_DAILY_LIMITS.maxReviewsPerDay} revisões). O limite vale para este deck
-              e todos os subdecks — igual ao Anki. Use 0 para pausar novos cards/revisões hoje.
+              O limite vale para este deck e todos os subdecks — igual ao Anki. Use 0 para pausar
+              novos cards/revisões hoje; limpe o campo para herdar do deck-pai.
             </p>
           </div>
 
@@ -399,12 +396,12 @@ export const DeckModal: React.FC<DeckModalProps> = ({
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <GraduationCap className="w-3.5 h-3.5 text-zinc-400" />
-              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Novos Cards
               </label>
             </div>
 
-            <div className="rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700/60 overflow-hidden">
+            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
               <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-7 h-7 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
@@ -418,8 +415,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   type="text"
                   value={learningSteps}
                   onChange={(e) => setLearningSteps(e.target.value)}
-                  placeholder={StorageService.formatSteps(StorageService.DEFAULT_SCHEDULER.learningSteps)}
-                  className="w-28 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-400"
+                  className="w-28 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -433,10 +429,9 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   </span>
                 </div>
                 {/* iOS segmented control */}
-                <div className="flex rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 p-0.5">
+                <div className="flex rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] p-0.5">
                   {(
                     [
-                      ['inherit', 'Padrão'],
                       ['sequential', 'Sequencial'],
                       ['random', 'Aleatório'],
                     ] as const
@@ -447,7 +442,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                       onClick={() => setInsertionOrder(value)}
                       className={`px-2.5 py-1 rounded-[10px] text-[11px] font-semibold transition-all ${
                         insertionOrder === value
-                          ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm'
+                          ? 'bg-ios-blue text-white shadow-[0_1px_4px_rgba(0,122,255,0.35)]'
                           : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
                       }`}
                     >
@@ -468,12 +463,12 @@ export const DeckModal: React.FC<DeckModalProps> = ({
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <AlertTriangle className="w-3.5 h-3.5 text-zinc-400" />
-              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Lapses (Cards Esquecidos)
               </label>
             </div>
 
-            <div className="rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700/60 overflow-hidden">
+            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
               <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-7 h-7 rounded-lg bg-orange-500/15 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0">
@@ -487,8 +482,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   type="text"
                   value={relearningSteps}
                   onChange={(e) => setRelearningSteps(e.target.value)}
-                  placeholder={StorageService.formatSteps(StorageService.DEFAULT_SCHEDULER.relearningSteps)}
-                  className="w-28 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-400"
+                  className="w-28 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -507,8 +501,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   inputMode="numeric"
                   value={leechThreshold}
                   onChange={(e) => setLeechThreshold(e.target.value)}
-                  placeholder={String(StorageService.DEFAULT_SCHEDULER.leechThreshold)}
-                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-400"
+                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -521,10 +514,9 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                     Ação de leech
                   </span>
                 </div>
-                <div className="flex rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 p-0.5">
+                <div className="flex rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] p-0.5">
                   {(
                     [
-                      ['inherit', 'Padrão'],
                       ['suspend', 'Suspender'],
                       ['tag', 'Etiquetar'],
                     ] as const
@@ -535,7 +527,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                       onClick={() => setLeechAction(value)}
                       className={`px-2.5 py-1 rounded-[10px] text-[11px] font-semibold transition-all ${
                         leechAction === value
-                          ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm'
+                          ? 'bg-ios-blue text-white shadow-[0_1px_4px_rgba(0,122,255,0.35)]'
                           : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
                       }`}
                     >
@@ -558,12 +550,12 @@ export const DeckModal: React.FC<DeckModalProps> = ({
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <Volume2 className="w-3.5 h-3.5 text-zinc-400" />
-              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Áudio
               </label>
             </div>
 
-            <div className="rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700/60 overflow-hidden">
+            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
               <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
@@ -573,10 +565,9 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                     Reproduzir áudio automaticamente
                   </span>
                 </div>
-                <div className="flex rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 p-0.5">
+                <div className="flex rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] p-0.5">
                   {(
                     [
-                      ['inherit', 'Padrão'],
                       ['play', 'Sim'],
                       ['dont', 'Não'],
                     ] as const
@@ -587,7 +578,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                       onClick={() => setAudioAutoplay(value)}
                       className={`px-2.5 py-1 rounded-[10px] text-[11px] font-semibold transition-all ${
                         audioAutoplay === value
-                          ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm'
+                          ? 'bg-ios-blue text-white shadow-[0_1px_4px_rgba(0,122,255,0.35)]'
                           : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
                       }`}
                     >
@@ -600,9 +591,8 @@ export const DeckModal: React.FC<DeckModalProps> = ({
 
             <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
               <strong>Sim</strong>: os áudios dos cards (<code>[sound:...]</code>,{' '}
-              <code>&lt;audio autoplay&gt;</code>) tocam sozinhos ao mostrar a pergunta ou a
+              <code>{'<audio autoplay>'}</code>) tocam sozinhos ao mostrar a pergunta ou a
               resposta. <strong>Não</strong>: reproduzem apenas ao clicar no botão de play.
-              "Padrão" herda do deck-pai (o padrão do Anki é reproduzir automaticamente).
             </p>
           </div>
 
@@ -610,21 +600,20 @@ export const DeckModal: React.FC<DeckModalProps> = ({
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <ArrowUpDown className="w-3.5 h-3.5 text-zinc-400" />
-              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Ordem de Exibição
               </label>
             </div>
 
-            <div className="rounded-2xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700/60 overflow-hidden">
+            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
               {[
                 {
                   icon: <Layers className="w-3.5 h-3.5" />,
                   color: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
                   label: 'Coleta de novos cards',
                   value: newGatherOrder,
-                  onChange: (v: string) => setNewGatherOrder(v as 'inherit' | NewGatherOrder),
+                  onChange: (v: string) => setNewGatherOrder(v as NewGatherOrder),
                   options: [
-                    ['inherit', 'Padrão (Deck)'],
                     ['deck', 'Deck'],
                     ['positionAsc', 'Posição crescente'],
                     ['positionDesc', 'Posição decrescente'],
@@ -636,9 +625,8 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   color: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400',
                   label: 'Ordem dos novos cards',
                   value: newSortOrder,
-                  onChange: (v: string) => setNewSortOrder(v as 'inherit' | NewSortOrder),
+                  onChange: (v: string) => setNewSortOrder(v as NewSortOrder),
                   options: [
-                    ['inherit', 'Padrão (Tipo de card)'],
                     ['template', 'Tipo de card, depois coletado'],
                     ['gathered', 'Ordem coletada'],
                     ['random', 'Aleatório'],
@@ -649,9 +637,8 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   color: 'bg-teal-500/15 text-teal-600 dark:text-teal-400',
                   label: 'Novos / Revisões',
                   value: newReviewOrder,
-                  onChange: (v: string) => setNewReviewOrder(v as 'inherit' | MixOrder),
+                  onChange: (v: string) => setNewReviewOrder(v as MixOrder),
                   options: [
-                    ['inherit', 'Padrão (Misturar)'],
                     ['mix', 'Misturar com revisões'],
                     ['after', 'Mostrar depois das revisões'],
                     ['before', 'Mostrar antes das revisões'],
@@ -662,9 +649,8 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   color: 'bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-400',
                   label: 'Aprendizado / Revisões',
                   value: learnReviewOrder,
-                  onChange: (v: string) => setLearnReviewOrder(v as 'inherit' | MixOrder),
+                  onChange: (v: string) => setLearnReviewOrder(v as MixOrder),
                   options: [
-                    ['inherit', 'Padrão (Misturar)'],
                     ['mix', 'Misturar com revisões'],
                     ['after', 'Mostrar depois das revisões'],
                     ['before', 'Mostrar antes das revisões'],
@@ -675,9 +661,8 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   color: 'bg-lime-500/15 text-lime-600 dark:text-lime-400',
                   label: 'Ordem das revisões',
                   value: reviewSortOrder,
-                  onChange: (v: string) => setReviewSortOrder(v as 'inherit' | ReviewSortOrder),
+                  onChange: (v: string) => setReviewSortOrder(v as ReviewSortOrder),
                   options: [
-                    ['inherit', 'Padrão (Vencimento, depois aleatório)'],
                     ['dueRandom', 'Vencimento, depois aleatório'],
                     ['dueAsc', 'Vencimento crescente'],
                     ['dueDesc', 'Vencimento decrescente'],
@@ -701,7 +686,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   <IOSSelect
                     value={value}
                     onChange={onChange}
-                    options={options.map(([v, label]) => ({ value: v as string, label: label as string }))}
+                    options={options.map(([v, l]) => ({ value: v as string, label: l as string }))}
                     className="min-w-[190px]"
                   />
                 </div>
@@ -711,16 +696,16 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
               Controla a ordem da fila de estudo: coleta e ordenação de novos cards, mistura de
               aprendizado/novos com revisões e ordenação das revisões — igual ao Display Order do
-              Anki. "Padrão" herda do deck-pai.
+              Anki.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
+        <div className="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-black/[0.05] dark:border-white/[0.07]">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-full text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            className="px-4 py-2 rounded-full text-[13px] font-semibold text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] transition-colors"
           >
             Cancelar
           </button>
@@ -728,7 +713,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             type="button"
             onClick={handleSave}
             disabled={!name.trim()}
-            className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-md transition-all active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-ios-blue hover:bg-[#0071eb] text-white font-semibold text-[13px] shadow-[0_2px_8px_rgba(0,122,255,0.35)] transition-all active:scale-95 disabled:opacity-50"
           >
             <Check className="w-3.5 h-3.5" />
             <span>Salvar</span>
