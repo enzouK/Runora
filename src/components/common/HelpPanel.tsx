@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Check, ChevronDown, X } from 'lucide-react';
 
 export interface HelpTopic {
@@ -15,10 +14,10 @@ interface HelpPanelProps {
 }
 
 /**
- * Ajuda estilo Anki: cartão flutuante centralizado sobre o modal (fundo
- * borrado). Com um único tópico, mostra o conteúdo direto; com vários,
+ * Ajuda como "box dentro da box": camada escura sobre o modal + cartão
+ * centralizado. Deve ser renderizado DENTRO do card do modal (que precisa
+ * de `relative`). Um único tópico mostra o conteúdo direto; vários,
  * lista-os como accordion (um aberto por vez).
- * Renderizado em portal — imune a overflow-hidden e transforms de ancestrais.
  */
 export const HelpPanel: React.FC<HelpPanelProps> = ({
   isOpen,
@@ -27,9 +26,9 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
   topics,
 }) => {
   const [openTopic, setOpenTopic] = useState<number | null>(0);
-  const cardRef = useRef<HTMLDivElement | null>(null);
+  const layerRef = useRef<HTMLDivElement | null>(null);
 
-  // Reinicia o accordion sempre que o painel abre
+  // Reinicia o accordion sempre que a camada abre
   useEffect(() => {
     if (isOpen) setOpenTopic(topics.length > 0 ? 0 : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -38,7 +37,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const handlePointerDown = (e: PointerEvent) => {
-      if (cardRef.current?.contains(e.target as Node)) return;
+      if (layerRef.current?.contains(e.target as Node)) return;
       onClose();
     };
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -56,15 +55,15 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
 
   const single = topics.length === 1;
 
-  return createPortal(
+  return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      ref={layerRef}
+      className="absolute inset-0 z-20 bg-black/40 flex items-center justify-center p-5"
       onClick={onClose}
     >
       <div
-        ref={cardRef}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md bg-white dark:bg-ios-card-dark rounded-[20px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col max-h-[80vh] ios-fade-in"
+        className="w-full max-w-sm bg-white dark:bg-ios-card-dark rounded-[20px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col max-h-full ios-fade-in"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.05] dark:border-white/[0.07]">
           <h3 className="text-[17px] font-bold text-zinc-900 dark:text-zinc-50">
@@ -130,7 +129,6 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 };
