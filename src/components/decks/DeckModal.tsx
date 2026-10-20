@@ -429,18 +429,20 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   </span>{' '}
                   como os cards novos entram na fila.
                 </p>
-                <p className="mt-2">
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    Sequencial:
-                  </span>{' '}
-                  seguem a ordem em que foram criados.
-                </p>
-                <p className="mt-2">
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    Aleatório:
-                  </span>{' '}
-                  embaralha essa ordem.
-                </p>
+                <ul className="mt-1 space-y-1 list-disc pl-5">
+                  <li>
+                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                      Sequencial:
+                    </span>{' '}
+                    seguem a ordem em que foram criados.
+                  </li>
+                  <li>
+                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                      Aleatório:
+                    </span>{' '}
+                    embaralha essa ordem.
+                  </li>
+                </ul>
               </InfoHint>
             </div>
 
