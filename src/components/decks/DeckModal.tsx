@@ -248,9 +248,12 @@ export const DeckModal: React.FC<DeckModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">
-              Descrição
-            </label>
+            <div className="flex items-center gap-1 mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                Descrição
+              </label>
+              <InfoHint text="Texto livre sobre o objetivo deste deck. Ele aparece na home, logo abaixo do nome do deck." />
+            </div>
             <textarea
               rows={2}
               value={description}
