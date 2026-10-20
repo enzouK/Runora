@@ -18,6 +18,7 @@ import {
   SortAsc,
   Volume2,
   Hourglass,
+  HelpCircle,
 } from 'lucide-react';
 import {
   Deck,
@@ -31,6 +32,7 @@ import {
 } from '../../types/anki';
 import { StorageService } from '../../services/storage';
 import { IOSSelect } from '../common/IOSSelect';
+import { HelpPanel } from '../common/HelpPanel';
 import { InfoHint } from '../common/InfoHint';
 
 interface DeckModalProps {
@@ -52,6 +54,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const [description, setDescription] = useState('');
   const [targetRetention, setTargetRetention] = useState(0.90);
   const [maxInterval, setMaxInterval] = useState('36500');
+  const [helpOpen, setHelpOpen] = useState(false);
   const [newCardsPerDay, setNewCardsPerDay] = useState('20');
   const [maxReviewsPerDay, setMaxReviewsPerDay] = useState('200');
   // Scheduler options — always show the REAL effective values (no 'Padrão' pseudo-option)
@@ -236,7 +239,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Nome do Deck
               </label>
-              <InfoHint text='Use "::" entre os nomes para criar subdecks — ex.: "Biologia::Celular" cria o deck "Biologia" com "Celular" dentro dele.' />
+              <button
+                type="button"
+                onClick={() => setHelpOpen(true)}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Mais informações"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
             </div>
             <input
               type="text"
@@ -815,6 +825,23 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             <span>Salvar</span>
           </button>
         </div>
+
+        {/* Painel de ajuda (estilo Anki) */}
+        <HelpPanel
+          isOpen={helpOpen && isOpen}
+          onClose={() => setHelpOpen(false)}
+          topics={[
+            {
+              label: 'Nome do Deck',
+              content: (
+                <p>
+                  Use "::" entre os nomes para criar subdecks — ex.: "Biologia::Celular" cria o
+                  deck "Biologia" com "Celular" dentro dele.
+                </p>
+              ),
+            },
+          ]}
+        />
       </div>
     </div>
   );
