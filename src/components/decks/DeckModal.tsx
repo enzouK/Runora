@@ -236,7 +236,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Nome do Deck
               </label>
-              <InfoHint text='Dica: use "::" para criar subdecks hierárquicos (ex: Biologia::Celular). Cada nível vira um deck pai que agrupa os cards dos subdecks filhos.' />
+              <InfoHint text='Use "::" entre os nomes para criar subdecks — ex.: "Biologia::Celular" cria o deck "Biologia" com "Celular" dentro dele.' />
             </div>
             <input
               type="text"
@@ -252,7 +252,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Descrição
               </label>
-              <InfoHint text="Texto livre sobre o objetivo deste deck. Ele aparece na home, logo abaixo do nome do deck." />
+              <InfoHint text="Um resumo do objetivo deste deck. Ele aparece na aba Decks, logo abaixo do nome." />
             </div>
             <textarea
               rows={2}
@@ -270,7 +270,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 FSRS
               </label>
-              <InfoHint text="Retenção desejada dos cards deste deck — a chance de lembrá-los quando vencem. Valores maiores = mais revisões por dia. Sobrescreve o valor global (padrão: 0,90)." />
+              <InfoHint text="A probabilidade de lembrar de um card no momento em que ele vence — para os cards deste deck. Quanto maior, mais revisões por dia." />
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] overflow-hidden">
@@ -313,7 +313,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Intervalo Máximo
               </label>
-              <InfoHint text="Nenhuma revisão deste deck será agendada para mais longe que isso. Deixe vazio para usar o padrão global (36500 dias)." />
+              <InfoHint text="Nenhuma revisão deste deck será agendada além do valor definido aqui." />
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] overflow-hidden">
