@@ -31,6 +31,7 @@ import {
 } from '../../types/anki';
 import { StorageService } from '../../services/storage';
 import { IOSSelect } from '../common/IOSSelect';
+import { InfoHint } from '../common/InfoHint';
 
 interface DeckModalProps {
   isOpen: boolean;
@@ -231,9 +232,12 @@ export const DeckModal: React.FC<DeckModalProps> = ({
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">
-              Nome do Deck
-            </label>
+            <div className="flex items-center gap-1 mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                Nome do Deck
+              </label>
+              <InfoHint text='Dica: use "::" para criar subdecks hierárquicos (ex: Biologia::Celular). Cada nível vira um deck pai que agrupa os cards dos subdecks filhos.' />
+            </div>
             <input
               type="text"
               value={name}
@@ -241,9 +245,6 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               placeholder="ex: Idiomas::Inglês::Vocabulário"
               className="w-full px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400"
             />
-            <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
-              Dica: Use "::" para criar subdecks hierárquicos (ex: Biologia::Celular).
-            </p>
           </div>
 
           <div>
