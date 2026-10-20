@@ -629,6 +629,24 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Áudio
               </label>
+              <InfoHint>
+                <p>
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Reproduzir áudio automaticamente:
+                  </span>{' '}
+                  como os áudios dos cards se comportam quando a pergunta ou a resposta aparece.
+                </p>
+                <ul className="mt-1 space-y-1 list-disc pl-5">
+                  <li>
+                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">Sim:</span>{' '}
+                    toca o áudio automaticamente.
+                  </li>
+                  <li>
+                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">Não:</span>{' '}
+                    toca apenas quando você aperta o play.
+                  </li>
+                </ul>
+              </InfoHint>
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
@@ -665,11 +683,6 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               </div>
             </div>
 
-            <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
-              <strong>Sim</strong>: os áudios dos cards (<code>[sound:...]</code>,{' '}
-              <code>{'<audio autoplay>'}</code>) tocam sozinhos ao mostrar a pergunta ou a
-              resposta. <strong>Não</strong>: reproduzem apenas ao clicar no botão de play.
-            </p>
           </div>
 
           {/* ── Ordem de Exibição (Anki Display Order) ── */}
