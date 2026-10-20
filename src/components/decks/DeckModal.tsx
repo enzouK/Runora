@@ -506,6 +506,49 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Lapses (Cards Esquecidos)
               </label>
+              <InfoHint>
+                <p>
+                  Um{' '}
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">lapse</span>{' '}
+                  acontece quando você marca <strong>Errei</strong> em um card que já é de revisão —
+                  ele não é descartado, mas passa por reaprendizagem antes de voltar à fila.
+                </p>
+                <p className="mt-2">
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Passos de reaprendizagem:
+                  </span>{' '}
+                  as etapas que o card cumpre após o lapse — funcionam como os passos de
+                  aprendizagem (ex.: "10m"). Completos, o card volta a ser revisão.
+                </p>
+                <p className="mt-2">
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Limite de leech:
+                  </span>{' '}
+                  quantas vezes um card pode ser esquecido antes de ser marcado como{' '}
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">leech</span>{' '}
+                  (aquele card que vive sendo esquecido).
+                </p>
+                <p className="mt-2">
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Ação de leech:
+                  </span>{' '}
+                  o que o app faz quando o limite é atingido.
+                </p>
+                <ul className="mt-1 space-y-1 list-disc pl-5">
+                  <li>
+                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                      Suspender:
+                    </span>{' '}
+                    o card sai da fila de revisões até você reativá-lo.
+                  </li>
+                  <li>
+                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                      Etiquetar:
+                    </span>{' '}
+                    o card continua nas revisões, mas ganha a tag "leech" na nota.
+                  </li>
+                </ul>
+              </InfoHint>
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
@@ -577,13 +620,6 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                 </div>
               </div>
             </div>
-
-            <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
-              Após o limite de lapsos, o card vira "leech": <strong>Suspender</strong> o remove das
-              revisões; <strong>Etiquetar</strong> adiciona a tag "leech" na nota (visível no
-              Navegador). Padrão do Anki: {StorageService.DEFAULT_SCHEDULER.leechThreshold} lapsos,
-              suspender.
-            </p>
           </div>
 
           {/* ── Áudio (Anki) ── */}
