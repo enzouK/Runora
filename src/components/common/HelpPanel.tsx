@@ -81,7 +81,8 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {topics.length > 1 && (
+          {/* Indicador sempre visível — mesmo com uma row só, deixa claro a que ela se refere */}
+          {topics.length > 0 && (
             <div className="space-y-1.5 mb-4">
               {topics.map((topic, idx) => (
                 <button
