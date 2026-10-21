@@ -163,15 +163,6 @@ const HELP_SECTIONS: Record<
     label: 'Lapses (Cards Esquecidos)',
     topics: [
       {
-        label: 'O que é um lapse',
-        content: (
-          <p>
-            Acontece quando você marca Errei em um card que já é de revisão — ele não é
-            descartado, mas passa por reaprendizagem antes de voltar à fila.
-          </p>
-        ),
-      },
-      {
         label: 'Passos de reaprendizagem',
         content: (
           <p>
