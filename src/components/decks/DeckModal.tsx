@@ -262,7 +262,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Descrição
               </label>
-              <InfoHint text="Um resumo do objetivo deste deck. Ele aparece na aba Decks, logo abaixo do nome." />
+              <button
+                type="button"
+                onClick={() => setHelpOpen(true)}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Mais informações"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
             </div>
             <textarea
               rows={2}
@@ -837,6 +844,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                 <p>
                   Use "::" entre os nomes para criar subdecks — ex.: "Biologia::Celular" cria o
                   deck "Biologia" com "Celular" dentro dele.
+                </p>
+              ),
+            },
+            {
+              label: 'Descrição',
+              content: (
+                <p>
+                  Um resumo do objetivo deste deck. Ele aparece na aba Decks, logo abaixo do nome.
                 </p>
               ),
             },
