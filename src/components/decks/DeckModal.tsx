@@ -240,49 +240,216 @@ const HELP_SECTIONS: Record<
       {
         label: 'Coleta de novos cards',
         content: (
-          <p>
-            Define como os cards novos são coletados a partir dos subdecks: em ordem alfabética
-            de deck ("Deck"), deck seguido de notas aleatórias, por posição (antigos ou novos
-            primeiro), notas aleatórias ou cards aleatórios.
-          </p>
+          <>
+            <p>
+              Define como os cards novos são coletados a partir dos subdecks.
+            </p>
+            <ul className="mt-1 space-y-1 list-disc pl-5">
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">Deck:</span>{' '}
+                coleta cada subdeck em ordem alfabética, do topo para baixo — mais rápido em
+                coleções grandes e permite priorizar os subdecks de cima.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Deck, depois notas aleatórias:
+                </span>{' '}
+                coleta por subdeck em ordem, mas as notas dentro de cada subdeck são sorteadas.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Posição crescente:
+                </span>{' '}
+                coleta pela posição crescente (due #) — normalmente os mais antigos primeiro.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Posição decrescente:
+                </span>{' '}
+                coleta pela posição decrescente — os mais recentes primeiro.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Notas aleatórias:
+                </span>{' '}
+                coleta cards de notas sorteadas ao acaso.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Cards aleatórios:
+                </span>{' '}
+                embaralha todos os cards coletados.
+              </li>
+            </ul>
+          </>
         ),
       },
       {
         label: 'Ordem dos novos cards',
         content: (
-          <p>
-            Define como os cards novos são ordenados após a coleta: por tipo de card e depois na
-            ordem coletada, tipo de card seguido de aleatório, nota aleatória seguida dos seus
-            tipos, ou totalmente aleatório.
-          </p>
+          <>
+            <p>Define como os cards novos são ordenados depois de coletados.</p>
+            <ul className="mt-1 space-y-1 list-disc pl-5">
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Tipo de card, depois coletado:
+                </span>{' '}
+                mostra todos os cards frente→verso antes dos verso→frente — evita irmãos
+                aparecendo em sequência.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Ordem coletada:
+                </span>{' '}
+                mostra exatamente na ordem em que foram coletados.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Tipo de card, depois aleatório:
+                </span>{' '}
+                agrupa por tipo e embaralha dentro de cada tipo.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Nota aleatória, depois tipo de card:
+                </span>{' '}
+                sorteia notas e mostra os irmãos de cada uma em sequência.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Cards aleatórios:
+                </span>{' '}
+                embaralha tudo.
+              </li>
+            </ul>
+          </>
         ),
       },
       {
         label: 'Novos / Revisões',
         content: (
-          <p>
-            Define se os cards novos aparecem misturados com as revisões, depois delas ou antes
-            delas.
-          </p>
+          <>
+            <p>
+              Define quando os cards novos aparecem em relação às revisões.
+            </p>
+            <ul className="mt-1 space-y-1 list-disc pl-5">
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Misturar com revisões:
+                </span>{' '}
+                intercalados com as revisões.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Mostrar depois das revisões:
+                </span>{' '}
+                só aparecem após terminar as revisões.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Mostrar antes das revisões:
+                </span>{' '}
+                aparecem antes de começar as revisões.
+              </li>
+            </ul>
+          </>
         ),
       },
       {
         label: 'Aprendizado / Revisões',
         content: (
-          <p>
-            Define se os cards em aprendizado (que cruzam a virada do dia) aparecem misturados
-            com as revisões, depois delas ou antes delas.
-          </p>
+          <>
+            <p>
+              Define quando os cards em aprendizado que cruzam a virada do dia aparecem em
+              relação às revisões.
+            </p>
+            <ul className="mt-1 space-y-1 list-disc pl-5">
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Misturar com revisões:
+                </span>{' '}
+                intercalados com as revisões.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Mostrar depois das revisões:
+                </span>{' '}
+                permite começar a sessão pelo mais fácil.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Mostrar antes das revisões:
+                </span>{' '}
+                dá mais tempo para revisar os que você esqueceu.
+              </li>
+            </ul>
+          </>
         ),
       },
       {
         label: 'Ordem das revisões',
         content: (
-          <p>
-            Define como as revisões são ordenadas: vencimento (com deck ou aleatório no
-            desempate), intervalo crescente ou decrescente, facilidade crescente ou decrescente,
-            retrievabilidade crescente (o mais perto de ser esquecido primeiro) ou aleatório.
-          </p>
+          <>
+            <p>Define como as revisões são ordenadas na fila.</p>
+            <ul className="mt-1 space-y-1 list-disc pl-5">
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Vencimento, depois aleatório:
+                </span>{' '}
+                prioriza os que esperam há mais tempo — o recomendado quando você está em dia.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Vencimento, depois deck:
+                </span>{' '}
+                idem, desempatando pelos subdecks em ordem.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Deck, depois vencimento:
+                </span>{' '}
+                cada subdeck em turno — não recomendado: a ordem fixa denuncia a resposta pelo
+                contexto.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Intervalo crescente:
+                </span>{' '}
+                intervalos curtos primeiro.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Intervalo decrescente:
+                </span>{' '}
+                intervalos longos primeiro.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Facilidade crescente:
+                </span>{' '}
+                os mais difíceis primeiro.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Facilidade decrescente:
+                </span>{' '}
+                os mais fáceis primeiro.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Retrievabilidade crescente:
+                </span>{' '}
+                os mais perto de ser esquecidos primeiro — recomendado para backlogs (equivalente
+                FSRS do "Relative overdueness").
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Cards aleatórios:
+                </span>{' '}
+                embaralha as revisões.
+              </li>
+            </ul>
+          </>
         ),
       },
     ],
