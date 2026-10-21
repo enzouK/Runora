@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 
 export interface HelpTopic {
   label: string;
@@ -9,29 +9,33 @@ export interface HelpTopic {
 interface HelpPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  title?: string;
+  /** Título do painel = nome da seção (ex.: "Limites Diários"). */
+  label: string;
+  /**
+   * 1 tópico → conteúdo direto.
+   * Vários → índice de botões no topo + informação da opção selecionada abaixo.
+   */
   topics: HelpTopic[];
 }
 
 /**
  * Ajuda como "box dentro da box": camada escura sobre o modal + cartão
  * centralizado. Deve ser renderizado DENTRO do card do modal (que precisa
- * de `relative`). Um único tópico mostra o conteúdo direto; vários,
- * lista-os como accordion (um aberto por vez).
+ * de `relative`). Um único tópico mostra o conteúdo direto; vários mostram
+ * um índice de botões com a informação abaixo.
  */
 export const HelpPanel: React.FC<HelpPanelProps> = ({
   isOpen,
   onClose,
-  title = 'Ajuda',
+  label,
   topics,
 }) => {
-  const [openTopic, setOpenTopic] = useState<number | null>(0);
+  const [selected, setSelected] = useState(0);
   const layerRef = useRef<HTMLDivElement | null>(null);
 
-  // Reinicia o accordion sempre que a camada abre
+  // Reinicia a seleção sempre que a camada abre
   useEffect(() => {
-    if (isOpen) setOpenTopic(topics.length > 0 ? 0 : null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (isOpen) setSelected(0);
   }, [isOpen]);
 
   useEffect(() => {
@@ -53,7 +57,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
 
   if (!isOpen) return null;
 
-  const single = topics.length === 1;
+  const current = topics[selected];
 
   return (
     <div
@@ -66,9 +70,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
         className="w-full max-w-sm bg-white dark:bg-ios-card-dark rounded-[20px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col max-h-full ios-fade-in"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.05] dark:border-white/[0.07]">
-          <h3 className="text-[17px] font-bold text-zinc-900 dark:text-zinc-50">
-            {single ? topics[0].label : title}
-          </h3>
+          <h3 className="text-[17px] font-bold text-zinc-900 dark:text-zinc-50">{label}</h3>
           <button
             type="button"
             onClick={onClose}
@@ -79,41 +81,32 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {single ? (
-            <div className="text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-300 space-y-2">
-              {topics[0].content}
+          {topics.length > 1 && (
+            <div className="space-y-1.5 mb-4">
+              {topics.map((topic, idx) => (
+                <button
+                  key={topic.label}
+                  type="button"
+                  onClick={() => setSelected(idx)}
+                  className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-[12px] text-left text-[13px] font-semibold border transition-all active:scale-[0.99] ${
+                    selected === idx
+                      ? 'bg-ios-blue/10 text-ios-blue border-ios-blue/30'
+                      : 'bg-black/[0.03] dark:bg-white/[0.05] text-zinc-600 dark:text-zinc-300 border-transparent hover:bg-black/[0.06] dark:hover:bg-white/[0.1]'
+                  }`}
+                >
+                  <span className="min-w-0 truncate">{topic.label}</span>
+                  {selected === idx && <Check className="w-3.5 h-3.5 shrink-0" strokeWidth={3} />}
+                </button>
+              ))}
             </div>
-          ) : (
-            <div className="space-y-2">
-              {topics.map((topic, idx) => {
-                const expanded = openTopic === idx;
-                return (
-                  <div
-                    key={topic.label}
-                    className="rounded-[14px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] overflow-hidden"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setOpenTopic(expanded ? null : idx)}
-                      className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left"
-                    >
-                      <span className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
-                        {topic.label}
-                      </span>
-                      <ChevronDown
-                        className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${
-                          expanded ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </button>
-                    {expanded && (
-                      <div className="px-3.5 pb-3.5 text-xs font-normal leading-relaxed text-zinc-600 dark:text-zinc-300 space-y-2">
-                        {topic.content}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+          )}
+
+          {current && (
+            <div
+              key={current.label}
+              className="text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-300 space-y-2 ios-fade-in"
+            >
+              {current.content}
             </div>
           )}
         </div>

@@ -32,8 +32,262 @@ import {
 } from '../../types/anki';
 import { StorageService } from '../../services/storage';
 import { IOSSelect } from '../common/IOSSelect';
-import { HelpPanel } from '../common/HelpPanel';
-import { InfoHint } from '../common/InfoHint';
+import { HelpPanel, HelpTopic } from '../common/HelpPanel';
+
+type HelpSectionId =
+  | 'name'
+  | 'description'
+  | 'fsrs'
+  | 'interval'
+  | 'limits'
+  | 'newcards'
+  | 'lapses'
+  | 'audio'
+  | 'displayorder';
+
+const HELP_SECTIONS: Record<
+  HelpSectionId,
+  { label: string; topics: HelpTopic[] }
+> = {
+  name: {
+    label: 'Nome do Deck',
+    topics: [
+      {
+        label: 'Nome do Deck',
+        content: (
+          <p>
+            Use "::" entre os nomes para criar subdecks — ex.: "Biologia::Celular" cria o deck
+            "Biologia" com "Celular" dentro dele.
+          </p>
+        ),
+      },
+    ],
+  },
+  description: {
+    label: 'Descrição',
+    topics: [
+      {
+        label: 'Descrição',
+        content: (
+          <p>Um resumo do objetivo deste deck. Ele aparece na aba Decks, logo abaixo do nome.</p>
+        ),
+      },
+    ],
+  },
+  fsrs: {
+    label: 'FSRS',
+    topics: [
+      {
+        label: 'Retenção desejada',
+        content: (
+          <p>
+            A probabilidade de lembrar de um card no momento em que ele vence — para os cards
+            deste deck. Quanto maior, mais revisões por dia.
+          </p>
+        ),
+      },
+    ],
+  },
+  interval: {
+    label: 'Intervalo Máximo',
+    topics: [
+      {
+        label: 'Máx. dias por intervalo',
+        content: (
+          <p>
+            Nenhuma revisão deste deck será agendada além do valor definido aqui.
+          </p>
+        ),
+      },
+    ],
+  },
+  limits: {
+    label: 'Limites Diários',
+    topics: [
+      {
+        label: 'Novos cards/dia',
+        content: (
+          <p>
+            Quantos cards novos entram no estudo por dia — vale para este deck e todos os
+            subdecks. Use 0 para pausar novos cards hoje.
+          </p>
+        ),
+      },
+      {
+        label: 'Máx. revisões/dia',
+        content: (
+          <p>
+            Protege você de picos — ex.: voltar depois de uma semana (o que ficou pendente não
+            se acumula).
+          </p>
+        ),
+      },
+    ],
+  },
+  newcards: {
+    label: 'Novos Cards',
+    topics: [
+      {
+        label: 'Passos de aprendizagem',
+        content: (
+          <p>
+            As etapas que um card novo cumpre antes de virar card de revisão. Escreva os
+            intervalos separados por espaço — ex.: "1m 10m" significa que o card reaparece em 1
+            minuto e, se você marcar Bom, passa para os 10 minutos. Ao completar todos os
+            passos, ele deixa de ser novo e passa a ser agendado em dias. Errei o devolve ao
+            primeiro passo.
+          </p>
+        ),
+      },
+      {
+        label: 'Ordem de inserção',
+        content: (
+          <>
+            <p>Como os cards novos entram na fila.</p>
+            <ul className="mt-1 space-y-1 list-disc pl-5">
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">Sequencial:</span>{' '}
+                seguem a ordem em que foram criados.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">Aleatório:</span>{' '}
+                embaralha essa ordem.
+              </li>
+            </ul>
+          </>
+        ),
+      },
+    ],
+  },
+  lapses: {
+    label: 'Lapses (Cards Esquecidos)',
+    topics: [
+      {
+        label: 'O que é um lapse',
+        content: (
+          <p>
+            Acontece quando você marca Errei em um card que já é de revisão — ele não é
+            descartado, mas passa por reaprendizagem antes de voltar à fila.
+          </p>
+        ),
+      },
+      {
+        label: 'Passos de reaprendizagem',
+        content: (
+          <p>
+            As etapas que o card cumpre após o lapse — funcionam como os passos de aprendizagem
+            (ex.: "10m"). Completos, o card volta a ser revisão.
+          </p>
+        ),
+      },
+      {
+        label: 'Limite de leech',
+        content: (
+          <p>
+            Quantas vezes um card pode ser esquecido antes de ser marcado como leech (aquele
+            card que vive sendo esquecido).
+          </p>
+        ),
+      },
+      {
+        label: 'Ação de leech',
+        content: (
+          <>
+            <p>O que o app faz quando o limite é atingido.</p>
+            <ul className="mt-1 space-y-1 list-disc pl-5">
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">Suspender:</span>{' '}
+                o card sai da fila de revisões até você reativá-lo.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">Etiquetar:</span>{' '}
+                o card continua nas revisões, mas ganha a tag "leech" na nota.
+              </li>
+            </ul>
+          </>
+        ),
+      },
+    ],
+  },
+  audio: {
+    label: 'Áudio',
+    topics: [
+      {
+        label: 'Reproduzir áudio automaticamente',
+        content: (
+          <>
+            <p>
+              Como os áudios dos cards se comportam quando a pergunta ou a resposta aparece.
+            </p>
+            <ul className="mt-1 space-y-1 list-disc pl-5">
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">Sim:</span> toca
+                o áudio automaticamente.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">Não:</span> toca
+                apenas quando você aperta o play.
+              </li>
+            </ul>
+          </>
+        ),
+      },
+    ],
+  },
+  displayorder: {
+    label: 'Ordem de Exibição',
+    topics: [
+      {
+        label: 'Coleta de novos cards',
+        content: (
+          <p>
+            Define como os cards novos são coletados a partir dos subdecks: em ordem alfabética
+            de deck ("Deck"), deck seguido de notas aleatórias, por posição (antigos ou novos
+            primeiro), notas aleatórias ou cards aleatórios.
+          </p>
+        ),
+      },
+      {
+        label: 'Ordem dos novos cards',
+        content: (
+          <p>
+            Define como os cards novos são ordenados após a coleta: por tipo de card e depois na
+            ordem coletada, tipo de card seguido de aleatório, nota aleatória seguida dos seus
+            tipos, ou totalmente aleatório.
+          </p>
+        ),
+      },
+      {
+        label: 'Novos / Revisões',
+        content: (
+          <p>
+            Define se os cards novos aparecem misturados com as revisões, depois delas ou antes
+            delas.
+          </p>
+        ),
+      },
+      {
+        label: 'Aprendizado / Revisões',
+        content: (
+          <p>
+            Define se os cards em aprendizado (que cruzam a virada do dia) aparecem misturados
+            com as revisões, depois delas ou antes delas.
+          </p>
+        ),
+      },
+      {
+        label: 'Ordem das revisões',
+        content: (
+          <p>
+            Define como as revisões são ordenadas: vencimento (com deck ou aleatório no
+            desempate), intervalo crescente ou decrescente, facilidade crescente ou decrescente,
+            retrievabilidade crescente (o mais perto de ser esquecido primeiro) ou aleatório.
+          </p>
+        ),
+      },
+    ],
+  },
+};
 
 interface DeckModalProps {
   isOpen: boolean;
@@ -54,7 +308,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const [description, setDescription] = useState('');
   const [targetRetention, setTargetRetention] = useState(0.90);
   const [maxInterval, setMaxInterval] = useState('36500');
-  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpSection, setHelpSection] = useState<HelpSectionId | null>(null);
   const [newCardsPerDay, setNewCardsPerDay] = useState('20');
   const [maxReviewsPerDay, setMaxReviewsPerDay] = useState('200');
   // Scheduler options — always show the REAL effective values (no 'Padrão' pseudo-option)
@@ -71,7 +325,10 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const [audioAutoplay, setAudioAutoplay] = useState<'play' | 'dont'>('play');
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setHelpSection(null);
+      return;
+    }
     const decks = StorageService.getDecks();
 
     // Effective (resolved) values: the deck's own settings where set,
@@ -241,7 +498,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               </label>
               <button
                 type="button"
-                onClick={() => setHelpOpen(true)}
+                onClick={() => setHelpSection('name')}
                 className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
                 title="Mais informações"
               >
@@ -264,7 +521,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               </label>
               <button
                 type="button"
-                onClick={() => setHelpOpen(true)}
+                onClick={() => setHelpSection('description')}
                 className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
                 title="Mais informações"
               >
@@ -287,7 +544,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 FSRS
               </label>
-              <InfoHint text="A probabilidade de lembrar de um card no momento em que ele vence — para os cards deste deck. Quanto maior, mais revisões por dia." />
+              <button
+                type="button"
+                onClick={() => setHelpSection('fsrs')}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Mais informações"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] overflow-hidden">
@@ -330,7 +594,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Intervalo Máximo
               </label>
-              <InfoHint text="Nenhuma revisão deste deck será agendada além do valor definido aqui." />
+              <button
+                type="button"
+                onClick={() => setHelpSection('interval')}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Mais informações"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] overflow-hidden">
@@ -362,25 +633,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Limites Diários
               </label>
-              <InfoHint>
-                <p>
-                  Limitam quantos cards aparecem por dia — valem para este deck e todos os
-                  subdecks (padrão do Anki: 20 novos · 200 revisões).
-                </p>
-                <p className="mt-2">
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    Novos cards/dia:
-                  </span>{' '}
-                  quantos cards novos entram no estudo. Use 0 para pausar novos cards hoje.
-                </p>
-                <p className="mt-2">
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    Máx. revisões/dia:
-                  </span>{' '}
-                  protege você de picos — ex.: voltar depois de uma semana (o que ficou pendente
-                  não se acumula).
-                </p>
-              </InfoHint>
+              <button
+                type="button"
+                onClick={() => setHelpSection('limits')}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Mais informações"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
@@ -431,36 +691,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Novos Cards
               </label>
-              <InfoHint>
-                <p>
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    Passos de aprendizagem:
-                  </span>{' '}
-                  os atrasos entre repetições de um card novo, em formatos como "1m 10m", "30s 5m"
-                  ou "1h". <strong>Good</strong> avança um passo; <strong>Again</strong> volta ao
-                  primeiro; completar todos gradua o card.
-                </p>
-                <p className="mt-2">
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    Ordem de inserção:
-                  </span>{' '}
-                  como os cards novos entram na fila.
-                </p>
-                <ul className="mt-1 space-y-1 list-disc pl-5">
-                  <li>
-                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                      Sequencial:
-                    </span>{' '}
-                    seguem a ordem em que foram criados.
-                  </li>
-                  <li>
-                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                      Aleatório:
-                    </span>{' '}
-                    embaralha essa ordem.
-                  </li>
-                </ul>
-              </InfoHint>
+              <button
+                type="button"
+                onClick={() => setHelpSection('newcards')}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Mais informações"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
@@ -523,49 +761,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Lapses (Cards Esquecidos)
               </label>
-              <InfoHint>
-                <p>
-                  Um{' '}
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">lapse</span>{' '}
-                  acontece quando você marca <strong>Errei</strong> em um card que já é de revisão —
-                  ele não é descartado, mas passa por reaprendizagem antes de voltar à fila.
-                </p>
-                <p className="mt-2">
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    Passos de reaprendizagem:
-                  </span>{' '}
-                  as etapas que o card cumpre após o lapse — funcionam como os passos de
-                  aprendizagem (ex.: "10m"). Completos, o card volta a ser revisão.
-                </p>
-                <p className="mt-2">
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    Limite de leech:
-                  </span>{' '}
-                  quantas vezes um card pode ser esquecido antes de ser marcado como{' '}
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">leech</span>{' '}
-                  (aquele card que vive sendo esquecido).
-                </p>
-                <p className="mt-2">
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    Ação de leech:
-                  </span>{' '}
-                  o que o app faz quando o limite é atingido.
-                </p>
-                <ul className="mt-1 space-y-1 list-disc pl-5">
-                  <li>
-                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                      Suspender:
-                    </span>{' '}
-                    o card sai da fila de revisões até você reativá-lo.
-                  </li>
-                  <li>
-                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                      Etiquetar:
-                    </span>{' '}
-                    o card continua nas revisões, mas ganha a tag "leech" na nota.
-                  </li>
-                </ul>
-              </InfoHint>
+              <button
+                type="button"
+                onClick={() => setHelpSection('lapses')}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Mais informações"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
@@ -646,24 +849,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Áudio
               </label>
-              <InfoHint>
-                <p>
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    Reproduzir áudio automaticamente:
-                  </span>{' '}
-                  como os áudios dos cards se comportam quando a pergunta ou a resposta aparece.
-                </p>
-                <ul className="mt-1 space-y-1 list-disc pl-5">
-                  <li>
-                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">Sim:</span>{' '}
-                    toca o áudio automaticamente.
-                  </li>
-                  <li>
-                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">Não:</span>{' '}
-                    toca apenas quando você aperta o play.
-                  </li>
-                </ul>
-              </InfoHint>
+              <button
+                type="button"
+                onClick={() => setHelpSection('audio')}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Mais informações"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
@@ -709,6 +902,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Ordem de Exibição
               </label>
+              <button
+                type="button"
+                onClick={() => setHelpSection('displayorder')}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Mais informações"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">
@@ -835,27 +1036,10 @@ export const DeckModal: React.FC<DeckModalProps> = ({
 
         {/* Painel de ajuda (estilo Anki) */}
         <HelpPanel
-          isOpen={helpOpen && isOpen}
-          onClose={() => setHelpOpen(false)}
-          topics={[
-            {
-              label: 'Nome do Deck',
-              content: (
-                <p>
-                  Use "::" entre os nomes para criar subdecks — ex.: "Biologia::Celular" cria o
-                  deck "Biologia" com "Celular" dentro dele.
-                </p>
-              ),
-            },
-            {
-              label: 'Descrição',
-              content: (
-                <p>
-                  Um resumo do objetivo deste deck. Ele aparece na aba Decks, logo abaixo do nome.
-                </p>
-              ),
-            },
-          ]}
+          isOpen={helpSection !== null}
+          onClose={() => setHelpSection(null)}
+          label={helpSection ? HELP_SECTIONS[helpSection].label : ''}
+          topics={helpSection ? HELP_SECTIONS[helpSection].topics : []}
         />
       </div>
     </div>
