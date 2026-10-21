@@ -658,14 +658,6 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Nome do Deck
               </label>
-              <button
-                type="button"
-                onClick={() => setHelpSection('name')}
-                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-                title="Mais informações"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-              </button>
             </div>
             <input
               type="text"
@@ -681,14 +673,6 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Descrição
               </label>
-              <button
-                type="button"
-                onClick={() => setHelpSection('description')}
-                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-                title="Mais informações"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-              </button>
             </div>
             <textarea
               rows={2}
