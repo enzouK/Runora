@@ -81,8 +81,12 @@ const HELP_SECTIONS: Record<
         label: 'Retenção desejada',
         content: (
           <p>
-            A probabilidade de lembrar de um card no momento em que ele vence — para os cards
-            deste deck. Quanto maior, mais revisões por dia.
+            Por padrão, o Anki agenda os cards para que você tenha 90% de chance de lembrá-los
+            quando voltarem à revisão. Se você aumentar esse valor, o Anki mostrará os cards com
+            mais frequência para aumentar as chances de memorização. Se diminuir, os cards
+            aparecerão com menos frequência e você esquecerá mais deles. Seja conservador ao
+            ajustar — valores altos aumentarão muito sua carga de estudo, e valores baixos podem
+            ser desanimadores quando você esquece muito material.
           </p>
         ),
       },
