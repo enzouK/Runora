@@ -16,6 +16,8 @@ interface HelpPanelProps {
    * Vários → índice de botões no topo + informação da opção selecionada abaixo.
    */
   topics: HelpTopic[];
+  /** Mostra o índice de botões mesmo com uma row só (default: true). */
+  showIndex?: boolean;
 }
 
 /**
@@ -29,6 +31,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
   onClose,
   label,
   topics,
+  showIndex = true,
 }) => {
   const [selected, setSelected] = useState(0);
   const layerRef = useRef<HTMLDivElement | null>(null);
@@ -82,7 +85,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
 
         <div className="flex-1 overflow-y-auto p-6">
           {/* Indicador sempre visível — mesmo com uma row só, deixa claro a que ela se refere */}
-          {topics.length > 0 && (
+          {topics.length > 0 && showIndex && (
             <div className="space-y-1.5 mb-4">
               {topics.map((topic, idx) => (
                 <button
