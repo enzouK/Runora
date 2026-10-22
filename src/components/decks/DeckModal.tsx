@@ -132,10 +132,22 @@ const HELP_SECTIONS: Record<
       {
         label: 'Máx. revisões/dia',
         content: (
-          <p>
-            Protege você de picos — ex.: voltar depois de uma semana (o que ficou pendente não
-            se acumula).
-          </p>
+          <>
+            <p>
+              O número máximo de cards de revisão a mostrar em um dia, se houver cards prontos
+              para revisão.
+            </p>
+            <p>
+              O limite de revisão também afeta os cards de aprendizado que cruzam a virada do
+              dia (interday). Ao aplicar o limite, os cards de aprendizado interday são
+              coletados primeiro, depois os cards de revisão.
+            </p>
+            <p>
+              Ao estudar um deck que tem subdecks, os limites definidos em cada subdeck controlam
+              o número máximo de cards coletados daquele deck em particular. Os limites do deck
+              selecionado controlam o total de cards que será mostrado.
+            </p>
+          </>
         ),
       },
     ],
