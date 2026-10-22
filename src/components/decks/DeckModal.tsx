@@ -115,10 +115,18 @@ const HELP_SECTIONS: Record<
       {
         label: 'Novos cards/dia',
         content: (
-          <p>
-            Quantos cards novos entram no estudo por dia — vale para este deck e todos os
-            subdecks. Use 0 para pausar novos cards hoje.
-          </p>
+          <>
+            <p>
+              O número máximo de cards novos a introduzir em um dia, se houver cards novos
+              disponíveis. Como material novo aumentará sua carga de revisão de curto prazo,
+              isso normalmente deve ser pelo menos 10x menor que o seu limite de revisões.
+            </p>
+            <p>
+              Ao estudar um deck que tem subdecks, os limites definidos em cada subdeck controlam
+              o número máximo de cards coletados daquele deck em particular. Os limites do deck
+              selecionado controlam o total de cards que será mostrado.
+            </p>
+          </>
         ),
       },
       {
