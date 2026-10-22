@@ -101,7 +101,9 @@ const HELP_SECTIONS: Record<
         label: 'Máx. dias por intervalo',
         content: (
           <p>
-            Nenhuma revisão deste deck será agendada além do valor definido aqui.
+            O número máximo de dias que um card de revisão vai esperar antes de aparecer de
+            novo. Quando as revisões atingem esse limite, Difícil, Bom e Fácil passam a dar o
+            mesmo intervalo. Quanto menor o valor definido, maior será sua carga de estudo.
           </p>
         ),
       },
