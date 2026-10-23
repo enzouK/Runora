@@ -283,45 +283,53 @@ const HELP_SECTIONS: Record<
         content: (
           <>
             <p>
-              Define como os cards novos são coletados a partir dos subdecks.
+              Reúne, do deck selecionado e de seus subdecks, os cards novos que entrarão na fila
+              de hoje.
             </p>
             <ul className="mt-1 space-y-1 list-disc pl-5">
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">Deck:</span>{' '}
-                coleta cada subdeck em ordem alfabética, do topo para baixo — mais rápido em
-                coleções grandes e permite priorizar os subdecks de cima.
+                reúne os cards subdeck por subdeck, na ordem em que os subdecks foram criados.
+                Dentro de cada subdeck, aplica a sua Ordem de inserção (sequencial ou aleatória).
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Deck, depois notas aleatórias:
                 </span>{' '}
-                coleta por subdeck em ordem, mas as notas dentro de cada subdeck são sorteadas.
+                percorre os subdecks na mesma ordem acima, mas sorteia as notas dentro de cada
+                um — os cards de cada nota continuam juntos.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Posição crescente:
                 </span>{' '}
-                coleta pela posição crescente (due #) — normalmente os mais antigos primeiro.
+                coleta pela posição crescente — normalmente os cards mais antigos primeiro.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Posição decrescente:
                 </span>{' '}
-                coleta pela posição decrescente — os mais recentes primeiro.
+                coleta pela posição decrescente — os cards mais recentes primeiro.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Notas aleatórias:
                 </span>{' '}
-                coleta cards de notas sorteadas ao acaso.
+                sorteia notas ao acaso e coleta todos os cards de cada uma, mantendo os cards da
+                mesma nota juntos.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Cards aleatórios:
                 </span>{' '}
-                embaralha todos os cards coletados.
+                coleta todos os cards em ordem aleatória.
               </li>
             </ul>
+            <p className="mt-1">
+              Quando o limite diário de novos cards é atingido, a coleta para — nem todos os
+              subdecks chegam a ser verificados. A Ordem de Exibição usada é sempre a do deck que
+              você seleciona para estudar (herdando do pai), e não a dos subdecks.
+            </p>
           </>
         ),
       },
