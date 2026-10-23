@@ -397,19 +397,19 @@ const HELP_SECTIONS: Record<
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Misturar com revisões:
                 </span>{' '}
-                intercalados com as revisões.
+                embaralha os cards com as revisões.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Mostrar depois das revisões:
                 </span>{' '}
-                só aparecem após terminar as revisões.
+                os cards entram depois de revisões.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Mostrar antes das revisões:
                 </span>{' '}
-                aparecem antes de começar as revisões.
+                os cards entram antes de revisões.
               </li>
             </ul>
           </>
