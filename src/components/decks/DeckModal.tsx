@@ -158,13 +158,19 @@ const HELP_SECTIONS: Record<
       {
         label: 'Passos de aprendizagem',
         content: (
-          <p>
-            As etapas que um card novo cumpre antes de virar card de revisão. Escreva os
-            intervalos separados por espaço — ex.: "1m 10m" significa que o card reaparece em 1
-            minuto e, se você marcar Bom, passa para os 10 minutos. Ao completar todos os
-            passos, ele deixa de ser novo e passa a ser agendado em dias. Errei o devolve ao
-            primeiro passo.
-          </p>
+          <>
+            <p>
+              Um ou mais atrasos, separados por espaços. O primeiro atraso será usado quando
+              você pressionar o botão Errei em um card novo, e é de 1 minuto por padrão. O botão
+              Bom avançará para o próximo passo, que é de 10 minutos por padrão. Uma vez que
+              todos os passos tenham sido cumpridos, o card se tornará um card de revisão e
+              aparecerá em um dia diferente.
+            </p>
+            <p>
+              Os atrasos são tipicamente minutos (ex.: 1m) ou dias (ex.: 2d), mas horas (ex.:
+              1h) e segundos (ex.: 30s) também são suportados.
+            </p>
+          </>
         ),
       },
       {
