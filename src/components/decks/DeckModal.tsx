@@ -337,40 +337,51 @@ const HELP_SECTIONS: Record<
         label: 'Ordem dos novos cards',
         content: (
           <>
-            <p>Define como os cards novos são ordenados depois de coletados.</p>
+            <p>
+              Define como os cards novos são apresentados na fila, depois de coletados.
+            </p>
             <ul className="mt-1 space-y-1 list-disc pl-5">
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Tipo de card, depois coletado:
                 </span>{' '}
-                mostra todos os cards frente→verso antes dos verso→frente — evita irmãos
-                aparecendo em sequência.
+                organiza por tipo de card — todos os cards frente→verso primeiro, depois os
+                verso→frente; dentro de cada tipo, na ordem em que foram coletados. Os cards da
+                mesma nota aparecem na mesma sessão, mas não em cima um do outro.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Ordem coletada:
                 </span>{' '}
-                mostra exatamente na ordem em que foram coletados.
+                mostra os cards exatamente na ordem em que foram coletados — normalmente os
+                cards de uma nota aparecem um logo após o outro.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Tipo de card, depois aleatório:
                 </span>{' '}
-                agrupa por tipo e embaralha dentro de cada tipo.
+                organiza por tipo de card (todos os frente→verso, depois os verso→frente) e
+                embaralha dentro de cada tipo — evita irmãos aparecendo em sequência, mas ainda
+                com um grau de aleatoriedade.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Nota aleatória, depois tipo de card:
                 </span>{' '}
-                sorteia notas e mostra os irmãos de cada uma em sequência.
+                sorteia notas ao acaso e mostra todos os cards de cada uma em sequência — os
+                irmãos aparecem juntos.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Cards aleatórios:
                 </span>{' '}
-                embaralha tudo.
+                mostra todos os cards em ordem aleatória.
               </li>
             </ul>
+            <p className="mt-1">
+              A ordem usada é sempre a do deck que você seleciona para estudar (herdando do
+              pai), e não a dos subdecks.
+            </p>
           </>
         ),
       },
