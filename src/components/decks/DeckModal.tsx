@@ -234,15 +234,15 @@ const HELP_SECTIONS: Record<
         label: 'Ação de leech',
         content: (
           <>
-            <p>O que o app faz quando o limite é atingido.</p>
+            <p>Quando o limite for atingido:</p>
             <ul className="mt-1 space-y-1 list-disc pl-5">
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">Suspender:</span>{' '}
-                o card sai da fila de revisões até você reativá-lo.
+                Além de etiquetar a nota, oculta o card até que ele seja reativado manualmente.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">Etiquetar:</span>{' '}
-                o card continua nas revisões, mas ganha a tag "leech" na nota.
+                Adiciona a tag 'leech' à nota e exibe um pop-up.
               </li>
             </ul>
           </>
