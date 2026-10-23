@@ -177,15 +177,23 @@ const HELP_SECTIONS: Record<
         label: 'Ordem de inserção',
         content: (
           <>
-            <p>Como os cards novos entram na fila.</p>
+            <p>
+              Controla a posição (due #) atribuída aos cards novos quando você adiciona cards.
+              Cards com um número de vencimento menor serão mostrados primeiro ao estudar.
+              Alterar esta opção atualizará automaticamente a posição existente dos cards novos.
+            </p>
             <ul className="mt-1 space-y-1 list-disc pl-5">
               <li>
-                <span className="font-semibold text-zinc-800 dark:text-zinc-200">Sequencial:</span>{' '}
-                seguem a ordem em que foram criados.
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Sequencial:
+                </span>{' '}
+                segue a ordem em que os cards foram criados.
               </li>
               <li>
-                <span className="font-semibold text-zinc-800 dark:text-zinc-200">Aleatório:</span>{' '}
-                embaralha essa ordem.
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Aleatório:
+                </span>{' '}
+                ordem aleatória.
               </li>
             </ul>
           </>
