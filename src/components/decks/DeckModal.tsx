@@ -416,33 +416,39 @@ const HELP_SECTIONS: Record<
         ),
       },
       {
-        label: 'Aprendizado / Revisões',
+        label: 'Aprendizado interdiário / Revisões',
         content: (
           <>
             <p>
-              Define quando os cards em aprendizado que cruzam a virada do dia aparecem em
-              relação às revisões.
+              Define a ordem em que os cards em (re)aprendizado que cruzam a virada do dia —
+              cujos passos terminam somente em outro dia — aparecem em relação às revisões.
             </p>
             <ul className="mt-1 space-y-1 list-disc pl-5">
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Misturar com revisões:
                 </span>{' '}
-                intercalados com as revisões.
+                embaralha os cards com as revisões.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Mostrar depois das revisões:
                 </span>{' '}
-                permite começar a sessão pelo mais fácil.
+                os cards entram depois de revisões.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Mostrar antes das revisões:
                 </span>{' '}
-                dá mais tempo para revisar os que você esqueceu.
+                os cards entram antes de revisões.
               </li>
             </ul>
+            <p className="mt-1">
+              No app, esses cards são sempre coletados primeiro e nunca são limitados pelo
+              limite diário — esta opção controla apenas a ordem em que aparecem na fila. A
+              ordem usada é sempre a do deck que você seleciona para estudar (herdando do pai),
+              e não a dos subdecks.
+            </p>
           </>
         ),
       },
@@ -1185,7 +1191,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                 {
                   icon: <TimerReset className="w-3.5 h-3.5" />,
                   color: 'bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-400',
-                  label: 'Aprendizado / Revisões',
+                  label: 'Aprendizado interdiário / Revisões',
                   value: learnReviewOrder,
                   onChange: (v: string) => setLearnReviewOrder(v as MixOrder),
                   options: [
