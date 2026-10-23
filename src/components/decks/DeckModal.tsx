@@ -223,8 +223,10 @@ const HELP_SECTIONS: Record<
         label: 'Limite de leech',
         content: (
           <p>
-            Quantas vezes um card pode ser esquecido antes de ser marcado como leech (aquele
-            card que vive sendo esquecido).
+            O número de vezes que o botão Errei precisa ser pressionado em um card de revisão
+            antes de ele ser marcado como leech. Leeches são cards que consomem muito do seu
+            tempo — e quando um card é marcado como leech, é uma boa ideia reescrevê-lo,
+            excluí-lo ou pensar em um mnemônico para ajudá-lo a lembrar.
           </p>
         ),
       },
