@@ -207,10 +207,16 @@ const HELP_SECTIONS: Record<
       {
         label: 'Passos de reaprendizagem',
         content: (
-          <p>
-            As etapas que o card cumpre após o lapse — funcionam como os passos de aprendizagem
-            (ex.: "10m"). Completos, o card volta a ser revisão.
-          </p>
+          <>
+            <p>
+              Define os atrasos que um card de revisão cumpre após você marcar como Errei. Por
+              padrão, o card reaparece 10 minutos depois.
+            </p>
+            <p>
+              Os atrasos são separados por espaço e usam minutos (ex.: 1m) ou dias (ex.: 2d) —
+              horas (ex.: 1h) e segundos (ex.: 30s) também são suportados.
+            </p>
+          </>
         ),
       },
       {
