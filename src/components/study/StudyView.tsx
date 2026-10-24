@@ -152,6 +152,9 @@ export const StudyView: React.FC<StudyViewProps> = ({
     };
     const deckNameOf = (deckId: string): string =>
       allDecks.find((d) => d.id === deckId)?.name ?? '';
+    // Anki "due #": fixed position for new cards; falls back to creation
+    // order for cards that never had a position assigned
+    const positionOf = (c: Card): number => c.position ?? c.createdAt;
 
     const learning = dueList
       .filter((c) => c.fsrs.state === 1 || c.fsrs.state === 3)
@@ -199,19 +202,18 @@ export const StudyView: React.FC<StudyViewProps> = ({
         break;
       }
       case 'positionAsc':
-        newCards.sort((a, b) => a.createdAt - b.createdAt);
+        newCards.sort((a, b) => positionOf(a) - positionOf(b));
         break;
       case 'positionDesc':
-        newCards.sort((a, b) => b.createdAt - a.createdAt);
+        newCards.sort((a, b) => positionOf(b) - positionOf(a));
         break;
       case 'deck':
       default:
-        // Group by deck, then insertion order (sequential/random) within each deck
+        // Group by deck, then by "due #" (position) within each deck — randomness
+        // comes from the positions assigned once, fixed between sessions
         newCards.sort((a, b) => {
           if (a.deckId !== b.deckId) return a.deckId < b.deckId ? -1 : 1;
-          return schedulerConfig.insertionOrder === 'random'
-            ? Math.random() - 0.5
-            : a.createdAt - b.createdAt;
+          return positionOf(a) - positionOf(b);
         });
         break;
     }

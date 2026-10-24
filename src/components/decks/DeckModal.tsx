@@ -178,22 +178,24 @@ const HELP_SECTIONS: Record<
         content: (
           <>
             <p>
-              Controla a posição (due #) atribuída aos cards novos quando você adiciona cards.
-              Cards com um número de vencimento menor serão mostrados primeiro ao estudar.
-              Alterar esta opção atualizará automaticamente a posição existente dos cards novos.
+              Controla a posição (due #) dos cards novos. Cards com posição menor aparecem
+              primeiro ao estudar. A posição é atribuída quando você adiciona cards — e, ao
+              alterar esta opção, as posições de todos os cards ainda não estudados são
+              reatribuídas, no deck e em seus subdecks.
             </p>
             <ul className="mt-1 space-y-1 list-disc pl-5">
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Sequencial:
                 </span>{' '}
-                segue a ordem em que os cards foram criados.
+                atribui posições seguindo a ordem em que os cards foram criados.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Aleatório:
                 </span>{' '}
-                ordem aleatória.
+                atribui posições sorteadas ao acaso — a ordem fica valendo até você alterar a
+                opção de novo.
               </li>
             </ul>
           </>
@@ -663,6 +665,10 @@ export const DeckModal: React.FC<DeckModalProps> = ({
     if (!name.trim()) return;
 
     const decks = StorageService.getDecks();
+    // Insertion order before this save — used to detect a mode change below
+    const prevInsertionOrder = editDeck
+      ? StorageService.getEffectiveSchedulerConfig(editDeck.id).insertionOrder
+      : null;
     const dailyLimits = {
       newCardsPerDay: parseLimit(newCardsPerDay),
       maxReviewsPerDay: parseLimit(maxReviewsPerDay),
@@ -725,6 +731,16 @@ export const DeckModal: React.FC<DeckModalProps> = ({
         updatedAt: Date.now(),
       };
       StorageService.saveDecks([...decks, newDeck]);
+    }
+
+    // Anki-style: changing the insertion order reassigns the "due #" (position)
+    // of every new card in this deck and its subdecks (subdecks follow parent)
+    if (editDeck && prevInsertionOrder !== insertionOrder) {
+      const prefix = `${editDeck.name}::`;
+      const affectedDeckIds = decks
+        .filter((d) => d.id === editDeck.id || d.name.startsWith(prefix))
+        .map((d) => d.id);
+      StorageService.reassignNewCardPositions(affectedDeckIds, insertionOrder);
     }
 
     onSaved();
