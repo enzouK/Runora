@@ -79,6 +79,7 @@ export interface Card {
   templateOrd: number;           // Ordinal index of template or cloze index
   due: number;                   // Due timestamp in ms
   fsrs: FSRSCardData;
+  position?: number;             // Anki "due #": fixed queue slot for new cards (states 0)
   learningStep?: number;         // Current index into learning/relearning steps (states 1/3)
   suspended?: boolean;           // Suspended cards never appear in queues/counts (leech/manual)
   createdAt: number;

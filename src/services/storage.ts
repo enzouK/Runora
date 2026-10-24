@@ -274,6 +274,48 @@ export class StorageService {
   /**
    * Sync cards for a given note: creates or updates cards based on template count or cloze indices
    */
+  /**
+   * Renumber 1..N the NEW cards (state 0) of a deck, in the relative order they
+   * appear in `orderedNewCards`. Other cards are returned untouched.
+   */
+  private static renumberNewCards(cards: Card[], deckId: string, orderedNewCards: Card[]): Card[] {
+    const posById = new Map<string, number>();
+    let idx = 0;
+    for (const c of orderedNewCards) {
+      if (c.deckId === deckId && c.fsrs.state === 0) posById.set(c.id, ++idx);
+    }
+    return cards.map((c) => {
+      const pos = posById.get(c.id);
+      return pos !== undefined ? { ...c, position: pos } : c;
+    });
+  }
+
+  /**
+   * Anki-style: when a deck's insertion order changes, every NEW card of that deck
+   * (and of any subdeck following it) gets its "due #" (position) reassigned:
+   * sequential → 1..N in creation order; random → 1..N after a shuffle.
+   * Afterwards the order is FIXED — no reshuffling per session.
+   */
+  public static reassignNewCardPositions(deckIds: readonly string[], mode: InsertionOrder): void {
+    if (deckIds.length === 0) return;
+    let cards = this.getCards();
+    for (const deckId of new Set(deckIds)) {
+      const deckNewCards = cards.filter((c) => c.deckId === deckId && c.fsrs.state === 0);
+      if (deckNewCards.length === 0) continue;
+      const ordered = [...deckNewCards];
+      if (mode === 'random') {
+        for (let i = ordered.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+        }
+      } else {
+        ordered.sort((a, b) => a.createdAt - b.createdAt);
+      }
+      cards = this.renumberNewCards(cards, deckId, ordered);
+    }
+    this.saveCards(cards);
+  }
+
   public static syncCardsForNote(note: Note): Card[] {
     const noteTypes = this.getNoteTypes();
     const noteType = noteTypes.find((nt) => nt.id === note.noteTypeId);
@@ -355,8 +397,47 @@ export class StorageService {
       }
     }
 
-    const allUpdatedCards = [...otherCards, ...updatedNoteCards];
-    this.saveCards(allUpdatedCards);
+    let allCards = [...otherCards, ...updatedNoteCards];
+
+    // Anki-style positions ("due #") for the brand-new cards of this note
+    const freshCards = updatedNoteCards.filter((c) => c.position === undefined);
+    if (freshCards.length > 0) {
+      const mode = this.getEffectiveSchedulerConfig(note.deckId).insertionOrder;
+      const isNewCard = (c: Card): boolean => c.fsrs.state === 0;
+
+      if (mode === 'random') {
+        // Insert each card into a random slot; later positions shift to make room
+        const deckNewCount = allCards.filter(
+          (c) => c.deckId === note.deckId && isNewCard(c)
+        ).length;
+        for (const card of freshCards) {
+          const slot = Math.floor(Math.random() * (deckNewCount + 1)) + 1;
+          allCards = allCards.map((c) => {
+            if (c.id === card.id) return { ...c, position: slot };
+            if (
+              c.deckId === note.deckId &&
+              isNewCard(c) &&
+              (c.position ?? Infinity) >= slot
+            ) {
+              return { ...c, position: c.position! + 1 };
+            }
+            return c;
+          });
+        }
+      }
+      // Compact positions 1..N. Random keeps the just-assigned order; sequential
+      // arrives in creation order (new cards are appended after existing ones).
+      const ordered = allCards
+        .filter((c) => c.deckId === note.deckId && isNewCard(c))
+        .sort(
+          (a, b) =>
+            (a.position ?? a.createdAt) - (b.position ?? b.createdAt) ||
+            a.createdAt - b.createdAt
+        );
+      allCards = this.renumberNewCards(allCards, note.deckId, ordered);
+    }
+
+    this.saveCards(allCards);
     return updatedNoteCards;
   }
 
