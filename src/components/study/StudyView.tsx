@@ -513,19 +513,20 @@ export const StudyView: React.FC<StudyViewProps> = ({
     const updatedCardsList = allCards.map((c) => (c.id === updatedCard.id ? updatedCard : c));
     StorageService.saveCards(updatedCardsList);
 
-    // Leech action (Anki): suspend the card, or just tag the note
+    // Leech action (Anki): both suspend and tag label the note with "leech";
+    // suspend additionally hides the card until it is manually enabled again
     if (hitLeech) {
-      if (schedulerConfig.leechAction === 'suspend') {
-        setLeechNotice(`Leech: card suspenso após ${nextCardData.lapses} lapsos`);
-      } else {
-        const notes = StorageService.getNotes().map((n) =>
-          n.id === currentCard.noteId && !n.tags.includes('leech')
-            ? { ...n, tags: [...n.tags, 'leech'], updatedAt: Date.now() }
-            : n
-        );
-        StorageService.saveNotes(notes);
-        setLeechNotice(`Leech: nota marcada com a etiqueta "leech" (${nextCardData.lapses} lapsos)`);
-      }
+      const notes = StorageService.getNotes().map((n) =>
+        n.id === currentCard.noteId && !n.tags.includes('leech')
+          ? { ...n, tags: [...n.tags, 'leech'], updatedAt: Date.now() }
+          : n
+      );
+      StorageService.saveNotes(notes);
+      setLeechNotice(
+        schedulerConfig.leechAction === 'suspend'
+          ? `Leech: card suspenso após ${nextCardData.lapses} lapsos`
+          : `Leech: nota marcada com a etiqueta "leech" (${nextCardData.lapses} lapsos)`
+      );
       window.setTimeout(() => setLeechNotice(null), 5000);
     }
 
