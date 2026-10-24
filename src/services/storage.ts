@@ -754,20 +754,10 @@ export class StorageService {
     return lineage;
   }
 
-  /** Resolved limits for a deck: nearest ancestor that defines each value, else defaults. */
+  /** Resolved limits for a deck: read straight from its preset (Anki preset model). */
   public static getEffectiveDailyLimits(deckId: string): { newCardsPerDay: number; maxReviewsPerDay: number } {
-    const decks = this.getDecks();
-    const deck = decks.find((d) => d.id === deckId);
-    const result = { ...this.DEFAULT_DAILY_LIMITS };
-    if (!deck) return result;
-    const lineage = this.getDeckLineage(decks, deck);
-    for (const ancestor of lineage) {
-      const nl = ancestor.dailyLimits?.newCardsPerDay;
-      const rl = ancestor.dailyLimits?.maxReviewsPerDay;
-      if (nl !== null && nl !== undefined) result.newCardsPerDay = nl;
-      if (rl !== null && rl !== undefined) result.maxReviewsPerDay = rl;
-    }
-    return result;
+    const limits = this.getDeckPreset(deckId).dailyLimits;
+    return { newCardsPerDay: limits.newCardsPerDay, maxReviewsPerDay: limits.maxReviewsPerDay };
   }
 
   /**
@@ -803,29 +793,19 @@ export class StorageService {
   }
 
   /**
-   * Remaining allowance for a deck, Anki-style: the tightest constraint among
-   * the deck and all of its ancestors (an ancestor's limit caps the whole subtree).
+   * Remaining allowance for a deck, Anki-style: its preset limits minus today's
+   * usage across the deck's subtree (usage of the deck and its subdecks).
    */
   public static getRemainingDailyLimits(deckId: string, now = Date.now()): { newRemaining: number; reviewRemaining: number } {
     const decks = this.getDecks();
     const deck = decks.find((d) => d.id === deckId);
     if (!deck) return { newRemaining: 0, reviewRemaining: 0 };
 
-    const lineage = this.getDeckLineage(decks, deck);
-    const chain = lineage.length > 0 ? lineage : [deck];
-    let newRemaining = Number.POSITIVE_INFINITY;
-    let reviewRemaining = Number.POSITIVE_INFINITY;
-
-    for (const ancestor of chain) {
-      const limits = this.getEffectiveDailyLimits(ancestor.id);
-      const usage = this.getDailyUsage(ancestor.id, now);
-      newRemaining = Math.min(newRemaining, limits.newCardsPerDay - usage.newUsed);
-      reviewRemaining = Math.min(reviewRemaining, limits.maxReviewsPerDay - usage.reviewUsed);
-    }
-
+    const limits = this.getEffectiveDailyLimits(deckId);
+    const usage = this.getDailyUsage(deckId, now);
     return {
-      newRemaining: Math.max(0, Math.floor(newRemaining)),
-      reviewRemaining: Math.max(0, Math.floor(reviewRemaining)),
+      newRemaining: Math.max(0, limits.newCardsPerDay - usage.newUsed),
+      reviewRemaining: Math.max(0, limits.maxReviewsPerDay - usage.reviewUsed),
     };
   }
 
@@ -1041,7 +1021,7 @@ export class StorageService {
       .join(' ');
   }
 
-  /** Resolve scheduler config along the deck lineage (nearest defined value wins, else defaults). */
+  /** Resolved scheduler config for a deck: read straight from its preset. */
   public static getEffectiveSchedulerConfig(deckId: string): {
     learningSteps: number[];
     insertionOrder: InsertionOrder;
@@ -1049,29 +1029,14 @@ export class StorageService {
     leechThreshold: number;
     leechAction: LeechAction;
   } {
-    const decks = this.getDecks();
-    const deck = decks.find((d) => d.id === deckId);
-    const result = { ...this.DEFAULT_SCHEDULER };
-    if (!deck) return result;
-
-    for (const ancestor of this.getDeckLineage(decks, deck)) {
-      const sc = ancestor.schedulerConfig;
-      if (!sc) continue;
-      if (sc.learningSteps) {
-        const parsed = this.parseSteps(sc.learningSteps);
-        if (parsed) result.learningSteps = parsed;
-      }
-      if (sc.insertionOrder) result.insertionOrder = sc.insertionOrder;
-      if (sc.relearningSteps) {
-        const parsed = this.parseSteps(sc.relearningSteps);
-        if (parsed) result.relearningSteps = parsed;
-      }
-      if (sc.leechThreshold !== null && sc.leechThreshold !== undefined && sc.leechThreshold > 0) {
-        result.leechThreshold = sc.leechThreshold;
-      }
-      if (sc.leechAction) result.leechAction = sc.leechAction;
-    }
-    return result;
+    const sc = this.getDeckPreset(deckId).schedulerConfig;
+    return {
+      learningSteps: this.parseSteps(sc.learningSteps) ?? [...this.DEFAULT_SCHEDULER.learningSteps],
+      insertionOrder: sc.insertionOrder,
+      relearningSteps: this.parseSteps(sc.relearningSteps) ?? [...this.DEFAULT_SCHEDULER.relearningSteps],
+      leechThreshold: sc.leechThreshold > 0 ? sc.leechThreshold : this.DEFAULT_SCHEDULER.leechThreshold,
+      leechAction: sc.leechAction,
+    };
   }
 
   // ---- Anki-style Display Order ----
@@ -1085,7 +1050,7 @@ export class StorageService {
     reviewSortOrder: 'dueRandom' as ReviewSortOrder,
   };
 
-  /** Resolve display order along the deck lineage (nearest defined value wins, else defaults). */
+  /** Resolved display order for a deck: read straight from its preset. */
   public static getEffectiveDisplayOrder(deckId: string): {
     newGatherOrder: NewGatherOrder;
     newSortOrder: NewSortOrder;
@@ -1093,21 +1058,14 @@ export class StorageService {
     learnReviewOrder: MixOrder;
     reviewSortOrder: ReviewSortOrder;
   } {
-    const decks = this.getDecks();
-    const deck = decks.find((d) => d.id === deckId);
-    const result = { ...this.DEFAULT_DISPLAY_ORDER };
-    if (!deck) return result;
-
-    for (const ancestor of this.getDeckLineage(decks, deck)) {
-      const od = ancestor.displayOrder;
-      if (!od) continue;
-      if (od.newGatherOrder) result.newGatherOrder = od.newGatherOrder;
-      if (od.newSortOrder) result.newSortOrder = od.newSortOrder;
-      if (od.newReviewOrder) result.newReviewOrder = od.newReviewOrder;
-      if (od.learnReviewOrder) result.learnReviewOrder = od.learnReviewOrder;
-      if (od.reviewSortOrder) result.reviewSortOrder = od.reviewSortOrder;
-    }
-    return result;
+    const od = this.getDeckPreset(deckId).displayOrder;
+    return {
+      newGatherOrder: od.newGatherOrder ?? this.DEFAULT_DISPLAY_ORDER.newGatherOrder,
+      newSortOrder: od.newSortOrder ?? this.DEFAULT_DISPLAY_ORDER.newSortOrder,
+      newReviewOrder: od.newReviewOrder ?? this.DEFAULT_DISPLAY_ORDER.newReviewOrder,
+      learnReviewOrder: od.learnReviewOrder ?? this.DEFAULT_DISPLAY_ORDER.learnReviewOrder,
+      reviewSortOrder: od.reviewSortOrder ?? this.DEFAULT_DISPLAY_ORDER.reviewSortOrder,
+    };
   }
 
   // ---- Anki-style Audio Config ----
@@ -1117,23 +1075,12 @@ export class StorageService {
     disableAutoplay: false,
   };
 
-  /** Resolve audio config along the deck lineage (nearest defined value wins, else default). */
+  /** Resolved audio config for a deck: read straight from its preset. */
   public static getEffectiveAudioConfig(deckId: string): {
     disableAutoplay: boolean;
   } {
-    const decks = this.getDecks();
-    const deck = decks.find((d) => d.id === deckId);
-    const result = { ...this.DEFAULT_AUDIO };
-    if (!deck) return result;
-
-    for (const ancestor of this.getDeckLineage(decks, deck)) {
-      const ac = ancestor.audioConfig;
-      if (!ac) continue;
-      if (ac.disableAutoplay !== null && ac.disableAutoplay !== undefined) {
-        result.disableAutoplay = ac.disableAutoplay;
-      }
-    }
-    return result;
+    const ac = this.getDeckPreset(deckId).audioConfig;
+    return { disableAutoplay: ac.disableAutoplay ?? this.DEFAULT_AUDIO.disableAutoplay };
   }
 
   /**

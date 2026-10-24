@@ -128,14 +128,19 @@ export const DeckList: React.FC<DeckListProps> = ({
                 <span className="font-semibold text-[15px] text-zinc-900 dark:text-zinc-50 truncate">
                   {node.shortName}
                 </span>
-                {node.deck.fsrsParams?.requestRetention && (
-                  <span
-                    className="hidden sm:inline text-[11px] font-medium text-zinc-400 dark:text-zinc-500"
-                    title="Retenção alvo FSRS"
-                  >
-                    {Math.round(node.deck.fsrsParams.requestRetention * 100)}%
-                  </span>
-                )}
+                {(() => {
+                  const presetRetention =
+                    StorageService.getDeckPreset(node.deck.id).fsrsParams.requestRetention;
+                  const globalRetention = StorageService.getFSRSSettings().requestRetention;
+                  return Math.round(presetRetention * 100) !== Math.round(globalRetention * 100) ? (
+                    <span
+                      className="hidden sm:inline text-[11px] font-medium text-zinc-400 dark:text-zinc-500"
+                      title="Retenção alvo FSRS (preset)"
+                    >
+                      {Math.round(presetRetention * 100)}%
+                    </span>
+                  ) : null;
+                })()}
               </div>
               {node.deck.description && (
                 <p className="text-[12px] text-zinc-400 dark:text-zinc-500 truncate max-w-xs leading-tight mt-px">

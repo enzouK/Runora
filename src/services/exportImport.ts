@@ -4,7 +4,7 @@ import { decompress as zstdDecompress } from 'fzstd';
 // sql.js ships a wasm binary; Vite serves it as an asset URL
 // @ts-ignore - vite/client provides '?url' module typing
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
-import { Card, Deck, FSRSParameters, Note, NoteType, RevlogEntry } from '../types/anki';
+import { Card, Deck, FSRSParameters, Note, NoteType, Preset, RevlogEntry } from '../types/anki';
 import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
 
@@ -14,6 +14,11 @@ export interface AnkiCollectionExport {
   exportedAt: number;
   fsrsParameters: FSRSParameters;
   decks: Deck[];
+  /**
+   * Option presets (optional for backwards compatibility with older backups —
+   * decks without their preset in the file fall back to the factory preset).
+   */
+  presets?: Preset[];
   noteTypes: NoteType[];
   notes: Note[];
   cards: Card[];
@@ -31,6 +36,7 @@ export class ExportImportService {
       exportedAt: Date.now(),
       fsrsParameters: StorageService.getFSRSSettings(),
       decks: StorageService.getDecks(),
+      presets: StorageService.getPresets(),
       noteTypes: StorageService.getNoteTypes(),
       notes: StorageService.getNotes(),
       cards: StorageService.getCards(),
@@ -532,6 +538,14 @@ export class ExportImportService {
 
     // Merge or replace
     StorageService.saveDecks(data.decks);
+    if (data.presets) {
+      // Imported presets win on id collision; the factory "Padrão" preset is
+      // always preserved (getPresets re-seeds it when missing)
+      const existing = StorageService.getPresets();
+      const importedIds = new Set(data.presets.map((p) => p.id));
+      const factory = existing.filter((p) => p.id === StorageService.DEFAULT_PRESET_ID && !importedIds.has(p.id));
+      StorageService.savePresets([...factory, ...data.presets]);
+    }
     if (data.noteTypes) StorageService.saveNoteTypes(data.noteTypes);
     StorageService.saveNotes(data.notes);
     StorageService.saveCards(data.cards);
