@@ -462,59 +462,84 @@ const HELP_SECTIONS: Record<
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Vencimento, depois aleatório:
                 </span>{' '}
-                prioriza os que esperam há mais tempo — o recomendado quando você está em dia.
+                os cards com vencimento mais próximo primeiro — entre cards do mesmo dia vale
+                uma ordem aleatória. O padrão e o recomendado: a aleatoriedade evita que a
+                ordem fixa denuncie a resposta.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Vencimento crescente:
+                </span>{' '}
+                os cards com vencimento mais próximo primeiro — entre cards do mesmo dia vale
+                a ordem em que foram coletados.
+              </li>
+              <li>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Vencimento decrescente:
+                </span>{' '}
+                os cards com vencimento mais distante primeiro — entre cards do mesmo dia vale
+                a ordem em que foram coletados.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Vencimento, depois deck:
                 </span>{' '}
-                idem, desempatando pelos subdecks em ordem.
+                os cards com vencimento mais próximo primeiro — os empates de vencimento são
+                resolvidos pelo nome do subdeck.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Deck, depois vencimento:
                 </span>{' '}
-                cada subdeck em turno — não recomendado: a ordem fixa denuncia a resposta pelo
+                os subdecks em ordem alfabética primeiro e, dentro de cada um, o vencimento
+                mais próximo primeiro — não recomendado: a ordem fixa denuncia a resposta pelo
                 contexto.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Intervalo crescente:
                 </span>{' '}
-                intervalos curtos primeiro.
+                os intervalos mais curtos primeiro — você resolve os cards mais urgentes antes.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Intervalo decrescente:
                 </span>{' '}
-                intervalos longos primeiro.
+                os intervalos mais longos primeiro — você resolve os cards mais urgentes por
+                último.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Facilidade crescente:
                 </span>{' '}
-                os mais difíceis primeiro.
+                os mais difíceis primeiro — no app usa a dificuldade estimada pelo FSRS, no
+                lugar da facilidade do Anki.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Facilidade decrescente:
                 </span>{' '}
-                os mais fáceis primeiro.
+                os mais fáceis primeiro — no app usa a dificuldade estimada pelo FSRS, no
+                lugar da facilidade do Anki.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Retrievabilidade crescente:
                 </span>{' '}
-                os mais perto de ser esquecidos primeiro — recomendado para backlogs (equivalente
-                FSRS do "Relative overdueness").
+                os mais perto de ser esquecidos primeiro — o recomendado para limpar acúmulos
+                pendentes (equivalente FSRS do "Relative overdueness").
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                  Cards aleatórios:
+                  Aleatório:
                 </span>{' '}
-                embaralha as revisões.
+                ordem totalmente aleatória.
               </li>
             </ul>
+            <p className="mt-1">
+              A ordem usada é sempre a do deck que você seleciona para estudar (herdando do
+              pai), e não a dos subdecks.
+            </p>
           </>
         ),
       },
