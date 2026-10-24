@@ -1,4 +1,4 @@
-import { Card, DailyLimits, Deck, DeckCounts, DisplayOrderConfig, FSRSParameters, InsertionOrder, LeechAction, MixOrder, NewGatherOrder, NewSortOrder, Note, NoteType, ReviewSortOrder, RevlogEntry } from '../types/anki';
+import { Card, DailyLimits, Deck, DeckCounts, DisplayOrderConfig, FSRSParameters, InsertionOrder, LeechAction, MixOrder, NewGatherOrder, NewSortOrder, Note, NoteType, Preset, ReviewSortOrder, RevlogEntry } from '../types/anki';
 import { ClozeService } from './clozeService';
 import { INITIAL_CARDS, INITIAL_DECKS, INITIAL_NOTE_TYPES, INITIAL_NOTES } from './sampleData';
 import { DEFAULT_FSRS_PARAMETERS } from '../fsrs/constants';
@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
   SEED_VERSION: 'anki2_seed_version',
   DELETED_DEFAULTS: 'anki2_deleted_defaults',
   PREFS: 'anki2_prefs',
+  PRESETS: 'anki2_presets',
 };
 
 // Bump this when INITIAL_* sample data changes meaningfully,
@@ -830,6 +831,99 @@ export class StorageService {
 
   // ---- Anki-style Scheduler Config (Learning steps, Insertion order, Lapses) ----
 
+  /**
+   * Anki-style factory preset ("Padrão"): every option exactly like the app
+   * defaults. Permanent — it can be renamed neither in this phase nor deleted;
+   * decks re-linked from a deleted preset land here.
+   */
+  public static readonly DEFAULT_PRESET_ID = 'preset-default';
+
+  private static buildDefaultPreset(): Preset {
+    const now = Date.now();
+    return {
+      id: this.DEFAULT_PRESET_ID,
+      name: 'Padrão',
+      dailyLimits: { newCardsPerDay: 20, maxReviewsPerDay: 200 },
+      schedulerConfig: {
+        learningSteps: '1m 10m',
+        insertionOrder: 'sequential',
+        relearningSteps: '10m',
+        leechThreshold: 8,
+        leechAction: 'suspend',
+      },
+      displayOrder: {
+        newGatherOrder: 'deck',
+        newSortOrder: 'template',
+        newReviewOrder: 'mix',
+        learnReviewOrder: 'mix',
+        reviewSortOrder: 'dueRandom',
+      },
+      audioConfig: { disableAutoplay: false },
+      fsrsParams: {
+        requestRetention: DEFAULT_FSRS_PARAMETERS.requestRetention,
+        maximumInterval: DEFAULT_FSRS_PARAMETERS.maximumInterval,
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  /** All option presets, seeding the factory "Padrão" preset on first use. */
+  public static getPresets(): Preset[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.PRESETS);
+    let presets: Preset[] = [];
+    if (raw) {
+      try {
+        presets = JSON.parse(raw) as Preset[];
+      } catch {
+        presets = [];
+      }
+    }
+    if (!presets.some((p) => p.id === this.DEFAULT_PRESET_ID)) {
+      presets = [this.buildDefaultPreset(), ...presets];
+      localStorage.setItem(STORAGE_KEYS.PRESETS, JSON.stringify(presets));
+    }
+    return presets;
+  }
+
+  public static savePresets(presets: Preset[]): void {
+    localStorage.setItem(STORAGE_KEYS.PRESETS, JSON.stringify(presets));
+  }
+
+  public static getPresetById(presetId: string | null | undefined): Preset | null {
+    return this.getPresets().find((p) => p.id === presetId) ?? null;
+  }
+
+  public static upsertPreset(preset: Preset): void {
+    const presets = this.getPresets();
+    const idx = presets.findIndex((p) => p.id === preset.id);
+    if (idx >= 0) presets[idx] = { ...preset, updatedAt: Date.now() };
+    else presets.push({ ...preset, updatedAt: Date.now() });
+    this.savePresets(presets);
+  }
+
+  /** Delete a preset; every deck linked to it is re-linked to the factory preset. */
+  public static deletePreset(presetId: string): void {
+    if (presetId === this.DEFAULT_PRESET_ID) return; // the factory preset is permanent
+    this.savePresets(this.getPresets().filter((p) => p.id !== presetId));
+    const decks = this.getDecks().map((d) =>
+      d.presetId === presetId
+        ? { ...d, presetId: this.DEFAULT_PRESET_ID, updatedAt: Date.now() }
+        : d
+    );
+    this.saveDecks(decks);
+  }
+
+  /** The preset a deck follows — falls back to the factory preset when unlinked. */
+  public static getDeckPreset(deckId: string): Preset {
+    const deck = this.getDecks().find((d) => d.id === deckId);
+    if (deck?.presetId) {
+      const preset = this.getPresetById(deck.presetId);
+      if (preset) return preset;
+    }
+    return this.getPresetById(this.DEFAULT_PRESET_ID)!;
+  }
+
   /** Anki defaults: 1m 10m learning, sequential insertion, 10m relearning, leech at 8 lapses → suspend */
   public static readonly DEFAULT_SCHEDULER = {
     learningSteps: [1, 10] as number[], // minutes
@@ -1028,6 +1122,7 @@ export class StorageService {
     localStorage.removeItem(STORAGE_KEYS.SEED_VERSION);
     localStorage.removeItem(STORAGE_KEYS.DELETED_DEFAULTS);
     localStorage.removeItem(STORAGE_KEYS.PREFS);
+    localStorage.removeItem(STORAGE_KEYS.PRESETS);
     // Clear imported media (IndexedDB) — fire and forget
     void import('./mediaStore').then(({ MediaStore }) => MediaStore.clear()).catch(() => {});
   }

@@ -151,11 +151,41 @@ export interface Deck {
   name: string;                  // Supports hierarchy with "::" e.g. "Languages::Japanese::N5"
   description: string;
   collapsed?: boolean;
+  presetId?: string;             // Options preset this deck follows (see Preset)
   fsrsParams?: Partial<FSRSParameters>; // Custom deck-specific FSRS overrides if any
   dailyLimits?: DailyLimits;     // Anki-style daily limits (affect this deck + subdecks)
   schedulerConfig?: SchedulerConfig; // Anki-style New Cards / Lapses options
   displayOrder?: DisplayOrderConfig; // Anki-style Display Order options
   audioConfig?: AudioConfig;       // Anki-style Audio options (autoplay)
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Anki-style preset: a shareable sheet of deck options ("Deck Options preset").
+ * A deck links to exactly one preset via `presetId`; editing a preset updates
+ * every deck linked to it, regardless of the deck tree (parent/child agnostic).
+ */
+export interface Preset {
+  id: string;
+  name: string;
+  dailyLimits: {
+    newCardsPerDay: number;
+    maxReviewsPerDay: number;
+  };
+  schedulerConfig: {
+    learningSteps: string;        // "1m 10m" — steps for new cards
+    insertionOrder: InsertionOrder;
+    relearningSteps: string;      // "10m" — steps after a lapse
+    leechThreshold: number;       // lapses before leech action (Anki default: 8)
+    leechAction: LeechAction;     // what to do with leeches (Anki default: suspend)
+  };
+  displayOrder: DisplayOrderConfig;
+  audioConfig: AudioConfig;
+  fsrsParams: {
+    requestRetention: number;     // Anki "desired retention"
+    maximumInterval: number;      // Anki "max. days per interval"
+  };
   createdAt: number;
   updatedAt: number;
 }
