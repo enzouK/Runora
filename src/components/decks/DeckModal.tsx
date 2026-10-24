@@ -444,10 +444,11 @@ const HELP_SECTIONS: Record<
               </li>
             </ul>
             <p className="mt-1">
-              No app, esses cards são sempre coletados primeiro e nunca são limitados pelo
-              limite diário — esta opção controla apenas a ordem em que aparecem na fila. A
-              ordem usada é sempre a do deck que você seleciona para estudar (herdando do pai),
-              e não a dos subdecks.
+              No app, os interdiários entram na contagem do limite diário de revisões e são
+              coletados antes delas — quando o limite acaba, são as revisões que ficam de
+              fora. Esta opção controla apenas a ordem em que aparecem na fila. A ordem usada
+              é sempre a do deck que você seleciona para estudar (herdando do pai), e não a
+              dos subdecks.
             </p>
           </>
         ),

@@ -68,11 +68,15 @@ export const StudyView: React.FC<StudyViewProps> = ({
     );
 
     const now = Date.now();
+    const dayOf = (t: number) => Math.floor(t / 86400000);
+    const today = dayOf(now);
     const allCards = StorageService.getCards().filter((c) => !c.suspended);
 
     // Anki-style daily limits:
     // 1) The studied deck (and its ancestors) impose a SHARED pool across all subdecks
     // 2) Each subdeck additionally has its own budget (its limit minus today's usage)
+    // 3) The review limit is applied first to interday learning cards (i.e. (re)learning
+    //    cards that cross the day boundary), then to the remaining review cards
     const pool = StorageService.getRemainingDailyLimits(deck.id, now);
     let poolNew = pool.newRemaining;
     let poolReview = pool.reviewRemaining;
@@ -88,30 +92,49 @@ export const StudyView: React.FC<StudyViewProps> = ({
       });
     }
 
-    const dueList = allCards.filter((c) => {
-      if (!matchingDeckIds.has(c.deckId)) return false;
-
-      // Learning/relearning cards are always shown (Anki never hides them)
-      if (c.fsrs.state === 1 || c.fsrs.state === 3) {
-        return c.due <= now;
-      }
-
-      const sub = subBudget.get(c.deckId); // undefined for cards directly in the studied deck
-
-      if (c.fsrs.state === 0) {
-        if (poolNew <= 0 || (sub && sub.newLeft <= 0)) return false; // New cards daily limit reached
-        poolNew--;
-        if (sub) sub.newLeft--;
-        return true;
-      }
-
-      // Review queue
-      if (c.due > now) return false;
+    const subOf = (c: Card) => subBudget.get(c.deckId); // undefined for cards directly in the studied deck
+    const admitReviewBudget = (c: Card): boolean => {
+      const sub = subOf(c);
       if (poolReview <= 0 || (sub && sub.reviewLeft <= 0)) return false; // Max reviews/day reached
       poolReview--;
       if (sub) sub.reviewLeft--;
       return true;
-    });
+    };
+    const admitNewBudget = (c: Card): boolean => {
+      const sub = subOf(c);
+      if (poolNew <= 0 || (sub && sub.newLeft <= 0)) return false; // New cards daily limit reached
+      poolNew--;
+      if (sub) sub.newLeft--;
+      return true;
+    };
+    const isOfDeck = (c: Card): boolean => matchingDeckIds.has(c.deckId);
+
+    // (Re)learning cards due later today are intraday and are never hidden;
+    // due on a later day = interday learning → consumes the review limit first (Anki)
+    const intraLearning = allCards.filter(
+      (c) =>
+        isOfDeck(c) &&
+        (c.fsrs.state === 1 || c.fsrs.state === 3) &&
+        c.due <= now &&
+        dayOf(c.due) === today
+    );
+    const interLearning = allCards.filter(
+      (c) =>
+        isOfDeck(c) &&
+        (c.fsrs.state === 1 || c.fsrs.state === 3) &&
+        c.due <= now &&
+        dayOf(c.due) > today
+    );
+    const reviewDue = allCards.filter(
+      (c) => isOfDeck(c) && c.fsrs.state === 2 && c.due <= now
+    );
+
+    const dueList = [
+      ...intraLearning,
+      ...interLearning.filter(admitReviewBudget),
+      ...reviewDue.filter(admitReviewBudget),
+      ...allCards.filter((c) => isOfDeck(c) && c.fsrs.state === 0).filter(admitNewBudget),
+    ];
 
     // ---- Display Order (Anki) ----
     const displayOrder = StorageService.getEffectiveDisplayOrder(deck.id);
