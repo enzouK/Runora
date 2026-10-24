@@ -28,6 +28,7 @@ import {
   MixOrder,
   NewGatherOrder,
   NewSortOrder,
+  Preset,
   ReviewSortOrder,
 } from '../../types/anki';
 import { StorageService } from '../../services/storage';
@@ -37,6 +38,7 @@ import { HelpPanel, HelpTopic } from '../common/HelpPanel';
 type HelpSectionId =
   | 'name'
   | 'description'
+  | 'preset'
   | 'fsrs'
   | 'interval'
   | 'limits'
@@ -72,6 +74,32 @@ const HELP_SECTIONS: Record<
         label: 'Descrição',
         content: (
           <p>Um resumo do objetivo deste deck. Ele aparece na aba Decks, logo abaixo do nome.</p>
+        ),
+      },
+    ],
+  },
+  preset: {
+    label: 'Preset',
+    showIndex: false,
+    topics: [
+      {
+        label: 'Preset',
+        content: (
+          <>
+            <p>
+              Um preset é uma folha de configurações compartilhada: limites diários, Novos
+              Cards, Lapses, Ordem de Exibição, Áudio e os parâmetros FSRS de deck (retenção
+              desejada e intervalo máximo).
+            </p>
+            <p>
+              Todos os decks que usam o mesmo preset recebem as mesmas opções — alterar o
+              preset afeta todos eles de uma vez, em qualquer parte da árvore de decks.
+            </p>
+            <p>
+              "Criar novo preset…" parte dos valores atuais na tela e o deixa independente do
+              preset anterior. O preset "Padrão" de fábrica é permanente.
+            </p>
+          </>
         ),
       },
     ],
@@ -584,6 +612,45 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const [learnReviewOrder, setLearnReviewOrder] = useState<MixOrder>('mix');
   const [reviewSortOrder, setReviewSortOrder] = useState<ReviewSortOrder>('dueRandom');
   const [audioAutoplay, setAudioAutoplay] = useState<'play' | 'dont'>('play');
+  // Preset ("options sheet"): '' means the user chose "Criar novo preset…" and it
+  // will be created on save
+  const [presetList, setPresetList] = useState<Preset[]>([]);
+  const [presetId, setPresetId] = useState('');
+  const [presetName, setPresetName] = useState('Padrão');
+
+  // Populate every option input from a preset sheet
+  const applyPreset = (p: Preset) => {
+    setTargetRetention(p.fsrsParams.requestRetention);
+    setMaxInterval(String(p.fsrsParams.maximumInterval));
+    setNewCardsPerDay(String(p.dailyLimits.newCardsPerDay));
+    setMaxReviewsPerDay(String(p.dailyLimits.maxReviewsPerDay));
+    setLearningSteps(p.schedulerConfig.learningSteps);
+    setInsertionOrder(p.schedulerConfig.insertionOrder);
+    setRelearningSteps(p.schedulerConfig.relearningSteps);
+    setLeechThreshold(String(p.schedulerConfig.leechThreshold));
+    setLeechAction(p.schedulerConfig.leechAction);
+    setNewGatherOrder(p.displayOrder.newGatherOrder ?? 'deck');
+    setNewSortOrder(p.displayOrder.newSortOrder ?? 'template');
+    setNewReviewOrder(p.displayOrder.newReviewOrder ?? 'mix');
+    setLearnReviewOrder(p.displayOrder.learnReviewOrder ?? 'mix');
+    setReviewSortOrder(p.displayOrder.reviewSortOrder ?? 'dueRandom');
+    setAudioAutoplay(p.audioConfig.disableAutoplay ? 'dont' : 'play');
+  };
+
+  /** Switch presets while the modal is open — reloads that preset's options. */
+  const handleSelectPreset = (id: string) => {
+    if (id === '__new__') {
+      // A new preset starts from the values currently on screen
+      setPresetId('');
+      setPresetName(`Preset de ${name.trim().split('::').pop() || 'deck'}`);
+      return;
+    }
+    const found = presetList.find((p) => p.id === id);
+    if (!found) return;
+    setPresetId(found.id);
+    setPresetName(found.name);
+    applyPreset(found);
+  };
 
   useEffect(() => {
     if (!isOpen) {
@@ -591,36 +658,21 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       return;
     }
     const decks = StorageService.getDecks();
+    setPresetList(StorageService.getPresets());
 
-    // Effective (resolved) values: the deck's own settings where set,
-    // otherwise inherited from the parent lineage or the global defaults.
     const baseId = editDeck
       ? editDeck.id
       : parentDeckName
         ? decks.find((d) => d.name === parentDeckName)?.id
         : undefined;
 
-    const effDaily = baseId
-      ? StorageService.getEffectiveDailyLimits(baseId)
-      : {
-          newCardsPerDay: StorageService.DEFAULT_DAILY_LIMITS.newCardsPerDay,
-          maxReviewsPerDay: StorageService.DEFAULT_DAILY_LIMITS.maxReviewsPerDay,
-        };
-    const effSched = baseId
-      ? StorageService.getEffectiveSchedulerConfig(baseId)
-      : {
-          learningSteps: StorageService.DEFAULT_SCHEDULER.learningSteps,
-          insertionOrder: StorageService.DEFAULT_SCHEDULER.insertionOrder,
-          relearningSteps: StorageService.DEFAULT_SCHEDULER.relearningSteps,
-          leechThreshold: StorageService.DEFAULT_SCHEDULER.leechThreshold,
-          leechAction: StorageService.DEFAULT_SCHEDULER.leechAction,
-        };
-    const effOrder = baseId
-      ? StorageService.getEffectiveDisplayOrder(baseId)
-      : { ...StorageService.DEFAULT_DISPLAY_ORDER };
-    const effAudio = baseId
-      ? StorageService.getEffectiveAudioConfig(baseId)
-      : { disableAutoplay: false };
+    // The deck's linked preset is the single source of truth — no lineage walk
+    const preset = baseId
+      ? StorageService.getDeckPreset(baseId)
+      : StorageService.getPresetById(StorageService.DEFAULT_PRESET_ID)!;
+    setPresetId(preset.id);
+    setPresetName(preset.name);
+    applyPreset(preset);
 
     if (editDeck) {
       setName(editDeck.name);
@@ -632,34 +684,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       setName('');
       setDescription('');
     }
-
-    setTargetRetention(editDeck?.fsrsParams?.requestRetention ?? 0.90);
-    setMaxInterval(
-      String(
-        editDeck?.fsrsParams?.maximumInterval ??
-          StorageService.getFSRSSettings().maximumInterval
-      )
-    );
-    setNewCardsPerDay(String(effDaily.newCardsPerDay));
-    setMaxReviewsPerDay(String(effDaily.maxReviewsPerDay));
-    setLearningSteps(StorageService.formatSteps(effSched.learningSteps));
-    setInsertionOrder(effSched.insertionOrder);
-    setRelearningSteps(StorageService.formatSteps(effSched.relearningSteps));
-    setLeechThreshold(String(effSched.leechThreshold));
-    setLeechAction(effSched.leechAction);
-    setNewGatherOrder(effOrder.newGatherOrder);
-    setNewSortOrder(effOrder.newSortOrder);
-    setNewReviewOrder(effOrder.newReviewOrder);
-    setLearnReviewOrder(effOrder.learnReviewOrder);
-    setReviewSortOrder(effOrder.reviewSortOrder);
-    setAudioAutoplay(effAudio.disableAutoplay ? 'dont' : 'play');
   }, [isOpen, editDeck, parentDeckName]);
-
-  const parseLimit = (value: string): number | null => {
-    if (value.trim() === '') return null; // cleared → inherit from the deck parent
-    const n = parseInt(value, 10);
-    return Number.isFinite(n) && n >= 0 ? n : null;
-  };
 
   const handleSave = () => {
     if (!name.trim()) return;
@@ -669,49 +694,70 @@ export const DeckModal: React.FC<DeckModalProps> = ({
     const prevInsertionOrder = editDeck
       ? StorageService.getEffectiveSchedulerConfig(editDeck.id).insertionOrder
       : null;
-    const dailyLimits = {
-      newCardsPerDay: parseLimit(newCardsPerDay),
-      maxReviewsPerDay: parseLimit(maxReviewsPerDay),
+
+    // Resolve a numeric option, falling back when the input is empty/invalid
+    const parseOption = (value: string, fallback: number): number => {
+      const n = parseInt(value, 10);
+      return Number.isFinite(n) && n >= 0 ? n : fallback;
     };
-    const schedulerConfig = {
-      learningSteps: learningSteps.trim() || null,
-      insertionOrder,
-      relearningSteps: relearningSteps.trim() || null,
-      leechThreshold: parseLimit(leechThreshold),
-      leechAction,
-    };
-    const displayOrder: DisplayOrderConfig = {
-      newGatherOrder,
-      newSortOrder,
-      newReviewOrder,
-      learnReviewOrder,
-      reviewSortOrder,
-    };
-    const audioConfig = {
-      disableAutoplay: audioAutoplay === 'dont',
-    };
-    // Per-deck FSRS overrides: only fields the user set are saved;
-    // anything left empty falls back to the global settings at runtime.
-    const fsrsParams: { requestRetention: number; maximumInterval?: number } = {
-      requestRetention: targetRetention,
-    };
+
+    // Build the preset sheet from the current inputs; '' presetId → create new
+    const existingPreset = presetId ? StorageService.getPresetById(presetId) : null;
+    const presetIdFinal = existingPreset ? existingPreset.id : `preset-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const parsedMaxInterval = parseInt(maxInterval, 10);
-    if (Number.isFinite(parsedMaxInterval) && parsedMaxInterval > 0) {
-      fsrsParams.maximumInterval = parsedMaxInterval;
-    }
+    const preset: Preset = {
+      id: presetIdFinal,
+      name: presetName.trim() || 'Padrão',
+      dailyLimits: {
+        newCardsPerDay: parseOption(newCardsPerDay, StorageService.DEFAULT_DAILY_LIMITS.newCardsPerDay),
+        maxReviewsPerDay: parseOption(maxReviewsPerDay, StorageService.DEFAULT_DAILY_LIMITS.maxReviewsPerDay),
+      },
+      schedulerConfig: {
+        learningSteps: learningSteps.trim() || '1m 10m',
+        insertionOrder,
+        relearningSteps: relearningSteps.trim() || '10m',
+        leechThreshold: parseOption(leechThreshold, StorageService.DEFAULT_SCHEDULER.leechThreshold) || StorageService.DEFAULT_SCHEDULER.leechThreshold,
+        leechAction,
+      },
+      displayOrder: {
+        newGatherOrder,
+        newSortOrder,
+        newReviewOrder,
+        learnReviewOrder,
+        reviewSortOrder,
+      },
+      audioConfig: { disableAutoplay: audioAutoplay === 'dont' },
+      fsrsParams: {
+        requestRetention: targetRetention,
+        maximumInterval:
+          Number.isFinite(parsedMaxInterval) && parsedMaxInterval > 0
+            ? parsedMaxInterval
+            : StorageService.getFSRSSettings().maximumInterval,
+      },
+      createdAt: existingPreset?.createdAt ?? Date.now(),
+      updatedAt: Date.now(),
+    };
+    StorageService.upsertPreset(preset);
+
+    // Mirror the preset sheet onto the deck's legacy option fields so studies,
+    // counts and other consumers keep working until the phase-4 switchover.
+    const legacyConfig = {
+      fsrsParams: { ...preset.fsrsParams },
+      dailyLimits: { ...preset.dailyLimits },
+      schedulerConfig: { ...preset.schedulerConfig },
+      displayOrder: { ...preset.displayOrder },
+      audioConfig: { ...preset.audioConfig },
+    };
 
     if (editDeck) {
       const updated = decks.map((d) =>
         d.id === editDeck.id
           ? {
               ...d,
+              presetId: preset.id,
               name: name.trim(),
               description: description.trim(),
-              fsrsParams,
-              dailyLimits,
-              schedulerConfig,
-              displayOrder,
-              audioConfig,
+              ...legacyConfig,
               updatedAt: Date.now(),
             }
           : d
@@ -720,13 +766,10 @@ export const DeckModal: React.FC<DeckModalProps> = ({
     } else {
       const newDeck: Deck = {
         id: `deck-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        presetId: preset.id,
         name: name.trim(),
         description: description.trim(),
-        fsrsParams,
-        dailyLimits,
-        schedulerConfig,
-        displayOrder,
-        audioConfig,
+        ...legacyConfig,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -809,6 +852,40 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Objetivo de estudo deste deck..."
               className="w-full px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 resize-none"
+            />
+          </div>
+
+          {/* ── Preset (folha de opções compartilhada) ── */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Layers className="w-3.5 h-3.5 text-zinc-400" />
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                Preset
+              </label>
+              <button
+                type="button"
+                onClick={() => setHelpSection('preset')}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Mais informações"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <IOSSelect
+              value={presetId || '__new__'}
+              onChange={handleSelectPreset}
+              options={[
+                ...presetList.map((p) => ({ value: p.id as string, label: p.name as string })),
+                { value: '__new__', label: 'Criar novo preset…' },
+              ]}
+              className="w-full"
+            />
+            <input
+              type="text"
+              value={presetName}
+              onChange={(e) => setPresetName(e.target.value)}
+              className="w-full mt-1.5 px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm text-zinc-900 dark:text-zinc-100"
+              placeholder="Nome do preset"
             />
           </div>
 
