@@ -140,7 +140,7 @@ export class StorageService {
         this.saveDecks(items);
         this.markSeedVersion();
       }
-      return items;
+      return this.migrateLegacyDeckOptions(items);
     } catch {
       return INITIAL_DECKS;
     }
@@ -922,6 +922,80 @@ export class StorageService {
       if (preset) return preset;
     }
     return this.getPresetById(this.DEFAULT_PRESET_ID)!;
+  }
+
+  /**
+   * Phase-2 migration: decks still carrying their own option copies (the app UI
+   * always wrote explicit values per deck) are linked to a dedicated preset
+   * built from that copy; decks with no stored options (e.g. the sample
+   * "Padrão" deck) link straight to the factory preset. Idempotent — the
+   * stored `presetId` alone marks a deck as migrated.
+   */
+  private static migrateLegacyDeckOptions(decks: Deck[]): Deck[] {
+    const unlinked = decks.filter((d) => !d.presetId);
+    if (unlinked.length === 0) return decks;
+    const presets = this.getPresets();
+    const now = Date.now();
+    const additions: Preset[] = [];
+    const migrated = decks.map((d) => {
+      if (d.presetId) return d;
+      const hasOwnOptions =
+        d.dailyLimits !== undefined ||
+        d.schedulerConfig !== undefined ||
+        d.displayOrder !== undefined ||
+        d.audioConfig !== undefined ||
+        d.fsrsParams !== undefined;
+      if (!hasOwnOptions) {
+        return { ...d, presetId: this.DEFAULT_PRESET_ID, updatedAt: now };
+      }
+      const presetId = `preset-${d.id}`;
+      if (!presets.some((p) => p.id === presetId)) {
+        additions.push(this.presetFromLegacyDeck(d, presetId));
+      }
+      return { ...d, presetId, updatedAt: now };
+    });
+    if (additions.length > 0) this.savePresets([...presets, ...additions]);
+    this.saveDecks(migrated);
+    return migrated;
+  }
+
+  /** Build a preset from a legacy deck's own explicit option sheet. */
+  private static presetFromLegacyDeck(deck: Deck, presetId: string): Preset {
+    const now = Date.now();
+    return {
+      id: presetId,
+      name: deck.name,
+      dailyLimits: {
+        newCardsPerDay:
+          deck.dailyLimits?.newCardsPerDay ?? this.DEFAULT_DAILY_LIMITS.newCardsPerDay,
+        maxReviewsPerDay:
+          deck.dailyLimits?.maxReviewsPerDay ?? this.DEFAULT_DAILY_LIMITS.maxReviewsPerDay,
+      },
+      schedulerConfig: {
+        learningSteps: deck.schedulerConfig?.learningSteps ?? this.formatSteps(this.DEFAULT_SCHEDULER.learningSteps),
+        insertionOrder: deck.schedulerConfig?.insertionOrder ?? this.DEFAULT_SCHEDULER.insertionOrder,
+        relearningSteps: deck.schedulerConfig?.relearningSteps ?? this.formatSteps(this.DEFAULT_SCHEDULER.relearningSteps),
+        leechThreshold: deck.schedulerConfig?.leechThreshold ?? this.DEFAULT_SCHEDULER.leechThreshold,
+        leechAction: deck.schedulerConfig?.leechAction ?? this.DEFAULT_SCHEDULER.leechAction,
+      },
+      displayOrder: {
+        newGatherOrder: deck.displayOrder?.newGatherOrder ?? this.DEFAULT_DISPLAY_ORDER.newGatherOrder,
+        newSortOrder: deck.displayOrder?.newSortOrder ?? this.DEFAULT_DISPLAY_ORDER.newSortOrder,
+        newReviewOrder: deck.displayOrder?.newReviewOrder ?? this.DEFAULT_DISPLAY_ORDER.newReviewOrder,
+        learnReviewOrder: deck.displayOrder?.learnReviewOrder ?? this.DEFAULT_DISPLAY_ORDER.learnReviewOrder,
+        reviewSortOrder: deck.displayOrder?.reviewSortOrder ?? this.DEFAULT_DISPLAY_ORDER.reviewSortOrder,
+      },
+      audioConfig: {
+        disableAutoplay: deck.audioConfig?.disableAutoplay ?? this.DEFAULT_AUDIO.disableAutoplay,
+      },
+      fsrsParams: {
+        requestRetention:
+          deck.fsrsParams?.requestRetention ?? DEFAULT_FSRS_PARAMETERS.requestRetention,
+        maximumInterval: deck.fsrsParams?.maximumInterval ?? DEFAULT_FSRS_PARAMETERS.maximumInterval,
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   /** Anki defaults: 1m 10m learning, sequential insertion, 10m relearning, leech at 8 lapses → suspend */
