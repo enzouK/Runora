@@ -19,6 +19,11 @@ import {
   Volume2,
   Hourglass,
   HelpCircle,
+  ChevronDown,
+  Plus,
+  Copy,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import {
   Deck,
@@ -87,17 +92,18 @@ const HELP_SECTIONS: Record<
         content: (
           <>
             <p>
-              Um preset é uma folha de configurações compartilhada: limites diários, Novos
-              Cards, Lapses, Ordem de Exibição, Áudio e os parâmetros FSRS de deck (retenção
-              desejada e intervalo máximo).
+              Um preset é uma folha de configurações compartilhada: limites diários, Novos Cards,
+              Lapses, Ordem de Exibição, Áudio e os parâmetros FSRS de deck (retenção desejada e
+              intervalo máximo). Todos os decks ligados ao mesmo preset recebem as mesmas opções —
+              alterar em um deck afeta todos os outros, em qualquer parte da árvore.
             </p>
             <p>
-              Todos os decks que usam o mesmo preset recebem as mesmas opções — alterar o
-              preset afeta todos eles de uma vez, em qualquer parte da árvore de decks.
-            </p>
-            <p>
-              "Criar novo preset…" parte dos valores atuais na tela e o deixa independente do
-              preset anterior. O preset "Padrão" de fábrica é permanente.
+              O seletor no topo do Editar Deck escolhe o preset deste deck (a contagem entre
+              parênteses mostra quantos decks o usam). No botão "Editar ▾" ao lado, o menu de
+              gerenciamento tem: Adicionar Preset, que cria um preset novo com os valores padrão do
+              app; Clonar Preset, que copia os valores atuais da tela para um preset novo; Renomear
+              Preset, que muda apenas o nome; e Remover Preset, que exclui a folha e reúne seus decks
+              no preset de fábrica "Padrão", que é permanente.
             </p>
           </>
         ),
@@ -612,11 +618,14 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const [learnReviewOrder, setLearnReviewOrder] = useState<MixOrder>('mix');
   const [reviewSortOrder, setReviewSortOrder] = useState<ReviewSortOrder>('dueRandom');
   const [audioAutoplay, setAudioAutoplay] = useState<'play' | 'dont'>('play');
-  // Preset ("options sheet"): '' means the user chose "Criar novo preset…" and it
-  // will be created on save
+  // Preset ("options sheet") selected for this deck — the values on screen are
+  // its editable copy, saved back when "Salvar" is pressed
   const [presetList, setPresetList] = useState<Preset[]>([]);
   const [presetId, setPresetId] = useState('');
-  const [presetName, setPresetName] = useState('Padrão');
+  // Anki-style preset management: ▾ menu + dimmed popups for add/clone/rename/remove
+  const [presetMenuOpen, setPresetMenuOpen] = useState(false);
+  const [presetPrompt, setPresetPrompt] = useState<null | { mode: 'add' | 'clone' | 'rename'; value: string }>(null);
+  const [presetDeleteOpen, setPresetDeleteOpen] = useState(false);
 
   // Populate every option input from a preset sheet
   const applyPreset = (p: Preset) => {
@@ -639,17 +648,113 @@ export const DeckModal: React.FC<DeckModalProps> = ({
 
   /** Switch presets while the modal is open — reloads that preset's options. */
   const handleSelectPreset = (id: string) => {
-    if (id === '__new__') {
-      // A new preset starts from the values currently on screen
-      setPresetId('');
-      setPresetName(`Preset de ${name.trim().split('::').pop() || 'deck'}`);
-      return;
-    }
     const found = presetList.find((p) => p.id === id);
     if (!found) return;
     setPresetId(found.id);
-    setPresetName(found.name);
     applyPreset(found);
+  };
+
+  /** Resolve a numeric option, falling back when the input is empty/invalid */
+  const parseOption = (value: string, fallback: number): number => {
+    const n = parseInt(value, 10);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+  };
+
+  /** Build an entire preset sheet from the current on-screen inputs (Salvar / Clone). */
+  const buildPresetFromInputs = (base: Preset): Preset => {
+    const parsedMaxInterval = parseInt(maxInterval, 10);
+    return {
+      ...base,
+      dailyLimits: {
+        newCardsPerDay: parseOption(newCardsPerDay, StorageService.DEFAULT_DAILY_LIMITS.newCardsPerDay),
+        maxReviewsPerDay: parseOption(maxReviewsPerDay, StorageService.DEFAULT_DAILY_LIMITS.maxReviewsPerDay),
+      },
+      schedulerConfig: {
+        learningSteps: learningSteps.trim() || '1m 10m',
+        insertionOrder,
+        relearningSteps: relearningSteps.trim() || '10m',
+        leechThreshold:
+          parseOption(leechThreshold, StorageService.DEFAULT_SCHEDULER.leechThreshold) ||
+          StorageService.DEFAULT_SCHEDULER.leechThreshold,
+        leechAction,
+      },
+      displayOrder: {
+        newGatherOrder,
+        newSortOrder,
+        newReviewOrder,
+        learnReviewOrder,
+        reviewSortOrder,
+      },
+      audioConfig: { disableAutoplay: audioAutoplay === 'dont' },
+      fsrsParams: {
+        requestRetention: targetRetention,
+        maximumInterval:
+          Number.isFinite(parsedMaxInterval) && parsedMaxInterval > 0
+            ? parsedMaxInterval
+            : StorageService.getFSRSSettings().maximumInterval,
+      },
+      updatedAt: Date.now(),
+    };
+  };
+
+  /** Add: a new preset with the app defaults (niche values are edited afterwards). */
+  const handleAddPreset = (newName: string) => {
+    const p = StorageService.createPreset(newName);
+    setPresetList(StorageService.getPresets());
+    setPresetId(p.id);
+    applyPreset(p);
+  };
+
+  /** Clone: a new preset capturing the values currently on screen. */
+  const handleClonePreset = (newName: string) => {
+    const source = presetId ? StorageService.getPresetById(presetId) : null;
+    if (!source) return;
+    const clone: Preset = {
+      ...buildPresetFromInputs(source),
+      id: `preset-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: newName,
+      createdAt: Date.now(),
+    };
+    StorageService.upsertPreset(clone);
+    setPresetList(StorageService.getPresets());
+    setPresetId(clone.id);
+    applyPreset(clone);
+  };
+
+  /** Rename: commits right away (only the name changes, not the options). */
+  const handleRenamePreset = (newName: string) => {
+    const p = presetId ? StorageService.getPresetById(presetId) : null;
+    if (!p) return;
+    StorageService.upsertPreset({ ...p, name: newName });
+    setPresetList(StorageService.getPresets());
+  };
+
+  /** Remove: linked decks re-link to the factory "Padrão" preset. */
+  const handleRemovePreset = () => {
+    const removedId = presetId;
+    StorageService.deletePreset(removedId);
+    const list = StorageService.getPresets();
+    setPresetList(list);
+    const fallback = list.find((p) => p.id === StorageService.DEFAULT_PRESET_ID)!;
+    setPresetId(fallback.id);
+    applyPreset(fallback);
+  };
+
+  /** Commit the naming popup (Add / Clone / Rename). */
+  const confirmPresetPrompt = () => {
+    if (!presetPrompt) return;
+    const trimmed = presetPrompt.value.trim();
+    if (!trimmed) return;
+    if (presetPrompt.mode === 'add') handleAddPreset(trimmed);
+    else if (presetPrompt.mode === 'clone') handleClonePreset(trimmed);
+    else handleRenamePreset(trimmed);
+    setPresetPrompt(null);
+  };
+
+  const PRESET_PROMPT_META: Record<'add' | 'clone' | 'rename', { title: string; subtitle: string }> = {
+    add: { title: 'Adicionar Preset', subtitle: 'Cria um preset novo com os valores padrão do app.' },
+    clone: { title: 'Clonar Preset', subtitle: 'Cria um preset novo com uma cópia dos valores atuais na tela.' },
+    rename: { title: 'Renomear Preset', subtitle: 'Renomeia o preset selecionado; os decks ligados a ele não mudam.' },
   };
 
   useEffect(() => {
@@ -657,6 +762,9 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       setHelpSection(null);
       return;
     }
+    setPresetMenuOpen(false);
+    setPresetPrompt(null);
+    setPresetDeleteOpen(false);
     const decks = StorageService.getDecks();
     setPresetList(StorageService.getPresets());
 
@@ -671,7 +779,6 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       ? StorageService.getDeckPreset(baseId)
       : StorageService.getPresetById(StorageService.DEFAULT_PRESET_ID)!;
     setPresetId(preset.id);
-    setPresetName(preset.name);
     applyPreset(preset);
 
     if (editDeck) {
@@ -695,48 +802,9 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       ? StorageService.getEffectiveSchedulerConfig(editDeck.id).insertionOrder
       : null;
 
-    // Resolve a numeric option, falling back when the input is empty/invalid
-    const parseOption = (value: string, fallback: number): number => {
-      const n = parseInt(value, 10);
-      return Number.isFinite(n) && n >= 0 ? n : fallback;
-    };
-
-    // Build the preset sheet from the current inputs; '' presetId → create new
-    const existingPreset = presetId ? StorageService.getPresetById(presetId) : null;
-    const presetIdFinal = existingPreset ? existingPreset.id : `preset-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const parsedMaxInterval = parseInt(maxInterval, 10);
-    const preset: Preset = {
-      id: presetIdFinal,
-      name: presetName.trim() || 'Padrão',
-      dailyLimits: {
-        newCardsPerDay: parseOption(newCardsPerDay, StorageService.DEFAULT_DAILY_LIMITS.newCardsPerDay),
-        maxReviewsPerDay: parseOption(maxReviewsPerDay, StorageService.DEFAULT_DAILY_LIMITS.maxReviewsPerDay),
-      },
-      schedulerConfig: {
-        learningSteps: learningSteps.trim() || '1m 10m',
-        insertionOrder,
-        relearningSteps: relearningSteps.trim() || '10m',
-        leechThreshold: parseOption(leechThreshold, StorageService.DEFAULT_SCHEDULER.leechThreshold) || StorageService.DEFAULT_SCHEDULER.leechThreshold,
-        leechAction,
-      },
-      displayOrder: {
-        newGatherOrder,
-        newSortOrder,
-        newReviewOrder,
-        learnReviewOrder,
-        reviewSortOrder,
-      },
-      audioConfig: { disableAutoplay: audioAutoplay === 'dont' },
-      fsrsParams: {
-        requestRetention: targetRetention,
-        maximumInterval:
-          Number.isFinite(parsedMaxInterval) && parsedMaxInterval > 0
-            ? parsedMaxInterval
-            : StorageService.getFSRSSettings().maximumInterval,
-      },
-      createdAt: existingPreset?.createdAt ?? Date.now(),
-      updatedAt: Date.now(),
-    };
+    const presetBase = presetId ? StorageService.getPresetById(presetId) : null;
+    if (!presetBase) return; // the top selector always holds a stored preset
+    const preset = buildPresetFromInputs(presetBase);
     StorageService.upsertPreset(preset);
 
     // Mirror the preset sheet onto the deck's legacy option fields so studies,
@@ -792,6 +860,15 @@ export const DeckModal: React.FC<DeckModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Deck usage count per preset (unlinked decks count toward the factory "Padrão")
+  const usageOf = (pid: string) =>
+    StorageService.getDecks().filter((d) =>
+      pid === StorageService.DEFAULT_PRESET_ID
+        ? !d.presetId || d.presetId === pid
+        : d.presetId === pid
+    ).length;
+  const isFactoryPreset = presetId === StorageService.DEFAULT_PRESET_ID;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="relative w-full max-w-md bg-white dark:bg-ios-card-dark rounded-[20px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col max-h-[88vh] ios-fade-in">
@@ -809,6 +886,108 @@ export const DeckModal: React.FC<DeckModalProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {/* ── Preset (folha de opções compartilhada, estilo Anki) ── */}
+          <div>
+            <div className="flex items-center gap-1 mb-1.5">
+              <Layers className="w-3.5 h-3.5 text-zinc-400" />
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                Preset
+              </label>
+              <button
+                type="button"
+                onClick={() => setHelpSection('preset')}
+                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                title="Mais informações"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <IOSSelect
+                value={presetId}
+                onChange={handleSelectPreset}
+                options={presetList.map((p) => {
+                  const n = usageOf(p.id);
+                  return {
+                    value: p.id as string,
+                    label: `${p.name as string} (${n} ${n === 1 ? 'deck' : 'decks'})`,
+                  };
+                })}
+                className="flex-1 min-w-0"
+              />
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPresetMenuOpen((o) => !o)}
+                  title="Modificar / gerenciar presets"
+                  className="h-9 px-3.5 rounded-full flex items-center gap-1 text-[13px] font-semibold text-zinc-600 dark:text-zinc-200 border border-black/[0.1] dark:border-white/[0.15] bg-white dark:bg-white/[0.09] hover:bg-black/[0.04] dark:hover:bg-white/[0.14] transition-colors active:scale-95"
+                >
+                  <span>Editar</span>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+                {presetMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setPresetMenuOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1.5 z-20 w-52 py-1 rounded-[12px] bg-white dark:bg-zinc-900 border border-black/[0.08] dark:border-white/[0.1] shadow-[0_8px_30px_rgba(0,0,0,0.12)] ios-fade-in">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPresetMenuOpen(false);
+                          setPresetPrompt({ mode: 'add', value: '' });
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-zinc-400" />
+                        Adicionar Preset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPresetMenuOpen(false);
+                          setPresetPrompt({ mode: 'clone', value: '' });
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-colors"
+                      >
+                        <Copy className="w-3.5 h-3.5 text-zinc-400" />
+                        Clonar Preset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPresetMenuOpen(false);
+                          const current = presetList.find((p) => p.id === presetId);
+                          setPresetPrompt({ mode: 'rename', value: current?.name ?? '' });
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                        Renomear Preset
+                      </button>
+                      <div className="my-0.5 border-t border-black/[0.05] dark:border-white/[0.06]" />
+                      <button
+                        type="button"
+                        disabled={isFactoryPreset}
+                        title={
+                          isFactoryPreset
+                            ? 'O preset de fábrica "Padrão" é permanente e não pode ser removido'
+                            : 'Remove o preset; decks ligados passam ao "Padrão"'
+                        }
+                        onClick={() => {
+                          setPresetMenuOpen(false);
+                          setPresetDeleteOpen(true);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-600 dark:text-red-400 hover:bg-red-500/[0.08] dark:hover:bg-red-500/[0.12] transition-colors disabled:opacity-35 disabled:hover:bg-transparent"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Remover Preset
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div>
             <div className="flex items-center gap-1 mb-1.5">
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
@@ -852,40 +1031,6 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Objetivo de estudo deste deck..."
               className="w-full px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 resize-none"
-            />
-          </div>
-
-          {/* ── Preset (folha de opções compartilhada) ── */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <Layers className="w-3.5 h-3.5 text-zinc-400" />
-              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-                Preset
-              </label>
-              <button
-                type="button"
-                onClick={() => setHelpSection('preset')}
-                className="p-0.5 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-                title="Mais informações"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <IOSSelect
-              value={presetId || '__new__'}
-              onChange={handleSelectPreset}
-              options={[
-                ...presetList.map((p) => ({ value: p.id as string, label: p.name as string })),
-                { value: '__new__', label: 'Criar novo preset…' },
-              ]}
-              className="w-full"
-            />
-            <input
-              type="text"
-              value={presetName}
-              onChange={(e) => setPresetName(e.target.value)}
-              className="w-full mt-1.5 px-3.5 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm text-zinc-900 dark:text-zinc-100"
-              placeholder="Nome do preset"
             />
           </div>
 
@@ -1385,6 +1530,95 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             <span>Salvar</span>
           </button>
         </div>
+
+        {/* ── Popups de gestão de preset (fundo escurecido, estilo Anki) ── */}
+        {presetPrompt && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={(e) => e.target === e.currentTarget && setPresetPrompt(null)}
+          >
+            <div className="w-full max-w-xs bg-white dark:bg-ios-card-dark rounded-[16px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.25)] p-5 space-y-3 ios-fade-in">
+              <h4 className="text-[15px] font-bold text-zinc-900 dark:text-zinc-50">
+                {PRESET_PROMPT_META[presetPrompt.mode].title}
+              </h4>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                {PRESET_PROMPT_META[presetPrompt.mode].subtitle}
+              </p>
+              <input
+                type="text"
+                autoFocus
+                value={presetPrompt.value}
+                onChange={(e) => setPresetPrompt({ ...presetPrompt, value: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') confirmPresetPrompt();
+                  if (e.key === 'Escape') setPresetPrompt(null);
+                }}
+                placeholder="Nome do preset"
+                className="w-full px-3 py-2.5 rounded-[12px] bg-black/[0.05] dark:bg-white/[0.09] border border-transparent focus:border-ios-blue focus:outline-none text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400"
+              />
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPresetPrompt(null)}
+                  className="px-3.5 py-2 rounded-full text-[13px] font-semibold text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmPresetPrompt}
+                  disabled={!presetPrompt.value.trim()}
+                  className="px-4 py-2 rounded-full bg-ios-blue hover:bg-[#0071eb] text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(0,122,255,0.35)] transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {presetPrompt.mode === 'rename' ? 'Renomear' : 'Criar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {presetDeleteOpen && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={(e) => e.target === e.currentTarget && setPresetDeleteOpen(false)}
+          >
+            <div className="w-full max-w-xs bg-white dark:bg-ios-card-dark rounded-[16px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.25)] p-5 space-y-3 ios-fade-in">
+              <h4 className="text-[15px] font-bold text-red-600 dark:text-red-400">
+                Remover Preset?
+              </h4>
+              <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
+                Todos os decks que usam{' '}
+                <strong className="font-semibold">
+                  "{presetList.find((p) => p.id === presetId)?.name ?? ''}"
+                </strong>{' '}
+                ({usageOf(presetId)} {usageOf(presetId) === 1 ? 'deck' : 'decks'}) passarão a usar o
+                preset de fábrica <strong className="font-semibold">"Padrão"</strong> e receberão as
+                opções dele. Esta ação não pode ser desfeita.
+              </p>
+              <div className="px-3 py-2 rounded-[12px] bg-red-500/10 border border-red-500/20 text-xs font-medium text-zinc-700 dark:text-zinc-200 break-words">
+                {presetList.find((p) => p.id === presetId)?.name ?? ''}
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPresetDeleteOpen(false)}
+                  className="px-3.5 py-2 rounded-full text-[13px] font-semibold text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.06] dark:hover:bg-white/[0.1] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleRemovePreset();
+                    setPresetDeleteOpen(false);
+                  }}
+                  className="px-4 py-2 rounded-full bg-red-600 hover:bg-red-700 text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(220,38,38,0.35)] transition-all active:scale-95"
+                >
+                  Remover Preset
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Painel de ajuda (estilo Anki) */}
         <HelpPanel

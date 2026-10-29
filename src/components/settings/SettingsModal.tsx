@@ -16,7 +16,6 @@ import { DEFAULT_FSRS_PARAMETERS } from '../../fsrs/constants';
 import { AddonSystem } from '../../services/addonSystem';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSwitch } from '../common/IOSSwitch';
-import { PresetManager } from './PresetManager';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -29,7 +28,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onRefresh,
 }) => {
-  const [activeTab, setActiveTab] = useState<'fsrs' | 'presets' | 'data' | 'addons'>('fsrs');
+  const [activeTab, setActiveTab] = useState<'fsrs' | 'data' | 'addons'>('fsrs');
   const [params, setParams] = useState<FSRSParameters>(() => StorageService.getFSRSSettings());
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [addons, setAddons] = useState(() => AddonSystem.getAddons());
@@ -96,9 +95,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setAddons(AddonSystem.getAddons());
   };
 
-  const TABS: { id: 'fsrs' | 'presets' | 'data' | 'addons'; label: string }[] = [
+  const TABS: { id: 'fsrs' | 'data' | 'addons'; label: string }[] = [
     { id: 'fsrs', label: 'Geral' },
-    { id: 'presets', label: 'Presets' },
     { id: 'data', label: 'Importar / Exportar' },
     { id: 'addons', label: 'Addons JS' },
   ];
@@ -216,10 +214,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               </div>
             </div>
-          )}
-
-          {activeTab === 'presets' && (
-            <PresetManager onRefresh={onRefresh} />
           )}
 
           {activeTab === 'data' && (
