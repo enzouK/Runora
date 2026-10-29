@@ -813,8 +813,8 @@ export class StorageService {
 
   /**
    * Anki-style factory preset ("Padrão"): every option exactly like the app
-   * defaults. Permanent — it can be renamed neither in this phase nor deleted;
-   * decks re-linked from a deleted preset land here.
+   * defaults. Permanent — it can never be deleted; decks re-linked from a
+   * deleted preset land here. Renaming is allowed, like in Anki.
    */
   public static readonly DEFAULT_PRESET_ID = 'preset-default';
 
@@ -892,6 +892,19 @@ export class StorageService {
         : d
     );
     this.saveDecks(decks);
+  }
+
+  /** Create an empty preset with the app defaults (like Anki's "Add" preset option). */
+  public static createPreset(name: string): Preset {
+    const preset: Preset = {
+      ...this.buildDefaultPreset(),
+      id: `preset-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: name.trim() || 'Novo preset',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    this.upsertPreset(preset);
+    return preset;
   }
 
   /** The preset a deck follows — falls back to the factory preset when unlinked. */
