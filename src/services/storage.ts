@@ -742,18 +742,6 @@ export class StorageService {
     );
   }
 
-  /** All ancestors of a deck (from root to itself), by name prefix. */
-  public static getDeckLineage(decks: Deck[], deck: Deck): Deck[] {
-    const parts = deck.name.split('::');
-    const lineage: Deck[] = [];
-    for (let i = 1; i <= parts.length; i++) {
-      const prefixName = parts.slice(0, i).join('::');
-      const found = decks.find((d) => d.name === prefixName);
-      if (found) lineage.push(found);
-    }
-    return lineage;
-  }
-
   /** Resolved limits for a deck: read straight from its preset (Anki preset model). */
   public static getEffectiveDailyLimits(deckId: string): { newCardsPerDay: number; maxReviewsPerDay: number } {
     const limits = this.getDeckPreset(deckId).dailyLimits;
