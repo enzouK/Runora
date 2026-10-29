@@ -5,6 +5,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // relative base so the production build also loads over file:// (Electron)
+    base: './',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

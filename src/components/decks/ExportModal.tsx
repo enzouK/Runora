@@ -149,6 +149,38 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
     setBusy(true);
     setError(null);
     try {
+      const desktop = (window as unknown as { ankiDesktop?: AnkiDesktopBridge }).ankiDesktop;
+      const opts = {
+        deckIds: Array.from(checked),
+        includeScheduling,
+        includePresets,
+        includeMedia,
+      };
+      const isApkg = format === 'apkg';
+
+      if (desktop) {
+        // Real desktop app: native Save As via IPC (works where the web
+        // File System Access API is blocked, e.g. embedded Chromium).
+        const ext = isApkg ? 'apkg' : 'colpkg';
+        const pick = await desktop.pickSavePath(suggestedExportName(opts, isApkg), [
+          { name: isApkg ? 'Anki Deck Package' : 'Anki 2.0 Coleção (FSRS)', extensions: [ext] },
+        ]);
+        if (pick.canceled || !pick.path) {
+          setBusy(false);
+          return; // user cancelled — nothing to do
+        }
+        const built = isApkg
+          ? await AnkiApkgExportService.buildDeckPackage(opts)
+          : await ExportImportService.buildCollectionPackage(opts);
+        const res = await desktop.writeFile(pick.path, new Uint8Array(await built.blob.arrayBuffer()));
+        if (!res.saved) {
+          throw new Error(`a gravação nativa falhou: ${res.error || 'erro desconhecido'}`);
+        }
+        setSelected(null);
+        onClose();
+        return;
+      }
+
       // Editor-embedded browsers (e.g. the OpenCode preview) let the save-as
       // dialog open but block the actual file write, leaving 0-byte orphans.
       // Fail fast: no dialog, no file, clear message.
@@ -160,14 +192,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
             'abra o app em um Chrome/Edge normal para exportar.'
         );
       }
-
-      const opts = {
-        deckIds: Array.from(checked),
-        includeScheduling,
-        includePresets,
-        includeMedia,
-      };
-      const isApkg = format === 'apkg';
 
       // Ask where to save FIRST (still inside the click's user activation,
       // required by the File System Access API).
@@ -183,9 +207,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
       const isTopLevel = window === window.top;
       if (picker && isTopLevel) {
         try {
-          const suggestedName = isApkg
-            ? `${AnkiApkgExportService.pickFileName(opts)}.apkg`
-            : `Anki2_Collection_FSRS_${new Date().toISOString().slice(0, 10)}.colpkg`;
+          const suggestedName = suggestedExportName(opts, isApkg);
           handle = await picker.call(window, {
             suggestedName,
             types: [
@@ -388,6 +410,26 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
 };
 
 /* ── File System Access API types (not in the default DOM lib) ───────── */
+
+/** Native bridge injected by our Electron preload (electron/preload.cjs). */
+interface AnkiDesktopBridge {
+  isDesktop: boolean;
+  pickSavePath: (
+    suggestedName: string,
+    filters: Array<{ name: string; extensions: string[] }>
+  ) => Promise<{ canceled: boolean; path?: string }>;
+  writeFile: (path: string, bytes: Uint8Array) => Promise<{ saved: boolean; error?: string }>;
+}
+
+/** Package file name: real deck name for .apkg, dated for the internal .colpkg. */
+function suggestedExportName(
+  opts: { deckIds: string[] },
+  isApkg: boolean
+): string {
+  return isApkg
+    ? `${AnkiApkgExportService.pickFileName(opts)}.apkg`
+    : `Anki2_Collection_FSRS_${new Date().toISOString().slice(0, 10)}.colpkg`;
+}
 
 interface SaveFileHandle {
   name?: string;

@@ -1,14 +1,46 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Anki 2.0 style flashcards with FSRS scheduler",
+  "author": "enzouK <enzouk@users.noreply.github.com>",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
+    "app": "node electron/dev.cjs",
+    "app:build": "npm run build && electron-builder --win",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
+  },
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.enzouk.anki2fsrs",
+    "productName": "Anki 2.0 FSRS",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -34,6 +66,8 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
+    "electron": "^44.10.0",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.28.0",
     "playwright": "^1.64.0",
     "tailwindcss": "^4.3.3",

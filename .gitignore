@@ -10,3 +10,7 @@ coverage/
 # Backups locais (grandes, nao versionar)
 Backups/
 backup-*/
+
+# Artefatos do app desktop (Electron)
+release/
+.electron-smoke/
