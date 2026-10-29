@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import {
   X,
   Clock,
-  Download,
-  Upload,
   RotateCcw,
   Puzzle,
   Check,
@@ -28,7 +26,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onRefresh,
 }) => {
-  const [activeTab, setActiveTab] = useState<'fsrs' | 'data' | 'addons'>('fsrs');
+  const [activeTab, setActiveTab] = useState<'fsrs' | 'addons'>('fsrs');
   const [params, setParams] = useState<FSRSParameters>(() => StorageService.getFSRSSettings());
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [addons, setAddons] = useState(() => AddonSystem.getAddons());
@@ -59,26 +57,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onRefresh();
   };
 
-  const handleExport = async () => {
-    await ExportImportService.exportCollectionPackage();
-    setStatusMsg({ type: 'success', text: 'Coleção exportada (.colpkg) com sucesso!' });
-    setTimeout(() => setStatusMsg(null), 3500);
-  };
-
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const res = await ExportImportService.importPackage(file);
-    if (res.success) {
-      setStatusMsg({ type: 'success', text: res.message });
-      onRefresh();
-    } else {
-      setStatusMsg({ type: 'error', text: res.message });
-    }
-    setTimeout(() => setStatusMsg(null), 4000);
-  };
-
   const handleResetDefaultData = () => {
     setConfirmResetData(true);
   };
@@ -95,9 +73,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setAddons(AddonSystem.getAddons());
   };
 
-  const TABS: { id: 'fsrs' | 'data' | 'addons'; label: string }[] = [
+  const TABS: { id: 'fsrs' | 'addons'; label: string }[] = [
     { id: 'fsrs', label: 'Geral' },
-    { id: 'data', label: 'Importar / Exportar' },
     { id: 'addons', label: 'Addons JS' },
   ];
 
@@ -163,8 +140,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Body content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {activeTab === 'fsrs' && (
-            <div className="space-y-5">
+          {activeTab === 'fsrs' && (            <div className="space-y-5">
               {/* Day rollover — when the study day starts */}
               <div className="px-3.5 py-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06]">
                 <div className="flex items-center gap-2 mb-2">
@@ -212,46 +188,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 >
                   Salvar Configurações
                 </button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'data' && (
-            <div className="space-y-4">
-              <div className="p-4 rounded-[16px] bg-ios-blue/10 space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-ios-blue">
-                  Exportar Coleção (.colpkg)
-                </h4>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Gera um pacote com todos os decks, subdecks, notas, cards com parâmetros FSRS e histórico de revisões.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleExport}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-ios-blue hover:bg-[#0071eb] text-white text-[13px] font-semibold shadow-[0_2px_8px_rgba(0,122,255,0.35)] transition-all active:scale-95"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Baixar Coleção (.colpkg / FSRS)</span>
-                </button>
-              </div>
-
-              <div className="p-4 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300">
-                  Importar Coleção (.colpkg / .apkg / .json)
-                </h4>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Carregue um pacote de cartas exportado. Os parâmetros FSRS serão automaticamente sincronizados.
-                </p>
-                <label className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-black/[0.06] dark:bg-white/[0.1] hover:bg-black/[0.1] dark:hover:bg-white/[0.15] text-zinc-800 dark:text-zinc-100 text-[13px] font-semibold cursor-pointer transition-all active:scale-95">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Selecionar Arquivo</span>
-                  <input
-                    type="file"
-                    accept=".colpkg,.apkg,.json"
-                    className="hidden"
-                    onChange={handleImportFile}
-                  />
-                </label>
               </div>
 
               <div className="pt-3 border-t border-black/[0.05] dark:border-white/[0.07]">

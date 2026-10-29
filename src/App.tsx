@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, FolderPlus, Inbox, GraduationCap, Repeat } from 'lucide-react';
+import { Plus, FolderPlus, Inbox, GraduationCap, Repeat, Download, Upload } from 'lucide-react';
 import { Deck, NoteType } from './types/anki';
 import { StorageService } from './services/storage';
+import { ExportImportService } from './services/exportImport';
 import { Header, MainNavTab } from './components/navbar/Header';
 import { DeckList } from './components/decks/DeckList';
 import { DeckModal } from './components/decks/DeckModal';
+import { ExportModal } from './components/decks/ExportModal';
 import { StudyView } from './components/study/StudyView';
 import { CardEditorModal } from './components/cards/CardEditorModal';
 import { CardBrowser } from './components/cards/CardBrowser';
@@ -23,6 +25,8 @@ export default function App() {
   const [editingDeck, setEditingDeck] = useState<Deck | null>(null);
   const [parentDeckNameForSubdeck, setParentDeckNameForSubdeck] = useState<string | undefined>(undefined);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const refreshAll = useCallback(() => {
@@ -88,6 +92,17 @@ export default function App() {
   const handleEditNoteFromBrowser = (noteId: string) => {
     setEditingNoteId(noteId);
     setIsAddCardModalOpen(true);
+  };
+
+  // Import a .colpkg/.apkg/.json from the home screen footer button
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const res = await ExportImportService.importPackage(file);
+    setToast(res.message);
+    refreshAll();
+    e.target.value = '';
+    setTimeout(() => setToast(null), 5000);
   };
 
   // If in review mode, render StudyView exclusively
@@ -200,6 +215,27 @@ export default function App() {
               />
             </div>
 
+            {/* Importar / Exportar — rodapé do menu inicial */}
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] cursor-pointer transition-all active:scale-[0.98]">
+                <Download className="w-4 h-4 text-ios-blue" />
+                <span>Importar</span>
+                <input
+                  type="file"
+                  accept=".colpkg,.apkg,.json"
+                  className="hidden"
+                  onChange={handleImportFile}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(true)}
+                className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-all active:scale-[0.98]"
+              >
+                <Upload className="w-4 h-4 text-ios-blue" />
+                <span>Exportar</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -236,6 +272,16 @@ export default function App() {
         editDeck={editingDeck}
         parentDeckName={parentDeckNameForSubdeck}
       />
+
+      {/* Export picker (Anki-style deck selection + include options) */}
+      <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} />
+
+      {/* Transient toast (import result, etc.) */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] max-w-[90vw] px-4 py-2.5 rounded-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-[13px] font-semibold shadow-[0_4px_20px_rgba(0,0,0,0.3)] ios-fade-in text-center">
+          {toast}
+        </div>
+      )}
 
       {/* Settings & FSRS Modal */}
       <SettingsModal

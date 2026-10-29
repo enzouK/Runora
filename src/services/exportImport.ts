@@ -25,49 +25,170 @@ export interface AnkiCollectionExport {
   revlog: RevlogEntry[];
 }
 
+export interface CollectionExportOptions {
+  /** Deck ids to export; each deck brings its subdecks along. Omit = whole collection. */
+  deckIds?: string[];
+  /** Anki "Include Scheduling Information": keeps the review history (revlog). */
+  includeScheduling?: boolean;
+  /** Anki "Include Deck Presets": keeps the option presets used by the decks. */
+  includePresets?: boolean;
+  /** Anki "Include Media": brings the media files referenced by the notes. */
+  includeMedia?: boolean;
+}
+
+export interface ExportedSubset {
+  isPartial: boolean;
+  decks: Deck[];
+  presets?: Preset[];
+  noteTypes: NoteType[];
+  notes: Note[];
+  cards: Card[];
+  revlog: RevlogEntry[];
+}
+
 export class ExportImportService {
   /**
-   * Exports full collection data as a JSON file or ZIP package
+   * Collects the data subset to export: the selected decks (plus their
+   * subdecks) and only the notes/cards, note types, review history and
+   * presets that belong to them. Omitting deckIds = whole collection
+   * (backwards-compatible full export).
    */
-  public static async exportCollectionPackage(): Promise<void> {
+  public static collectExportedSubset(options?: CollectionExportOptions): ExportedSubset {
+    const deckIds = options?.deckIds;
+    const isPartial = !!deckIds && deckIds.length > 0;
+
+    if (!isPartial) {
+      return {
+        isPartial: false,
+        decks: StorageService.getDecks(),
+        presets: StorageService.getPresets(),
+        noteTypes: StorageService.getNoteTypes(),
+        notes: StorageService.getNotes(),
+        cards: StorageService.getCards(),
+        revlog: StorageService.getRevlog(),
+      };
+    }
+
+    // Partial export: selected decks + their subdecks
+    const allDecks = StorageService.getDecks();
+    const selectedNames = new Set(
+      deckIds!.map((id) => allDecks.find((d) => d.id === id)?.name).filter(Boolean) as string[]
+    );
+    const selectedIds = new Set(
+      allDecks
+        .filter(
+          (d) =>
+            deckIds!.includes(d.id) ||
+            selectedNames.has(d.name) ||
+            (selectedNames.size > 0 && Array.from(selectedNames).some((n) => d.name.startsWith(`${n}::`)))
+        )
+        .map((d) => d.id)
+    );
+    const decks = allDecks.filter((d) => selectedIds.has(d.id));
+    const cards = StorageService.getCards().filter((c) => selectedIds.has(c.deckId));
+    const noteIds = new Set(cards.map((c) => c.noteId));
+    const notes = StorageService.getNotes().filter((n) => noteIds.has(n.id));
+    const usedTypeIds = new Set(notes.map((n) => n.noteTypeId));
+    const noteTypes = StorageService.getNoteTypes().filter((t) => usedTypeIds.has(t.id));
+    const includedCardIds = new Set(cards.map((c) => c.id));
+    const revlog =
+      options?.includeScheduling === false
+        ? []
+        : StorageService.getRevlog().filter((e) => includedCardIds.has(e.cardId));
+    const presets =
+      options?.includePresets === false
+        ? undefined
+        : StorageService.getPresets().filter((p) => decks.some((d) => d.presetId === p.id));
+
+    return { isPartial: true, decks, presets, noteTypes, notes, cards, revlog };
+  }
+
+  /**
+   * Exports the collection as a .colpkg ZIP. By default exports everything;
+   * passing deckIds exports only those decks (plus their subdecks), notes,
+   * cards, the note types they use and — per the option flags — their presets,
+   * review history and media.
+   */
+  public static async buildCollectionPackage(
+    options?: CollectionExportOptions
+  ): Promise<{ blob: Blob; filename: string }> {
+    const subset = this.collectExportedSubset(options);
+    const isPartial = subset.isPartial;
+
     const exportData: AnkiCollectionExport = {
       version: 'Anki2.0-FSRS-v1',
       anki2_compatible: true,
       exportedAt: Date.now(),
       fsrsParameters: StorageService.getFSRSSettings(),
-      decks: StorageService.getDecks(),
-      presets: StorageService.getPresets(),
-      noteTypes: StorageService.getNoteTypes(),
-      notes: StorageService.getNotes(),
-      cards: StorageService.getCards(),
-      revlog: StorageService.getRevlog(),
+      decks: subset.decks,
+      presets: subset.presets,
+      noteTypes: subset.noteTypes,
+      notes: subset.notes,
+      cards: subset.cards,
+      revlog: subset.revlog,
     };
+    const exportNotes = subset.notes;
+    const includeAllMedia = !isPartial;
 
     const zip = new JSZip();
-    zip.file('collection.anki20.json', JSON.stringify(exportData, null, 2));
+    zip.file(
+      'collection.anki20.json',
+      JSON.stringify(
+        isPartial ? { ...exportData, version: 'Anki2.0-FSRS-v1-partial' } : exportData,
+        null,
+        2
+      )
+    );
     zip.file('media.json', JSON.stringify({}));
-    zip.file('README.txt', 'Exported from Anki 2.0 with full FSRS algorithm parameters and review history.');
+    zip.file(
+      'README.txt',
+      isPartial
+        ? 'Partial export from Anki 2.0 (selected decks) with FSRS parameters and optional review history/presets/media.'
+        : 'Exported from Anki 2.0 with full FSRS algorithm parameters and review history.'
+    );
 
-    // Include all stored media (like Anki's collection.media in .colpkg)
-    const mediaNames = await MediaStore.list();
+    // Full export: every stored media file. Partial: only media referenced by
+    // the exported notes (skipped entirely when "Include Media" is off).
+    const mediaNames =
+      includeAllMedia || (isPartial && options?.includeMedia !== false)
+        ? includeAllMedia
+          ? await MediaStore.list()
+          : Array.from(
+              new Set(exportNotes.flatMap((n) => (Array.isArray(n.media) ? n.media : [])).map((m) => m.name))
+            )
+        : [];
     const mediaMap: Record<string, string> = {};
-    for (let i = 0; i < mediaNames.length; i++) {
-      const blob = await MediaStore.get(mediaNames[i]);
+    let mediaIndex = 0;
+    for (const name of mediaNames) {
+      const blob = await MediaStore.get(name);
       if (!blob) continue;
-      mediaMap[String(i)] = mediaNames[i];
-      zip.file(String(i), blob);
+      mediaMap[String(mediaIndex)] = name;
+      zip.file(String(mediaIndex), blob);
+      mediaIndex++;
     }
     zip.file('media', JSON.stringify(mediaMap));
 
     const blob = await zip.generateAsync({ type: 'blob' });
+    return { blob, filename: `Anki2_Collection_FSRS_${new Date().toISOString().slice(0, 10)}.colpkg` };
+  }
+
+  /** Legacy click-a-hidden-anchor download (fallback when the save picker is unavailable). */
+  public static downloadBlob(blob: Blob, filename: string): void {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Anki2_Collection_FSRS_${new Date().toISOString().slice(0, 10)}.colpkg`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // small grace period — instant revoke can kill the download in some browsers
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  /** Exports the collection .colpkg (see buildCollectionPackage) straight to the downloads folder. */
+  public static async exportCollectionPackage(options?: CollectionExportOptions): Promise<void> {
+    const { blob, filename } = await this.buildCollectionPackage(options);
+    this.downloadBlob(blob, filename);
   }
 
   /**
