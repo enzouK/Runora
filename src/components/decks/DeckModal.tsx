@@ -1077,7 +1077,6 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                 />
                 <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
                   <span>70% (Menos revisões)</span>
-                  <span>90% (Padrão)</span>
                   <span>98% (Alta retenção)</span>
                 </div>
               </div>
