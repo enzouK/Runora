@@ -742,8 +742,15 @@ export class StorageService {
     );
   }
 
-  /** Resolved limits for a deck: read straight from its preset (Anki preset model). */
+  /** Resolved limits for a deck: "This deck" override first, else the preset's. */
   public static getEffectiveDailyLimits(deckId: string): { newCardsPerDay: number; maxReviewsPerDay: number } {
+    const deck = this.getDecks().find((d) => d.id === deckId);
+    if (deck?.dailyLimitsOverride) {
+      return {
+        newCardsPerDay: deck.dailyLimitsOverride.newCardsPerDay,
+        maxReviewsPerDay: deck.dailyLimitsOverride.maxReviewsPerDay,
+      };
+    }
     const limits = this.getDeckPreset(deckId).dailyLimits;
     return { newCardsPerDay: limits.newCardsPerDay, maxReviewsPerDay: limits.maxReviewsPerDay };
   }

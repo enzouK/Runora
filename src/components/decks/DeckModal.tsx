@@ -52,6 +52,29 @@ type HelpSectionId =
   | 'audio'
   | 'displayorder';
 
+/** Anki-style scope switcher: the values live on the preset sheet or on this deck only. */
+const ScopeSwitch: React.FC<{
+  value: 'preset' | 'deck';
+  onChange: (v: 'preset' | 'deck') => void;
+}> = ({ value, onChange }) => (
+  <div className="flex shrink-0 rounded-full bg-black/[0.06] dark:bg-white/[0.09] p-0.5 ml-auto">
+    {([['preset', 'Preset'], ['deck', 'Este deck']] as const).map(([id, label]) => (
+      <button
+        key={id}
+        type="button"
+        onClick={() => onChange(id)}
+        className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-colors ${
+          value === id
+            ? 'bg-white dark:bg-zinc-700 text-ios-blue shadow-sm'
+            : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+        }`}
+      >
+        {label}
+      </button>
+    ))}
+  </div>
+);
+
 const HELP_SECTIONS: Record<
   HelpSectionId,
   { label: string; topics: HelpTopic[]; showIndex?: boolean }
@@ -626,6 +649,9 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const [presetMenuOpen, setPresetMenuOpen] = useState(false);
   const [presetPrompt, setPresetPrompt] = useState<null | { mode: 'add' | 'clone' | 'rename'; value: string }>(null);
   const [presetDeleteOpen, setPresetDeleteOpen] = useState(false);
+  // Anki-style section scopes: edit the preset sheet or just this deck
+  const [limitScope, setLimitScope] = useState<'preset' | 'deck'>('preset');
+  const [fsrsScope, setFsrsScope] = useState<'preset' | 'deck'>('preset');
 
   // Populate every option input from a preset sheet
   const applyPreset = (p: Preset) => {
@@ -652,6 +678,37 @@ export const DeckModal: React.FC<DeckModalProps> = ({
     if (!found) return;
     setPresetId(found.id);
     applyPreset(found);
+    // "This deck" overrides stay in effect over whichever preset is chosen
+    applyDeckScope(found);
+  };
+
+  /** Re-apply the deck's "This deck" overrides (if any) on top of a preset sheet. */
+  const applyDeckScope = (base: Preset) => {
+    const decks = StorageService.getDecks();
+    const baseId = editDeck
+      ? editDeck.id
+      : parentDeckName
+        ? decks.find((d) => d.name === parentDeckName)?.id
+        : undefined;
+    const deckObj = baseId ? decks.find((d) => d.id === baseId) : undefined;
+    if (deckObj?.dailyLimitsOverride) {
+      setLimitScope('deck');
+      setNewCardsPerDay(String(deckObj.dailyLimitsOverride.newCardsPerDay));
+      setMaxReviewsPerDay(String(deckObj.dailyLimitsOverride.maxReviewsPerDay));
+    } else {
+      setLimitScope('preset');
+      setNewCardsPerDay(String(base.dailyLimits.newCardsPerDay));
+      setMaxReviewsPerDay(String(base.dailyLimits.maxReviewsPerDay));
+    }
+    if (deckObj?.fsrsOverride) {
+      setFsrsScope('deck');
+      setTargetRetention(deckObj.fsrsOverride.requestRetention);
+      setMaxInterval(String(deckObj.fsrsOverride.maximumInterval));
+    } else {
+      setFsrsScope('preset');
+      setTargetRetention(base.fsrsParams.requestRetention);
+      setMaxInterval(String(base.fsrsParams.maximumInterval));
+    }
   };
 
   /** Resolve a numeric option, falling back when the input is empty/invalid */
@@ -781,6 +838,23 @@ export const DeckModal: React.FC<DeckModalProps> = ({
     setPresetId(preset.id);
     applyPreset(preset);
 
+    // "This deck" scopes: deck overrides take priority over the preset's values
+    const deckObj = baseId ? decks.find((d) => d.id === baseId) : undefined;
+    if (deckObj?.dailyLimitsOverride) {
+      setLimitScope('deck');
+      setNewCardsPerDay(String(deckObj.dailyLimitsOverride.newCardsPerDay));
+      setMaxReviewsPerDay(String(deckObj.dailyLimitsOverride.maxReviewsPerDay));
+    } else {
+      setLimitScope('preset');
+    }
+    if (deckObj?.fsrsOverride) {
+      setFsrsScope('deck');
+      setTargetRetention(deckObj.fsrsOverride.requestRetention);
+      setMaxInterval(String(deckObj.fsrsOverride.maximumInterval));
+    } else {
+      setFsrsScope('preset');
+    }
+
     if (editDeck) {
       setName(editDeck.name);
       setDescription(editDeck.description);
@@ -805,6 +879,9 @@ export const DeckModal: React.FC<DeckModalProps> = ({
     const presetBase = presetId ? StorageService.getPresetById(presetId) : null;
     if (!presetBase) return; // the top selector always holds a stored preset
     const preset = buildPresetFromInputs(presetBase);
+    // Sections scoped to "Este deck" leave the shared preset values untouched
+    if (limitScope !== 'preset') preset.dailyLimits = { ...presetBase.dailyLimits };
+    if (fsrsScope !== 'preset') preset.fsrsParams = { ...presetBase.fsrsParams };
     StorageService.upsertPreset(preset);
 
     // Mirror the preset sheet onto the deck's legacy option fields so studies,
@@ -817,6 +894,28 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       audioConfig: { ...preset.audioConfig },
     };
 
+    // "Este deck" scoped values — written on the deck, never on the preset
+    const parsedMaxIntervalForDeck = parseInt(maxInterval, 10);
+    const deckScoped = {
+      dailyLimitsOverride:
+        limitScope === 'deck'
+          ? {
+              newCardsPerDay: parseOption(newCardsPerDay, StorageService.DEFAULT_DAILY_LIMITS.newCardsPerDay),
+              maxReviewsPerDay: parseOption(maxReviewsPerDay, StorageService.DEFAULT_DAILY_LIMITS.maxReviewsPerDay),
+            }
+          : undefined,
+      fsrsOverride:
+        fsrsScope === 'deck'
+          ? {
+              requestRetention: targetRetention,
+              maximumInterval:
+                Number.isFinite(parsedMaxIntervalForDeck) && parsedMaxIntervalForDeck > 0
+                  ? parsedMaxIntervalForDeck
+                  : StorageService.getFSRSSettings().maximumInterval,
+            }
+          : undefined,
+    };
+
     if (editDeck) {
       const updated = decks.map((d) =>
         d.id === editDeck.id
@@ -826,6 +925,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               name: name.trim(),
               description: description.trim(),
               ...legacyConfig,
+              ...deckScoped,
               updatedAt: Date.now(),
             }
           : d
@@ -838,6 +938,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
         name: name.trim(),
         description: description.trim(),
         ...legacyConfig,
+        ...deckScoped,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -1034,7 +1135,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             />
           </div>
 
-          {/* ── FSRS (retenção desejada por deck) ── */}
+          {/* ── FSRS (retenção desejada; escopo Preset / Este deck) ── */}
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <Sparkle className="w-3.5 h-3.5 text-zinc-400" />
@@ -1049,6 +1150,19 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               >
                 <HelpCircle className="w-3.5 h-3.5" />
               </button>
+              <ScopeSwitch
+                value={fsrsScope}
+                onChange={(s) => {
+                  setFsrsScope(s);
+                  if (s === 'preset') {
+                    const cur = presetList.find((p) => p.id === presetId);
+                    if (cur) {
+                      setTargetRetention(cur.fsrsParams.requestRetention);
+                      setMaxInterval(String(cur.fsrsParams.maximumInterval));
+                    }
+                  }
+                }}
+              />
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] overflow-hidden">
@@ -1083,7 +1197,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             </div>
           </div>
 
-          {/* ── Intervalo Máximo (FSRS por deck; vazio = global) ── */}
+          {/* ── Intervalo Máximo (compartilha o escopo da seção FSRS) ── */}
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <Hourglass className="w-3.5 h-3.5 text-zinc-400" />
@@ -1098,6 +1212,11 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               >
                 <HelpCircle className="w-3.5 h-3.5" />
               </button>
+              {fsrsScope === 'deck' && (
+                <span className="ml-auto text-[10px] font-bold uppercase tracking-wide text-ios-blue">
+                  Escopo: este deck
+                </span>
+              )}
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] overflow-hidden">
@@ -1122,7 +1241,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             </div>
           </div>
 
-          {/* ── Daily Limits (estilo iOS, como no Anki) ── */}
+          {/* ── Daily Limits (estilo iOS, com escopo Preset / Este deck) ── */}
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <CalendarClock className="w-3.5 h-3.5 text-zinc-400" />
@@ -1137,6 +1256,19 @@ export const DeckModal: React.FC<DeckModalProps> = ({
               >
                 <HelpCircle className="w-3.5 h-3.5" />
               </button>
+              <ScopeSwitch
+                value={limitScope}
+                onChange={(s) => {
+                  setLimitScope(s);
+                  if (s === 'preset') {
+                    const cur = presetList.find((p) => p.id === presetId);
+                    if (cur) {
+                      setNewCardsPerDay(String(cur.dailyLimits.newCardsPerDay));
+                      setMaxReviewsPerDay(String(cur.dailyLimits.maxReviewsPerDay));
+                    }
+                  }
+                }}
+              />
             </div>
 
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden">

@@ -152,8 +152,14 @@ export interface Deck {
   description: string;
   collapsed?: boolean;
   presetId?: string;             // Options preset this deck follows (see Preset)
+  // Anki-style "This deck" scopes: when set, they take priority over the preset
+  dailyLimitsOverride?: { newCardsPerDay: number; maxReviewsPerDay: number }; // Daily Limits scoped to "This deck"
+  fsrsOverride?: {                          // FSRS scoped to "This deck"
+    requestRetention: number;
+    maximumInterval: number;
+  };
   fsrsParams?: Partial<FSRSParameters>; // Custom deck-specific FSRS overrides if any
-  dailyLimits?: DailyLimits;     // Anki-style daily limits (affect this deck + subdecks)
+  dailyLimits?: DailyLimits;     // Anki-style daily limits (legacy mirror of the preset)
   schedulerConfig?: SchedulerConfig; // Anki-style New Cards / Lapses options
   displayOrder?: DisplayOrderConfig; // Anki-style Display Order options
   audioConfig?: AudioConfig;       // Anki-style Audio options (autoplay)

@@ -42,8 +42,12 @@ export const StudyView: React.FC<StudyViewProps> = ({
   // Initialize FSRS engine with deck-specific or global settings
   const fsrsEngine = useMemo(() => {
     const globalParams = StorageService.getFSRSSettings();
-    // Retenção desejada + intervalo máximo vêm do preset do deck (folha de opções)
-    return new FSRS({ ...globalParams, ...StorageService.getDeckPreset(deck.id).fsrsParams });
+    // FSRS: preset sheet first, then "This deck" overrides (retention + max interval)
+    return new FSRS({
+      ...globalParams,
+      ...StorageService.getDeckPreset(deck.id).fsrsParams,
+      ...(deck.fsrsOverride || {}),
+    });
   }, [deck]);
 
   // Anki-style scheduler config (learning steps, insertion order, lapses)

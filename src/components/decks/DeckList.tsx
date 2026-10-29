@@ -130,9 +130,12 @@ export const DeckList: React.FC<DeckListProps> = ({
                 </span>
                 <span
                   className="hidden sm:inline shrink-0 px-1.5 py-0.5 rounded-full bg-ios-blue/10 dark:bg-ios-blue/[0.18] text-[10px] font-bold tracking-wide text-ios-blue"
-                  title="FSRS: retenção alvo do preset deste deck"
+                  title="FSRS: retenção alvo deste deck (preset ou override deste deck)"
                 >
-                  FSRS {Math.round(StorageService.getDeckPreset(node.deck.id).fsrsParams.requestRetention * 100)}%
+                  FSRS {Math.round(
+                    (node.deck.fsrsOverride?.requestRetention ??
+                      StorageService.getDeckPreset(node.deck.id).fsrsParams.requestRetention) * 100
+                  )}%
                 </span>
               </div>
               {node.deck.description && (
