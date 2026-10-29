@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Anki 2.0 FSRS</string>
+    <string name="title_activity_main">Anki 2.0 FSRS</string>
+    <string name="package_name">com.anki2.fsrs</string>
+    <string name="custom_url_scheme">com.anki2.fsrs</string>
+</resources>
