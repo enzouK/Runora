@@ -21,7 +21,11 @@ const LOCAL_COPY_DIR = path.join(
 );
 
 function isHostileLocation(dir) {
-  return /downloads|temp/i.test(dir);
+  // Downloads/Temp/Desktop: security suites on some Windows machines block
+  // unsigned executables launched from user-writable folders — every
+  // BrowserWindow dies or hangs before painting. Verified: the same binary
+  // runs fine from %LOCALAPPDATA%\Programs.
+  return /downloads|temp|desktop/i.test(dir);
 }
 
 /** @returns {Promise<string>} path to a usable electron.exe */
