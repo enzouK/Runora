@@ -26,6 +26,17 @@
   }
 }
 
+/* Hide the native up/down spinners on number inputs (clean iOS-style fields) */
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Subtle iOS-style view transition */
 @keyframes ios-fade-in {
   from {

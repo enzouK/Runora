@@ -1235,7 +1235,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   max="36500"
                   value={maxInterval}
                   onChange={(e) => setMaxInterval(e.target.value)}
-                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="no-spinner w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -1287,7 +1287,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   inputMode="numeric"
                   value={newCardsPerDay}
                   onChange={(e) => setNewCardsPerDay(e.target.value)}
-                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="no-spinner w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -1306,7 +1306,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   inputMode="numeric"
                   value={maxReviewsPerDay}
                   onChange={(e) => setMaxReviewsPerDay(e.target.value)}
-                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="no-spinner w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -1432,7 +1432,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   inputMode="numeric"
                   value={leechThreshold}
                   onChange={(e) => setLeechThreshold(e.target.value)}
-                  className="w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="no-spinner w-20 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-sm text-right font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
