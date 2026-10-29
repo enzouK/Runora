@@ -104,7 +104,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
   const [includePresets, setIncludePresets] = useState(true);
   const [includeMedia, setIncludeMedia] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Export format: real Anki .apkg (official clients) or our internal .colpkg
   const [format, setFormat] = useState<'apkg' | 'colpkg'>('apkg');
@@ -121,7 +120,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
     setSelected(null);
     setCollapsed(new Set());
     setError(null);
-    setNotice(null);
     setBusy(false);
   }, [isOpen]);
 
@@ -151,6 +149,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
     setBusy(true);
     setError(null);
     try {
+      // Editor-embedded browsers (e.g. the OpenCode preview) let the save-as
+      // dialog open but block the actual file write, leaving 0-byte orphans.
+      // Fail fast: no dialog, no file, clear message.
+      const isEmbeddedPreview = /OpenCode\//.test(navigator.userAgent);
+      if (isEmbeddedPreview) {
+        throw new Error(
+          'não é possível exportar nesta plataforma (navegador embutido de ' +
+            'preview bloqueia a gravação de arquivos). Nenhum arquivo foi gerado — ' +
+            'abra o app em um Chrome/Edge normal para exportar.'
+        );
+      }
+
       const opts = {
         deckIds: Array.from(checked),
         includeScheduling,
@@ -186,44 +196,27 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
             ],
           });
         } catch (pickerErr) {
-          // User cancelled the dialog → nothing to do; other failures (e.g.
-          // permissions/unsupported flags) fall back to the plain download.
           if ((pickerErr as DOMException)?.name === 'AbortError') {
             setBusy(false);
-            return;
+            return; // user cancelled — nothing to do
           }
-          console.warn('Save picker failed, falling back to download:', pickerErr);
+          console.warn('Save picker unavailable, will download instead:', pickerErr);
         }
       }
 
-      const save = async (): Promise<{ how: 'written' | 'downloaded'; filename: string }> => {
-        const built = isApkg
-          ? await AnkiApkgExportService.buildDeckPackage(opts) // official Anki package
-          : await ExportImportService.buildCollectionPackage(opts); // internal restore package
-        if (handle) {
-          try {
-            await writeBlobToHandle(handle, built.blob);
-            return { how: 'written', filename: built.filename };
-          } catch (writeErr) {
-            // Platform refused the write — never lose the generated file
-            console.warn('Could not write via picker handle, falling back to download:', writeErr);
-          }
-        }
+      const built = isApkg
+        ? await AnkiApkgExportService.buildDeckPackage(opts) // official Anki package
+        : await ExportImportService.buildCollectionPackage(opts); // internal restore package
+
+      if (handle) {
+        // A real save-as dialog ran: write the file where the user chose. If
+        // the platform can't actually write there, report an error instead of
+        // silently redirecting to a download the user doesn't expect.
+        await writeBlobToHandle(handle, built.blob);
+      } else {
+        // No File System Access API at all (Firefox/Safari): the plain
+        // download works there, so use it.
         ExportImportService.downloadBlob(built.blob, built.filename);
-        return { how: 'downloaded', filename: built.filename };
-      };
-      const { how, filename } = await save();
-      if (how === 'downloaded' && handle) {
-        // The save-as dialog opened but the platform blocked the write —
-        // make it explicit so the user gets the file from Downloads instead
-        // of the empty orphan file the platform left at the chosen location.
-        setNotice(
-          'Esta plataforma bloqueou a gravação no local escolhido — o ' +
-            'arquivo que apareceu lá pode ter ficado vazio e deve ser ignorado. ' +
-            `O pacote completo foi baixado como "${filename}" para a pasta de Downloads.`
-        );
-        setBusy(false);
-        return;
       }
       setSelected(null);
       onClose();
@@ -349,11 +342,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
           {error && (
             <p className="px-4 py-2.5 rounded-[12px] bg-red-500/10 text-[12px] text-red-600 dark:text-red-400">
               {error}
-            </p>
-          )}
-          {notice && (
-            <p className="px-4 py-2.5 rounded-[12px] bg-ios-blue/10 text-[12px] text-[#0071eb] dark:text-ios-blue">
-              {notice}
             </p>
           )}
         </div>
