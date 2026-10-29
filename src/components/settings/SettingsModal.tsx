@@ -14,6 +14,7 @@ import { DEFAULT_FSRS_PARAMETERS } from '../../fsrs/constants';
 import { AddonSystem } from '../../services/addonSystem';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSwitch } from '../common/IOSSwitch';
+import { Sun, Moon, Monitor } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -33,6 +34,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [confirmResetFSRS, setConfirmResetFSRS] = useState(false);
   const [confirmResetData, setConfirmResetData] = useState(false);
   const [rolloverHour, setRolloverHour] = useState<number>(() => StorageService.getRolloverHour());
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => StorageService.getTheme());
+
+  const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
+    setTheme(newTheme);
+    StorageService.setTheme(newTheme);
+    const root = document.documentElement;
+    if (newTheme === 'dark' || (newTheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -169,6 +182,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </p>
                 <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
                   Ex.: com 4, revisar às 2:30 ainda conta para o dia anterior (padrão do Anki).
+                </p>
+              </div>
+
+              {/* Theme selector */}
+              <div className="px-3.5 py-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Monitor className="w-4 h-4 text-ios-blue shrink-0" />
+                  <span className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
+                    Tema da interface
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  {(['light', 'dark', 'system'] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => handleThemeChange(t)}
+                      className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-[10px] text-[13px] font-medium transition-all active:scale-[0.98] ${
+                        theme === t
+                          ? 'bg-ios-blue text-white shadow-[0_2px_8px_rgba(0,122,255,0.35)]'
+                          : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 border border-black/[0.06] dark:border-white/[0.1] hover:border-ios-blue/50'
+                      }`}
+                    >
+                      {t === 'light' && <Sun className="w-4 h-4" />}
+                      {t === 'dark' && <Moon className="w-4 h-4" />}
+                      {t === 'system' && <Monitor className="w-4 h-4" />}
+                      <span className="capitalize">{t}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
+                  Sistema segue a preferência do Windows/Android.
                 </p>
               </div>
 

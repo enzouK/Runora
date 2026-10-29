@@ -1,5 +1,23 @@
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import { StorageService } from './services/storage';
 import './index.css';
+
+// Initialize theme before render to avoid flash
+const initTheme = () => {
+  const theme = StorageService.getTheme();
+  const root = document.documentElement;
+  if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    root.classList.add('dark');
+  } else {
+    root.classList.remove('dark');
+  }
+};
+
+initTheme();
+// Listen for system theme changes when theme is 'system'
+if (StorageService.getTheme() === 'system') {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', initTheme);
+}
 
 createRoot(document.getElementById('root')!).render(<App />);

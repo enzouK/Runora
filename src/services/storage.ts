@@ -14,6 +14,7 @@ const STORAGE_KEYS = {
   DELETED_DEFAULTS: 'anki2_deleted_defaults',
   PREFS: 'anki2_prefs',
   PRESETS: 'anki2_presets',
+  THEME: 'anki2_theme',
 };
 
 // Bump this when INITIAL_* sample data changes meaningfully,
@@ -270,6 +271,16 @@ export class StorageService {
 
   public static saveFSRSSettings(params: FSRSParameters): void {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(params));
+  }
+
+  public static getTheme(): 'light' | 'dark' | 'system' {
+    const raw = localStorage.getItem(STORAGE_KEYS.THEME);
+    if (raw === 'light' || raw === 'dark' || raw === 'system') return raw;
+    return 'system';
+  }
+
+  public static setTheme(theme: 'light' | 'dark' | 'system'): void {
+    localStorage.setItem(STORAGE_KEYS.THEME, theme);
   }
 
   /**
