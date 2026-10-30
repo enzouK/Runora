@@ -12,6 +12,8 @@ const initTheme = () => {
   } else {
     root.classList.remove('dark');
   }
+  // Color theme (OpenCode palettes) — applied via [data-color-theme] CSS blocks
+  root.dataset.colorTheme = StorageService.getColorTheme();
 };
 
 initTheme();

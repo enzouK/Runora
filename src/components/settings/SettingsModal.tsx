@@ -14,7 +14,9 @@ import { DEFAULT_FSRS_PARAMETERS } from '../../fsrs/constants';
 import { AddonSystem } from '../../services/addonSystem';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSwitch } from '../common/IOSSwitch';
-import { Sun, Moon, Monitor } from 'lucide-react';
+import { IOSSelect } from '../common/IOSSelect';
+import { COLOR_THEME_NAMES, DEFAULT_COLOR_THEME } from '../../themes';
+import { Sun, Moon, Monitor, Palette } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -35,6 +37,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [confirmResetData, setConfirmResetData] = useState(false);
   const [rolloverHour, setRolloverHour] = useState<number>(() => StorageService.getRolloverHour());
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => StorageService.getTheme());
+  const [colorTheme, setColorTheme] = useState<string>(() => StorageService.getColorTheme());
 
   const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
     setTheme(newTheme);
@@ -45,6 +48,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     } else {
       root.classList.remove('dark');
     }
+  };
+
+  const handleColorThemeChange = (id: string) => {
+    setColorTheme(id);
+    StorageService.setColorTheme(id);
+    document.documentElement.dataset.colorTheme = id;
   };
 
   if (!isOpen) return null;
@@ -214,6 +223,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
                 <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
                   Sistema segue a preferência do Windows/Android.
+                </p>
+              </div>
+
+              {/* Color theme palette selector (OpenCode themes) */}
+              <div className="px-3.5 py-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Palette className="w-4 h-4 text-ios-blue shrink-0" />
+                  <span className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
+                    Paleta de cores
+                  </span>
+                </div>
+                <IOSSelect
+                  value={colorTheme}
+                  onChange={handleColorThemeChange}
+                  placeholder="Selecionar tema…"
+                  maxMenuHeight={280}
+                  className="w-full !text-[13px] !px-3 !py-2.5"
+                  active={colorTheme !== DEFAULT_COLOR_THEME}
+                  options={COLOR_THEME_NAMES.map((id) => ({
+                    value: id,
+                    label: id,
+                    hint: id === DEFAULT_COLOR_THEME ? 'padrão' : undefined,
+                  }))}
+                />
+                <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
+                  Temas de cores inspirados no OpenCode ({COLOR_THEME_NAMES.length} temas). Aplica sobre o tema claro/escuro acima.
                 </p>
               </div>
 

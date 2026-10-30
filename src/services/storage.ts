@@ -15,6 +15,7 @@ const STORAGE_KEYS = {
   PREFS: 'anki2_prefs',
   PRESETS: 'anki2_presets',
   THEME: 'anki2_theme',
+  COLOR_THEME: 'anki2_color_theme',
 };
 
 // Bump this when INITIAL_* sample data changes meaningfully,
@@ -281,6 +282,14 @@ export class StorageService {
 
   public static setTheme(theme: 'light' | 'dark' | 'system'): void {
     localStorage.setItem(STORAGE_KEYS.THEME, theme);
+  }
+
+  public static getColorTheme(): string {
+    return localStorage.getItem(STORAGE_KEYS.COLOR_THEME) ?? 'opencode';
+  }
+
+  public static setColorTheme(theme: string): void {
+    localStorage.setItem(STORAGE_KEYS.COLOR_THEME, theme);
   }
 
   /**
