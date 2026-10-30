@@ -128,7 +128,7 @@ export default function App() {
       {/* Ambient top glow (subtle depth behind translucent surfaces) */}
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-x-0 top-0 h-80 bg-[radial-gradient(ellipse_55%_50%_at_50%_-12%,rgba(140,110,200,0.08),transparent)] dark:bg-[radial-gradient(ellipse_55%_50%_at_50%_-12%,rgba(64,156,255,0.14),transparent)]"
+        className="pointer-events-none fixed inset-x-0 top-0 h-72 bg-[radial-gradient(ellipse_50%_45%_at_50%_-10%,rgba(0,122,255,0.06),transparent)] dark:bg-[radial-gradient(ellipse_55%_50%_at_50%_-12%,rgba(64,156,255,0.14),transparent)]"
       />
 
       {/* Top iOS Header */}
@@ -173,7 +173,7 @@ export default function App() {
 
             {/* Study summary strip (iOS Health-style tinted cards) */}
             <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-[16px] p-4 bg-ios-blue/10 dark:bg-ios-blue/[0.16] border border-ios-blue/[0.12] dark:border-ios-blue/20">
+              <div className="rounded-[16px] p-4 bg-ios-blue/10 dark:bg-ios-blue/[0.16] border border-ios-blue/[0.12] dark:border-ios-blue/20 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 <div className="flex items-center gap-1.5 text-ios-blue">
                   <Inbox className="w-3.5 h-3.5" />
                   <span className="text-[11px] font-semibold uppercase tracking-wide">Novos</span>
@@ -183,7 +183,7 @@ export default function App() {
                 </p>
               </div>
 
-              <div className="rounded-[16px] p-4 bg-ios-orange/10 dark:bg-ios-orange/[0.16] border border-ios-orange/[0.12] dark:border-ios-orange/20">
+              <div className="rounded-[16px] p-4 bg-ios-orange/10 dark:bg-ios-orange/[0.16] border border-ios-orange/[0.12] dark:border-ios-orange/20 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 <div className="flex items-center gap-1.5 text-ios-orange">
                   <GraduationCap className="w-3.5 h-3.5" />
                   <span className="text-[11px] font-semibold uppercase tracking-wide">Aprendendo</span>
@@ -193,7 +193,7 @@ export default function App() {
                 </p>
               </div>
 
-              <div className="rounded-[16px] p-4 bg-ios-green/10 dark:bg-ios-green/[0.16] border border-ios-green/[0.12] dark:border-ios-green/20">
+              <div className="rounded-[16px] p-4 bg-ios-green/10 dark:bg-ios-green/[0.16] border border-ios-green/[0.12] dark:border-ios-green/20 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
                 <div className="flex items-center gap-1.5 text-ios-green">
                   <Repeat className="w-3.5 h-3.5" />
                   <span className="text-[11px] font-semibold uppercase tracking-wide">Revisar</span>
@@ -205,7 +205,7 @@ export default function App() {
             </div>
 
             {/* iOS Inset Grouped Deck List */}
-            <div className="rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] overflow-hidden">
+            <div className="rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.06] dark:border-white/[0.06] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.08)] overflow-hidden">
               <DeckList
                 decks={decks}
                 onSelectDeckToStudy={(deck) => setActiveStudyDeck(deck)}
@@ -217,7 +217,7 @@ export default function App() {
 
             {/* Importar / Exportar — rodapé do menu inicial */}
             <div className="grid grid-cols-2 gap-3">
-              <label className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] cursor-pointer transition-all active:scale-[0.98]">
+              <label className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.06] dark:border-white/[0.06] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.08)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] cursor-pointer transition-all active:scale-[0.98]">
                 <Download className="w-4 h-4 text-ios-blue" />
                 <span>Importar</span>
                 <input
@@ -230,7 +230,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsExportModalOpen(true)}
-                className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-all active:scale-[0.98]"
+                className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.06] dark:border-white/[0.06] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.08)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-all active:scale-[0.98]"
               >
                 <Upload className="w-4 h-4 text-ios-blue" />
                 <span>Exportar</span>

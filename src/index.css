@@ -8,12 +8,13 @@
   --color-ios-green: #34c759;
   --color-ios-orange: #ff9500;
   --color-ios-red: #ff3b30;
-  --color-ios-bg: #fafafa;
+  --color-ios-bg: #f2f2f7;
   --color-ios-bg-dark: #101014;
-  --color-ios-card: #f8f8f8;
+  --color-ios-card: #ffffff;
   --color-ios-card-dark: #1c1c1e;
   --color-ios-sep: rgba(60, 60, 67, 0.12);
-  --color-ios-card-border: rgba(60, 60, 67, 0.08);
+  --color-ios-card-border: rgba(60, 60, 67, 0.10);
+  --shadow-ios-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.06);
 
   /* ===== Apple system font stack ===== */
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
