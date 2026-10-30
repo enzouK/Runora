@@ -14,3 +14,4 @@ backup-*/
 # Artefatos do app desktop (Electron)
 release/
 .electron-smoke/
+.opencode/
