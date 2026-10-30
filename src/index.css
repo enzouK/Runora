@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import './color-themes.css';
 
 @variant dark (&:where(.dark, .dark *));
 
@@ -13,6 +14,25 @@
   --color-ios-card: #ffffff;
   --color-ios-card-dark: #1c1c1e;
   --color-ios-sep: rgba(60, 60, 67, 0.12);
+
+  /* ===== Semantic text / surface vars (defaults = current zinc look;
+     overridden per color-theme in color-themes.css) ===== */
+  --color-ios-text: #18181b; /* zinc-900 */
+  --color-ios-text-dark: #f4f4f5; /* zinc-100 */
+  --color-ios-text-muted: #71717a; /* zinc-500 */
+  --color-ios-text-muted-dark: #a1a1aa; /* zinc-400 */
+  --color-ios-element: #f4f4f5; /* zinc-100-ish hover surface */
+  --color-ios-element-dark: #27272a; /* zinc-800-ish hover surface */
+  --color-ios-border: rgba(0, 0, 0, 0.06);
+  --color-ios-border-dark: rgba(255, 255, 255, 0.08);
+  --color-ios-accent: #007aff;
+  --color-ios-accent-dark: #007aff;
+  --color-ios-secondary: #007aff;
+  --color-ios-secondary-dark: #007aff;
+  --color-ios-info: #007aff;
+  --color-ios-info-dark: #007aff;
+  --color-ios-border-active: #007aff;
+  --color-ios-border-active-dark: #007aff;
 
   /* ===== Apple system font stack ===== */
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",

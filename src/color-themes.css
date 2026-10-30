@@ -1,0 +1,1225 @@
+/* ============================================================
+ * Color themes — paletas dos 33 temas built-in do OpenCode
+ * Fonte: github.com/anomalyco/opencode
+ *   (packages/tui/src/theme/assets/*.json) — ver opencode-themes.json
+ *
+ * Aplicadas via [data-color-theme="..."] no <html> (main.tsx + dropdown
+ * "Paleta de cores" nas Configurações).
+ *
+ * Cada tema define variáveis semânticas (bg/card/acentos + text,
+ * text-muted, element, border, accent, secondary, info). A seção global
+ * no fim sobrescreve as classes utilitárias fixas (zinc/white/black-alpha)
+ * referenciando essas variáveis — assim todo o app acompanha a paleta.
+ *
+ * Light: :root:not(.dark)[data-color-theme="X"]   Dark: .dark[data-color-theme="X"]
+ * O tema padrão "opencode" não tem blocos: mantém a paleta iOS de index.css.
+ * Temas somente-dark não têm bloco light (modo claro = paleta iOS padrão).
+ * ============================================================ */
+
+/* ---- aura ---- */
+/* aura é somente dark: no modo claro usa a paleta iOS padrão */
+
+.dark[data-color-theme="aura"] {
+  --color-ios-bg-dark: #0f0f0f;
+  --color-ios-card-dark: #15141b;
+  --color-ios-sep: #2d2d2d;
+  --color-ios-blue: #a277ff;
+  --color-ios-green: #61ffca;
+  --color-ios-orange: #ffca85;
+  --color-ios-red: #ff6767;
+  --color-ios-text-dark: #edecee;
+  --color-ios-text-muted-dark: #6d6d6d;
+  --color-ios-element-dark: #15141b;
+  --color-ios-border-dark: #2d2d2d;
+  --color-ios-accent-dark: #a277ff;
+  --color-ios-secondary-dark: #f694ff;
+  --color-ios-info-dark: #a277ff;
+  --color-ios-border-active-dark: #6d6d6d;
+}
+
+/* ---- ayu ---- */
+/* ayu é somente dark: no modo claro usa a paleta iOS padrão */
+
+.dark[data-color-theme="ayu"] {
+  --color-ios-bg-dark: #0B0E14;
+  --color-ios-card-dark: #0F131A;
+  --color-ios-sep: #11151C;
+  --color-ios-blue: #59C2FF;
+  --color-ios-green: #7FD962;
+  --color-ios-orange: #E6B673;
+  --color-ios-red: #D95757;
+  --color-ios-text-dark: #BFBDB6;
+  --color-ios-text-muted-dark: #565B66;
+  --color-ios-element-dark: #0D1017;
+  --color-ios-border-dark: #6C7380;
+  --color-ios-accent-dark: #E6B450;
+  --color-ios-secondary-dark: #D2A6FF;
+  --color-ios-info-dark: #39BAE6;
+  --color-ios-border-active-dark: #6C7380;
+}
+
+/* ---- carbonfox ---- */
+:root:not(.dark)[data-color-theme="carbonfox"] {
+  --color-ios-bg: #ffffff;
+  --color-ios-card: #f4f4f4;
+  --color-ios-sep: #e8e8e8;
+  --color-ios-blue: #0043ce;
+  --color-ios-green: #198038;
+  --color-ios-orange: #007d79;
+  --color-ios-red: #9f1853;
+  --color-ios-text: #161616;
+  --color-ios-text-muted: #6f6f6f;
+  --color-ios-element: #f4f4f4;
+  --color-ios-border: #dcdcdc;
+  --color-ios-accent: #9f1853;
+  --color-ios-secondary: #0043ce;
+  --color-ios-info: #0043ce;
+  --color-ios-border-active: #0043ce;
+}
+.dark[data-color-theme="carbonfox"] {
+  --color-ios-bg-dark: #161616;
+  --color-ios-card-dark: #1a1a1a;
+  --color-ios-sep: #262626;
+  --color-ios-blue: #33b1ff;
+  --color-ios-green: #25be6a;
+  --color-ios-orange: #f1c21b;
+  --color-ios-red: #ee5396;
+  --color-ios-text-dark: #f2f4f8;
+  --color-ios-text-muted-dark: #7d848f;
+  --color-ios-element-dark: #1e1e1e;
+  --color-ios-border-dark: #303030;
+  --color-ios-accent-dark: #ff7eb6;
+  --color-ios-secondary-dark: #78a9ff;
+  --color-ios-info-dark: #78a9ff;
+  --color-ios-border-active-dark: #33b1ff;
+}
+
+/* ---- catppuccin ---- */
+:root:not(.dark)[data-color-theme="catppuccin"] {
+  --color-ios-bg: #eff1f5;
+  --color-ios-card: #e6e9ef;
+  --color-ios-sep: #acb0be;
+  --color-ios-blue: #1e66f5;
+  --color-ios-green: #40a02b;
+  --color-ios-orange: #df8e1d;
+  --color-ios-red: #d20f39;
+  --color-ios-text: #4c4f69;
+  --color-ios-text-muted: #7c7f93;
+  --color-ios-element: #dce0e8;
+  --color-ios-border: #ccd0da;
+  --color-ios-accent: #ea76cb;
+  --color-ios-secondary: #8839ef;
+  --color-ios-info: #179299;
+  --color-ios-border-active: #bcc0cc;
+}
+.dark[data-color-theme="catppuccin"] {
+  --color-ios-bg-dark: #1e1e2e;
+  --color-ios-card-dark: #181825;
+  --color-ios-sep: #585b70;
+  --color-ios-blue: #89b4fa;
+  --color-ios-green: #a6e3a1;
+  --color-ios-orange: #f9e2af;
+  --color-ios-red: #f38ba8;
+  --color-ios-text-dark: #cdd6f4;
+  --color-ios-text-muted-dark: #9399b2;
+  --color-ios-element-dark: #11111b;
+  --color-ios-border-dark: #313244;
+  --color-ios-accent-dark: #f5c2e7;
+  --color-ios-secondary-dark: #cba6f7;
+  --color-ios-info-dark: #94e2d5;
+  --color-ios-border-active-dark: #45475a;
+}
+
+/* ---- catppuccin-frappe ---- */
+/* catppuccin-frappe é somente dark: no modo claro usa a paleta iOS padrão */
+
+.dark[data-color-theme="catppuccin-frappe"] {
+  --color-ios-bg-dark: #303446;
+  --color-ios-card-dark: #292c3c;
+  --color-ios-sep: #626880;
+  --color-ios-blue: #8da4e2;
+  --color-ios-green: #a6d189;
+  --color-ios-orange: #e5c890;
+  --color-ios-red: #e78284;
+  --color-ios-text-dark: #c6d0f5;
+  --color-ios-text-muted-dark: #949cb8;
+  --color-ios-element-dark: #232634;
+  --color-ios-border-dark: #414559;
+  --color-ios-accent-dark: #f4b8e4;
+  --color-ios-secondary-dark: #ca9ee6;
+  --color-ios-info-dark: #81c8be;
+  --color-ios-border-active-dark: #51576d;
+}
+
+/* ---- catppuccin-macchiato ---- */
+/* catppuccin-macchiato é somente dark: no modo claro usa a paleta iOS padrão */
+
+.dark[data-color-theme="catppuccin-macchiato"] {
+  --color-ios-bg-dark: #24273a;
+  --color-ios-card-dark: #1e2030;
+  --color-ios-sep: #5b6078;
+  --color-ios-blue: #8aadf4;
+  --color-ios-green: #a6da95;
+  --color-ios-orange: #eed49f;
+  --color-ios-red: #ed8796;
+  --color-ios-text-dark: #cad3f5;
+  --color-ios-text-muted-dark: #939ab7;
+  --color-ios-element-dark: #181926;
+  --color-ios-border-dark: #363a4f;
+  --color-ios-accent-dark: #f5bde6;
+  --color-ios-secondary-dark: #c6a0f6;
+  --color-ios-info-dark: #8bd5ca;
+  --color-ios-border-active-dark: #494d64;
+}
+
+/* ---- cobalt2 ---- */
+:root:not(.dark)[data-color-theme="cobalt2"] {
+  --color-ios-bg: #ffffff;
+  --color-ios-card: #f5f7fa;
+  --color-ios-sep: #e8ecf1;
+  --color-ios-blue: #0066cc;
+  --color-ios-green: #4caf50;
+  --color-ios-orange: #ff9800;
+  --color-ios-red: #e91e63;
+  --color-ios-text: #193549;
+  --color-ios-text-muted: #5c6b7d;
+  --color-ios-element: #e8ecf1;
+  --color-ios-border: #d3dae3;
+  --color-ios-accent: #00acc1;
+  --color-ios-secondary: #7c4dff;
+  --color-ios-info: #ff5722;
+  --color-ios-border-active: #0066cc;
+}
+.dark[data-color-theme="cobalt2"] {
+  --color-ios-bg-dark: #193549;
+  --color-ios-card-dark: #122738;
+  --color-ios-sep: #0e1e2e;
+  --color-ios-blue: #0088ff;
+  --color-ios-green: #9eff80;
+  --color-ios-orange: #ffc600;
+  --color-ios-red: #ff0088;
+  --color-ios-text-dark: #ffffff;
+  --color-ios-text-muted-dark: #adb7c9;
+  --color-ios-element-dark: #1f4662;
+  --color-ios-border-dark: #1f4662;
+  --color-ios-accent-dark: #2affdf;
+  --color-ios-secondary-dark: #9a5feb;
+  --color-ios-info-dark: #ff9d00;
+  --color-ios-border-active-dark: #0088ff;
+}
+
+/* ---- cursor ---- */
+:root:not(.dark)[data-color-theme="cursor"] {
+  --color-ios-bg: #fcfcfc;
+  --color-ios-card: #f3f3f3;
+  --color-ios-sep: #e0e0e0;
+  --color-ios-blue: #6f9ba6;
+  --color-ios-green: #1f8a65;
+  --color-ios-orange: #db704b;
+  --color-ios-red: #cf2d56;
+  --color-ios-text: #141414;
+  --color-ios-text-muted: #141414ad;
+  --color-ios-element: #ededed;
+  --color-ios-border: #14141413;
+  --color-ios-accent: #6f9ba6;
+  --color-ios-secondary: #3c7cab;
+  --color-ios-info: #3c7cab;
+  --color-ios-border-active: #6f9ba6;
+}
+.dark[data-color-theme="cursor"] {
+  --color-ios-bg-dark: #181818;
+  --color-ios-card-dark: #141414;
+  --color-ios-sep: #0f0f0f;
+  --color-ios-blue: #88c0d0;
+  --color-ios-green: #3fa266;
+  --color-ios-orange: #f1b467;
+  --color-ios-red: #e34671;
+  --color-ios-text-dark: #e4e4e4;
+  --color-ios-text-muted-dark: #e4e4e45e;
+  --color-ios-element-dark: #262626;
+  --color-ios-border-dark: #e4e4e413;
+  --color-ios-accent-dark: #88c0d0;
+  --color-ios-secondary-dark: #81a1c1;
+  --color-ios-info-dark: #81a1c1;
+  --color-ios-border-active-dark: #88c0d0;
+}
+
+/* ---- dracula ---- */
+:root:not(.dark)[data-color-theme="dracula"] {
+  --color-ios-bg: #f8f8f2;
+  --color-ios-card: #e8e8e2;
+  --color-ios-sep: #e0e0e0;
+  --color-ios-blue: #bd93f9;
+  --color-ios-green: #50fa7b;
+  --color-ios-orange: #f1fa8c;
+  --color-ios-red: #ff5555;
+  --color-ios-text: #282a36;
+  --color-ios-text-muted: #6272a4;
+  --color-ios-element: #d8d8d2;
+  --color-ios-border: #c8c8c2;
+  --color-ios-accent: #8be9fd;
+  --color-ios-secondary: #ff79c6;
+  --color-ios-info: #ffb86c;
+  --color-ios-border-active: #bd93f9;
+}
+.dark[data-color-theme="dracula"] {
+  --color-ios-bg-dark: #282a36;
+  --color-ios-card-dark: #21222c;
+  --color-ios-sep: #191a21;
+  --color-ios-blue: #bd93f9;
+  --color-ios-green: #50fa7b;
+  --color-ios-orange: #f1fa8c;
+  --color-ios-red: #ff5555;
+  --color-ios-text-dark: #f8f8f2;
+  --color-ios-text-muted-dark: #6272a4;
+  --color-ios-element-dark: #44475a;
+  --color-ios-border-dark: #44475a;
+  --color-ios-accent-dark: #8be9fd;
+  --color-ios-secondary-dark: #ff79c6;
+  --color-ios-info-dark: #ffb86c;
+  --color-ios-border-active-dark: #bd93f9;
+}
+
+/* ---- everforest ---- */
+:root:not(.dark)[data-color-theme="everforest"] {
+  --color-ios-bg: #fdf6e3;
+  --color-ios-card: #efebd4;
+  --color-ios-sep: #a6b0a0;
+  --color-ios-blue: #8da101;
+  --color-ios-green: #8da101;
+  --color-ios-orange: #f57d26;
+  --color-ios-red: #f85552;
+  --color-ios-text: #5c6a72;
+  --color-ios-text-muted: #a6b0a0;
+  --color-ios-element: #f4f0d9;
+  --color-ios-border: #939f91;
+  --color-ios-accent: #df69ba;
+  --color-ios-secondary: #3a94c5;
+  --color-ios-info: #35a77c;
+  --color-ios-border-active: #829181;
+}
+.dark[data-color-theme="everforest"] {
+  --color-ios-bg-dark: #2d353b;
+  --color-ios-card-dark: #333c43;
+  --color-ios-sep: #7a8478;
+  --color-ios-blue: #a7c080;
+  --color-ios-green: #a7c080;
+  --color-ios-orange: #e69875;
+  --color-ios-red: #e67e80;
+  --color-ios-text-dark: #d3c6aa;
+  --color-ios-text-muted-dark: #7a8478;
+  --color-ios-element-dark: #343f44;
+  --color-ios-border-dark: #859289;
+  --color-ios-accent-dark: #d699b6;
+  --color-ios-secondary-dark: #7fbbb3;
+  --color-ios-info-dark: #83c092;
+  --color-ios-border-active-dark: #9da9a0;
+}
+
+/* ---- flexoki ---- */
+:root:not(.dark)[data-color-theme="flexoki"] {
+  --color-ios-bg: #FFFCF0;
+  --color-ios-card: #F2F0E5;
+  --color-ios-sep: #CECDC3;
+  --color-ios-blue: #205EA6;
+  --color-ios-green: #66800B;
+  --color-ios-orange: #BC5215;
+  --color-ios-red: #AF3029;
+  --color-ios-text: #100F0F;
+  --color-ios-text-muted: #6F6E69;
+  --color-ios-element: #E6E4D9;
+  --color-ios-border: #B7B5AC;
+  --color-ios-accent: #BC5215;
+  --color-ios-secondary: #5E409D;
+  --color-ios-info: #24837B;
+  --color-ios-border-active: #878580;
+}
+.dark[data-color-theme="flexoki"] {
+  --color-ios-bg-dark: #100F0F;
+  --color-ios-card-dark: #1C1B1A;
+  --color-ios-sep: #403E3C;
+  --color-ios-blue: #DA702C;
+  --color-ios-green: #879A39;
+  --color-ios-orange: #DA702C;
+  --color-ios-red: #D14D41;
+  --color-ios-text-dark: #CECDC3;
+  --color-ios-text-muted-dark: #6F6E69;
+  --color-ios-element-dark: #282726;
+  --color-ios-border-dark: #575653;
+  --color-ios-accent-dark: #8B7EC8;
+  --color-ios-secondary-dark: #4385BE;
+  --color-ios-info-dark: #3AA99F;
+  --color-ios-border-active-dark: #6F6E69;
+}
+
+/* ---- github ---- */
+:root:not(.dark)[data-color-theme="github"] {
+  --color-ios-bg: #ffffff;
+  --color-ios-card: #f6f8fa;
+  --color-ios-sep: #d8dee4;
+  --color-ios-blue: #0969da;
+  --color-ios-green: #1a7f37;
+  --color-ios-orange: #9a6700;
+  --color-ios-red: #cf222e;
+  --color-ios-text: #24292f;
+  --color-ios-text-muted: #57606a;
+  --color-ios-element: #f0f3f6;
+  --color-ios-border: #d0d7de;
+  --color-ios-accent: #1b7c83;
+  --color-ios-secondary: #8250df;
+  --color-ios-info: #bc4c00;
+  --color-ios-border-active: #0969da;
+}
+.dark[data-color-theme="github"] {
+  --color-ios-bg-dark: #0d1117;
+  --color-ios-card-dark: #010409;
+  --color-ios-sep: #21262d;
+  --color-ios-blue: #58a6ff;
+  --color-ios-green: #3fb950;
+  --color-ios-orange: #e3b341;
+  --color-ios-red: #f85149;
+  --color-ios-text-dark: #c9d1d9;
+  --color-ios-text-muted-dark: #8b949e;
+  --color-ios-element-dark: #161b22;
+  --color-ios-border-dark: #30363d;
+  --color-ios-accent-dark: #39c5cf;
+  --color-ios-secondary-dark: #bc8cff;
+  --color-ios-info-dark: #d29922;
+  --color-ios-border-active-dark: #58a6ff;
+}
+
+/* ---- gruvbox ---- */
+:root:not(.dark)[data-color-theme="gruvbox"] {
+  --color-ios-bg: #fbf1c7;
+  --color-ios-card: #ebdbb2;
+  --color-ios-sep: #d5c4a1;
+  --color-ios-blue: #076678;
+  --color-ios-green: #79740e;
+  --color-ios-orange: #af3a03;
+  --color-ios-red: #9d0006;
+  --color-ios-text: #3c3836;
+  --color-ios-text-muted: #7c6f64;
+  --color-ios-element: #d5c4a1;
+  --color-ios-border: #bdae93;
+  --color-ios-accent: #427b58;
+  --color-ios-secondary: #8f3f71;
+  --color-ios-info: #b57614;
+  --color-ios-border-active: #3c3836;
+}
+.dark[data-color-theme="gruvbox"] {
+  --color-ios-bg-dark: #282828;
+  --color-ios-card-dark: #3c3836;
+  --color-ios-sep: #504945;
+  --color-ios-blue: #83a598;
+  --color-ios-green: #b8bb26;
+  --color-ios-orange: #fe8019;
+  --color-ios-red: #fb4934;
+  --color-ios-text-dark: #ebdbb2;
+  --color-ios-text-muted-dark: #928374;
+  --color-ios-element-dark: #504945;
+  --color-ios-border-dark: #665c54;
+  --color-ios-accent-dark: #8ec07c;
+  --color-ios-secondary-dark: #d3869b;
+  --color-ios-info-dark: #fabd2f;
+  --color-ios-border-active-dark: #ebdbb2;
+}
+
+/* ---- kanagawa ---- */
+:root:not(.dark)[data-color-theme="kanagawa"] {
+  --color-ios-bg: #F2E9DE;
+  --color-ios-card: #EAE4D7;
+  --color-ios-sep: #DCD4C9;
+  --color-ios-blue: #2D4F67;
+  --color-ios-green: #98BB6C;
+  --color-ios-orange: #D7A657;
+  --color-ios-red: #E82424;
+  --color-ios-text: #54433A;
+  --color-ios-text-muted: #9E9389;
+  --color-ios-element: #E3DCD2;
+  --color-ios-border: #D4CBBF;
+  --color-ios-accent: #D27E99;
+  --color-ios-secondary: #957FB8;
+  --color-ios-info: #76946A;
+  --color-ios-border-active: #C38D9D;
+}
+.dark[data-color-theme="kanagawa"] {
+  --color-ios-bg-dark: #1F1F28;
+  --color-ios-card-dark: #2A2A37;
+  --color-ios-sep: #363646;
+  --color-ios-blue: #7E9CD8;
+  --color-ios-green: #98BB6C;
+  --color-ios-orange: #D7A657;
+  --color-ios-red: #E82424;
+  --color-ios-text-dark: #DCD7BA;
+  --color-ios-text-muted-dark: #727169;
+  --color-ios-element-dark: #363646;
+  --color-ios-border-dark: #54546D;
+  --color-ios-accent-dark: #D27E99;
+  --color-ios-secondary-dark: #957FB8;
+  --color-ios-info-dark: #76946A;
+  --color-ios-border-active-dark: #C38D9D;
+}
+
+/* ---- lucent-orng ---- */
+:root:not(.dark)[data-color-theme="lucent-orng"] {
+  --color-ios-sep: #d4d4d4;
+  --color-ios-blue: #EC5B2B;
+  --color-ios-green: #0062d1;
+  --color-ios-orange: #EC5B2B;
+  --color-ios-red: #d1383d;
+  --color-ios-text: #1a1a1a;
+  --color-ios-text-muted: #8a8a8a;
+  --color-ios-border: #EC5B2B;
+  --color-ios-accent: #c94d24;
+  --color-ios-secondary: #EE7948;
+  --color-ios-info: #318795;
+  --color-ios-border-active: #c94d24;
+}
+.dark[data-color-theme="lucent-orng"] {
+  --color-ios-sep: #3c3c3c;
+  --color-ios-blue: #EC5B2B;
+  --color-ios-green: #6ba1e6;
+  --color-ios-orange: #EC5B2B;
+  --color-ios-red: #e06c75;
+  --color-ios-text-dark: #eeeeee;
+  --color-ios-text-muted-dark: #808080;
+  --color-ios-border-dark: #EC5B2B;
+  --color-ios-accent-dark: #FFF7F1;
+  --color-ios-secondary-dark: #EE7948;
+  --color-ios-info-dark: #56b6c2;
+  --color-ios-border-active-dark: #EE7948;
+}
+
+/* ---- material ---- */
+:root:not(.dark)[data-color-theme="material"] {
+  --color-ios-bg: #fafafa;
+  --color-ios-card: #f5f5f5;
+  --color-ios-sep: #eeeeee;
+  --color-ios-blue: #6182b8;
+  --color-ios-green: #91b859;
+  --color-ios-orange: #ffb300;
+  --color-ios-red: #e53935;
+  --color-ios-text: #263238;
+  --color-ios-text-muted: #90a4ae;
+  --color-ios-element: #e7e7e8;
+  --color-ios-border: #e0e0e0;
+  --color-ios-accent: #39adb5;
+  --color-ios-secondary: #7c4dff;
+  --color-ios-info: #f4511e;
+  --color-ios-border-active: #6182b8;
+}
+.dark[data-color-theme="material"] {
+  --color-ios-bg-dark: #263238;
+  --color-ios-card-dark: #1e272c;
+  --color-ios-sep: #1e272c;
+  --color-ios-blue: #82aaff;
+  --color-ios-green: #c3e88d;
+  --color-ios-orange: #ffcb6b;
+  --color-ios-red: #f07178;
+  --color-ios-text-dark: #eeffff;
+  --color-ios-text-muted-dark: #546e7a;
+  --color-ios-element-dark: #37474f;
+  --color-ios-border-dark: #37474f;
+  --color-ios-accent-dark: #89ddff;
+  --color-ios-secondary-dark: #c792ea;
+  --color-ios-info-dark: #ffcb6b;
+  --color-ios-border-active-dark: #82aaff;
+}
+
+/* ---- matrix ---- */
+:root:not(.dark)[data-color-theme="matrix"] {
+  --color-ios-bg: #eef3ea;
+  --color-ios-card: #e4ebe1;
+  --color-ios-sep: #dae1d7;
+  --color-ios-blue: #1cc24b;
+  --color-ios-green: #1cc24b;
+  --color-ios-orange: #e6ff57;
+  --color-ios-red: #ff4b4b;
+  --color-ios-text: #203022;
+  --color-ios-text-muted: #748476;
+  --color-ios-element: #dae1d7;
+  --color-ios-border: #748476;
+  --color-ios-accent: #c770ff;
+  --color-ios-secondary: #24f6d9;
+  --color-ios-info: #30b3ff;
+  --color-ios-border-active: #1cc24b;
+}
+.dark[data-color-theme="matrix"] {
+  --color-ios-bg-dark: #0a0e0a;
+  --color-ios-card-dark: #0e130d;
+  --color-ios-sep: #141c12;
+  --color-ios-blue: #2eff6a;
+  --color-ios-green: #62ff94;
+  --color-ios-orange: #e6ff57;
+  --color-ios-red: #ff4b4b;
+  --color-ios-text-dark: #62ff94;
+  --color-ios-text-muted-dark: #8ca391;
+  --color-ios-element-dark: #141c12;
+  --color-ios-border-dark: #1e2a1b;
+  --color-ios-accent-dark: #c770ff;
+  --color-ios-secondary-dark: #00efff;
+  --color-ios-info-dark: #30b3ff;
+  --color-ios-border-active-dark: #2eff6a;
+}
+
+/* ---- mercury ---- */
+:root:not(.dark)[data-color-theme="mercury"] {
+  --color-ios-bg: #ffffff;
+  --color-ios-card: #fbfcfd;
+  --color-ios-sep: #7073930f;
+  --color-ios-blue: #5266eb;
+  --color-ios-green: #036e43;
+  --color-ios-orange: #a44200;
+  --color-ios-red: #b0175f;
+  --color-ios-text: #363644;
+  --color-ios-text-muted: #70707d;
+  --color-ios-element: #f4f5f9;
+  --color-ios-border: #7073931a;
+  --color-ios-accent: #8da4f5;
+  --color-ios-secondary: #465bd1;
+  --color-ios-info: #007f95;
+  --color-ios-border-active: #5266eb;
+}
+.dark[data-color-theme="mercury"] {
+  --color-ios-bg-dark: #171721;
+  --color-ios-card-dark: #10101a;
+  --color-ios-sep: #b4b7c814;
+  --color-ios-blue: #8da4f5;
+  --color-ios-green: #77c599;
+  --color-ios-orange: #fc9b6f;
+  --color-ios-red: #fc92b4;
+  --color-ios-text-dark: #dddde5;
+  --color-ios-text-muted-dark: #9d9da8;
+  --color-ios-element-dark: #272735;
+  --color-ios-border-dark: #b4b7c81f;
+  --color-ios-accent-dark: #8da4f5;
+  --color-ios-secondary-dark: #a7b6f8;
+  --color-ios-info-dark: #77becf;
+  --color-ios-border-active-dark: #8da4f5;
+}
+
+/* ---- monokai ---- */
+:root:not(.dark)[data-color-theme="monokai"] {
+  --color-ios-bg: #fafafa;
+  --color-ios-card: #f0f0f0;
+  --color-ios-sep: #e8e8e8;
+  --color-ios-blue: #66d9ef;
+  --color-ios-green: #a6e22e;
+  --color-ios-orange: #fd971f;
+  --color-ios-red: #f92672;
+  --color-ios-text: #272822;
+  --color-ios-text-muted: #75715e;
+  --color-ios-element: #e0e0e0;
+  --color-ios-border: #d0d0d0;
+  --color-ios-accent: #a6e22e;
+  --color-ios-secondary: #ae81ff;
+  --color-ios-info: #fd971f;
+  --color-ios-border-active: #66d9ef;
+}
+.dark[data-color-theme="monokai"] {
+  --color-ios-bg-dark: #272822;
+  --color-ios-card-dark: #1e1f1c;
+  --color-ios-sep: #1e1f1c;
+  --color-ios-blue: #66d9ef;
+  --color-ios-green: #a6e22e;
+  --color-ios-orange: #e6db74;
+  --color-ios-red: #f92672;
+  --color-ios-text-dark: #f8f8f2;
+  --color-ios-text-muted-dark: #75715e;
+  --color-ios-element-dark: #3e3d32;
+  --color-ios-border-dark: #3e3d32;
+  --color-ios-accent-dark: #a6e22e;
+  --color-ios-secondary-dark: #ae81ff;
+  --color-ios-info-dark: #fd971f;
+  --color-ios-border-active-dark: #66d9ef;
+}
+
+/* ---- nightowl ---- */
+/* nightowl é somente dark: no modo claro usa a paleta iOS padrão */
+
+.dark[data-color-theme="nightowl"] {
+  --color-ios-bg-dark: #011627;
+  --color-ios-card-dark: #0b253a;
+  --color-ios-sep: #5f7e97;
+  --color-ios-blue: #82AAFF;
+  --color-ios-green: #c5e478;
+  --color-ios-orange: #ecc48d;
+  --color-ios-red: #EF5350;
+  --color-ios-text-dark: #d6deeb;
+  --color-ios-text-muted-dark: #5f7e97;
+  --color-ios-element-dark: #0b253a;
+  --color-ios-border-dark: #5f7e97;
+  --color-ios-accent-dark: #c792ea;
+  --color-ios-secondary-dark: #7fdbca;
+  --color-ios-info-dark: #82AAFF;
+  --color-ios-border-active-dark: #82AAFF;
+}
+
+/* ---- nord ---- */
+:root:not(.dark)[data-color-theme="nord"] {
+  --color-ios-bg: #ECEFF4;
+  --color-ios-card: #E5E9F0;
+  --color-ios-sep: #4C566A;
+  --color-ios-blue: #5E81AC;
+  --color-ios-green: #A3BE8C;
+  --color-ios-orange: #D08770;
+  --color-ios-red: #BF616A;
+  --color-ios-text: #2E3440;
+  --color-ios-text-muted: #3B4252;
+  --color-ios-element: #D8DEE9;
+  --color-ios-border: #4C566A;
+  --color-ios-accent: #8FBCBB;
+  --color-ios-secondary: #81A1C1;
+  --color-ios-info: #5E81AC;
+  --color-ios-border-active: #434C5E;
+}
+.dark[data-color-theme="nord"] {
+  --color-ios-bg-dark: #2E3440;
+  --color-ios-card-dark: #3B4252;
+  --color-ios-sep: #434C5E;
+  --color-ios-blue: #88C0D0;
+  --color-ios-green: #A3BE8C;
+  --color-ios-orange: #D08770;
+  --color-ios-red: #BF616A;
+  --color-ios-text-dark: #ECEFF4;
+  --color-ios-text-muted-dark: #8B95A7;
+  --color-ios-element-dark: #434C5E;
+  --color-ios-border-dark: #434C5E;
+  --color-ios-accent-dark: #8FBCBB;
+  --color-ios-secondary-dark: #81A1C1;
+  --color-ios-info-dark: #88C0D0;
+  --color-ios-border-active-dark: #4C566A;
+}
+
+/* ---- one-dark ---- */
+:root:not(.dark)[data-color-theme="one-dark"] {
+  --color-ios-bg: #fafafa;
+  --color-ios-card: #f0f0f1;
+  --color-ios-sep: #e0e0e1;
+  --color-ios-blue: #4078f2;
+  --color-ios-green: #50a14f;
+  --color-ios-orange: #c18401;
+  --color-ios-red: #e45649;
+  --color-ios-text: #383a42;
+  --color-ios-text-muted: #a0a1a7;
+  --color-ios-element: #eaeaeb;
+  --color-ios-border: #d1d1d2;
+  --color-ios-accent: #0184bc;
+  --color-ios-secondary: #a626a4;
+  --color-ios-info: #986801;
+  --color-ios-border-active: #4078f2;
+}
+.dark[data-color-theme="one-dark"] {
+  --color-ios-bg-dark: #282c34;
+  --color-ios-card-dark: #21252b;
+  --color-ios-sep: #2c313a;
+  --color-ios-blue: #61afef;
+  --color-ios-green: #98c379;
+  --color-ios-orange: #e5c07b;
+  --color-ios-red: #e06c75;
+  --color-ios-text-dark: #abb2bf;
+  --color-ios-text-muted-dark: #5c6370;
+  --color-ios-element-dark: #353b45;
+  --color-ios-border-dark: #393f4a;
+  --color-ios-accent-dark: #56b6c2;
+  --color-ios-secondary-dark: #c678dd;
+  --color-ios-info-dark: #d19a66;
+  --color-ios-border-active-dark: #61afef;
+}
+
+/* ---- opencode (padrão): sem sobrescritas — usa a paleta iOS de index.css ---- */
+
+/* ---- orng ---- */
+:root:not(.dark)[data-color-theme="orng"] {
+  --color-ios-bg: #ffffff;
+  --color-ios-card: #FFF7F1;
+  --color-ios-sep: #d4d4d4;
+  --color-ios-blue: #EC5B2B;
+  --color-ios-green: #0062d1;
+  --color-ios-orange: #EC5B2B;
+  --color-ios-red: #d1383d;
+  --color-ios-text: #1a1a1a;
+  --color-ios-text-muted: #8a8a8a;
+  --color-ios-element: #f5f0eb;
+  --color-ios-border: #EC5B2B;
+  --color-ios-accent: #c94d24;
+  --color-ios-secondary: #EE7948;
+  --color-ios-info: #318795;
+  --color-ios-border-active: #c94d24;
+}
+.dark[data-color-theme="orng"] {
+  --color-ios-bg-dark: #0a0a0a;
+  --color-ios-card-dark: #141414;
+  --color-ios-sep: #3c3c3c;
+  --color-ios-blue: #EC5B2B;
+  --color-ios-green: #6ba1e6;
+  --color-ios-orange: #EC5B2B;
+  --color-ios-red: #e06c75;
+  --color-ios-text-dark: #eeeeee;
+  --color-ios-text-muted-dark: #808080;
+  --color-ios-element-dark: #1e1e1e;
+  --color-ios-border-dark: #EC5B2B;
+  --color-ios-accent-dark: #FFF7F1;
+  --color-ios-secondary-dark: #EE7948;
+  --color-ios-info-dark: #56b6c2;
+  --color-ios-border-active-dark: #EE7948;
+}
+
+/* ---- osaka-jade ---- */
+:root:not(.dark)[data-color-theme="osaka-jade"] {
+  --color-ios-bg: #F6F5DD;
+  --color-ios-card: #E8E7CC;
+  --color-ios-sep: #D5D4B8;
+  --color-ios-blue: #1faa90;
+  --color-ios-green: #3d7a52;
+  --color-ios-orange: #b5a020;
+  --color-ios-red: #c7392d;
+  --color-ios-text: #111c18;
+  --color-ios-text-muted: #53685B;
+  --color-ios-element: #D5D4B8;
+  --color-ios-border: #A8A78C;
+  --color-ios-accent: #3d7a52;
+  --color-ios-secondary: #a8527a;
+  --color-ios-info: #1faa90;
+  --color-ios-border-active: #1faa90;
+}
+.dark[data-color-theme="osaka-jade"] {
+  --color-ios-bg-dark: #111c18;
+  --color-ios-card-dark: #1a2520;
+  --color-ios-sep: #23372B;
+  --color-ios-blue: #2DD5B7;
+  --color-ios-green: #549e6a;
+  --color-ios-orange: #E5C736;
+  --color-ios-red: #FF5345;
+  --color-ios-text-dark: #C1C497;
+  --color-ios-text-muted-dark: #53685B;
+  --color-ios-element-dark: #23372B;
+  --color-ios-border-dark: #3d4a44;
+  --color-ios-accent-dark: #549e6a;
+  --color-ios-secondary-dark: #D2689C;
+  --color-ios-info-dark: #2DD5B7;
+  --color-ios-border-active-dark: #2DD5B7;
+}
+
+/* ---- palenight ---- */
+:root:not(.dark)[data-color-theme="palenight"] {
+  --color-ios-bg: #fafafa;
+  --color-ios-card: #f5f5f5;
+  --color-ios-sep: #eeeeee;
+  --color-ios-blue: #4976eb;
+  --color-ios-green: #91b859;
+  --color-ios-orange: #ffb300;
+  --color-ios-red: #e53935;
+  --color-ios-text: #292d3e;
+  --color-ios-text-muted: #8796b0;
+  --color-ios-element: #e7e7e8;
+  --color-ios-border: #e0e0e0;
+  --color-ios-accent: #00acc1;
+  --color-ios-secondary: #a854f2;
+  --color-ios-info: #f4511e;
+  --color-ios-border-active: #4976eb;
+}
+.dark[data-color-theme="palenight"] {
+  --color-ios-bg-dark: #292d3e;
+  --color-ios-card-dark: #1e2132;
+  --color-ios-sep: #1e2132;
+  --color-ios-blue: #82aaff;
+  --color-ios-green: #c3e88d;
+  --color-ios-orange: #ffcb6b;
+  --color-ios-red: #f07178;
+  --color-ios-text-dark: #a6accd;
+  --color-ios-text-muted-dark: #676e95;
+  --color-ios-element-dark: #32364a;
+  --color-ios-border-dark: #32364a;
+  --color-ios-accent-dark: #89ddff;
+  --color-ios-secondary-dark: #c792ea;
+  --color-ios-info-dark: #f78c6c;
+  --color-ios-border-active-dark: #82aaff;
+}
+
+/* ---- rosepine ---- */
+:root:not(.dark)[data-color-theme="rosepine"] {
+  --color-ios-bg: #faf4ed;
+  --color-ios-card: #fffaf3;
+  --color-ios-sep: #f4ede8;
+  --color-ios-blue: #31748f;
+  --color-ios-green: #286983;
+  --color-ios-orange: #ea9d34;
+  --color-ios-red: #b4637a;
+  --color-ios-text: #575279;
+  --color-ios-text-muted: #9893a5;
+  --color-ios-element: #f2e9e1;
+  --color-ios-border: #dfdad9;
+  --color-ios-accent: #d7827e;
+  --color-ios-secondary: #907aa9;
+  --color-ios-info: #56949f;
+  --color-ios-border-active: #31748f;
+}
+.dark[data-color-theme="rosepine"] {
+  --color-ios-bg-dark: #191724;
+  --color-ios-card-dark: #1f1d2e;
+  --color-ios-sep: #21202e;
+  --color-ios-blue: #9ccfd8;
+  --color-ios-green: #31748f;
+  --color-ios-orange: #f6c177;
+  --color-ios-red: #eb6f92;
+  --color-ios-text-dark: #e0def4;
+  --color-ios-text-muted-dark: #6e6a86;
+  --color-ios-element-dark: #26233a;
+  --color-ios-border-dark: #403d52;
+  --color-ios-accent-dark: #ebbcba;
+  --color-ios-secondary-dark: #c4a7e7;
+  --color-ios-info-dark: #9ccfd8;
+  --color-ios-border-active-dark: #9ccfd8;
+}
+
+/* ---- solarized ---- */
+:root:not(.dark)[data-color-theme="solarized"] {
+  --color-ios-bg: #fdf6e3;
+  --color-ios-card: #eee8d5;
+  --color-ios-sep: #eee8d5;
+  --color-ios-blue: #268bd2;
+  --color-ios-green: #859900;
+  --color-ios-orange: #b58900;
+  --color-ios-red: #dc322f;
+  --color-ios-text: #657b83;
+  --color-ios-text-muted: #93a1a1;
+  --color-ios-element: #eee8d5;
+  --color-ios-border: #eee8d5;
+  --color-ios-accent: #2aa198;
+  --color-ios-secondary: #6c71c4;
+  --color-ios-info: #cb4b16;
+  --color-ios-border-active: #93a1a1;
+}
+.dark[data-color-theme="solarized"] {
+  --color-ios-bg-dark: #002b36;
+  --color-ios-card-dark: #073642;
+  --color-ios-sep: #073642;
+  --color-ios-blue: #268bd2;
+  --color-ios-green: #859900;
+  --color-ios-orange: #b58900;
+  --color-ios-red: #dc322f;
+  --color-ios-text-dark: #839496;
+  --color-ios-text-muted-dark: #586e75;
+  --color-ios-element-dark: #073642;
+  --color-ios-border-dark: #073642;
+  --color-ios-accent-dark: #2aa198;
+  --color-ios-secondary-dark: #6c71c4;
+  --color-ios-info-dark: #cb4b16;
+  --color-ios-border-active-dark: #586e75;
+}
+
+/* ---- synthwave84 ---- */
+:root:not(.dark)[data-color-theme="synthwave84"] {
+  --color-ios-bg: #fafafa;
+  --color-ios-card: #f5f5f5;
+  --color-ios-sep: #f0f0f0;
+  --color-ios-blue: #00bcd4;
+  --color-ios-green: #4caf50;
+  --color-ios-orange: #ff9800;
+  --color-ios-red: #f44336;
+  --color-ios-text: #262335;
+  --color-ios-text-muted: #5c5c8a;
+  --color-ios-element: #eeeeee;
+  --color-ios-border: #e0e0e0;
+  --color-ios-accent: #9c27b0;
+  --color-ios-secondary: #e91e63;
+  --color-ios-info: #ff5722;
+  --color-ios-border-active: #00bcd4;
+}
+.dark[data-color-theme="synthwave84"] {
+  --color-ios-bg-dark: #262335;
+  --color-ios-card-dark: #1e1a29;
+  --color-ios-sep: #241b2f;
+  --color-ios-blue: #36f9f6;
+  --color-ios-green: #72f1b8;
+  --color-ios-orange: #fede5d;
+  --color-ios-red: #fe4450;
+  --color-ios-text-dark: #ffffff;
+  --color-ios-text-muted-dark: #848bbd;
+  --color-ios-element-dark: #2a2139;
+  --color-ios-border-dark: #495495;
+  --color-ios-accent-dark: #b084eb;
+  --color-ios-secondary-dark: #ff7edb;
+  --color-ios-info-dark: #ff8b39;
+  --color-ios-border-active-dark: #36f9f6;
+}
+
+/* ---- tokyonight ---- */
+:root:not(.dark)[data-color-theme="tokyonight"] {
+  --color-ios-bg: #e1e2e7;
+  --color-ios-card: #d5d6db;
+  --color-ios-sep: #9699a8;
+  --color-ios-blue: #2e7de9;
+  --color-ios-green: #587539;
+  --color-ios-orange: #b15c00;
+  --color-ios-red: #f52a65;
+  --color-ios-text: #3760bf;
+  --color-ios-text-muted: #8990a3;
+  --color-ios-element: #c8c9ce;
+  --color-ios-border: #737a8c;
+  --color-ios-accent: #b15c00;
+  --color-ios-secondary: #9854f1;
+  --color-ios-info: #2e7de9;
+  --color-ios-border-active: #5a607d;
+}
+.dark[data-color-theme="tokyonight"] {
+  --color-ios-bg-dark: #1a1b26;
+  --color-ios-card-dark: #1e2030;
+  --color-ios-sep: #545c7e;
+  --color-ios-blue: #82aaff;
+  --color-ios-green: #c3e88d;
+  --color-ios-orange: #ff966c;
+  --color-ios-red: #ff757f;
+  --color-ios-text-dark: #c8d3f5;
+  --color-ios-text-muted-dark: #828bb8;
+  --color-ios-element-dark: #222436;
+  --color-ios-border-dark: #737aa2;
+  --color-ios-accent-dark: #ff966c;
+  --color-ios-secondary-dark: #c099ff;
+  --color-ios-info-dark: #82aaff;
+  --color-ios-border-active-dark: #9099b2;
+}
+
+/* ---- vercel ---- */
+:root:not(.dark)[data-color-theme="vercel"] {
+  --color-ios-bg: #FFFFFF;
+  --color-ios-card: #FAFAFA;
+  --color-ios-sep: #EAEAEA;
+  --color-ios-blue: #0070F3;
+  --color-ios-green: #388E3C;
+  --color-ios-orange: #FF9500;
+  --color-ios-red: #DC3545;
+  --color-ios-text: #171717;
+  --color-ios-text-muted: #666666;
+  --color-ios-element: #EAEAEA;
+  --color-ios-border: #EAEAEA;
+  --color-ios-accent: #8E4EC6;
+  --color-ios-secondary: #0062D1;
+  --color-ios-info: #0070F3;
+  --color-ios-border-active: #999999;
+}
+.dark[data-color-theme="vercel"] {
+  --color-ios-bg-dark: #000000;
+  --color-ios-card-dark: #1A1A1A;
+  --color-ios-sep: #1A1A1A;
+  --color-ios-blue: #0070F3;
+  --color-ios-green: #46A758;
+  --color-ios-orange: #FFB224;
+  --color-ios-red: #E5484D;
+  --color-ios-text-dark: #EDEDED;
+  --color-ios-text-muted-dark: #878787;
+  --color-ios-element-dark: #292929;
+  --color-ios-border-dark: #1F1F1F;
+  --color-ios-accent-dark: #8E4EC6;
+  --color-ios-secondary-dark: #52A8FF;
+  --color-ios-info-dark: #52A8FF;
+  --color-ios-border-active-dark: #454545;
+}
+
+/* ---- vesper ---- */
+:root:not(.dark)[data-color-theme="vesper"] {
+  --color-ios-bg: #FFF;
+  --color-ios-card: #F0F0F0;
+  --color-ios-sep: #E8E8E8;
+  --color-ios-blue: #FFC799;
+  --color-ios-green: #99FFE4;
+  --color-ios-orange: #FFC799;
+  --color-ios-red: #FF8080;
+  --color-ios-text: #101010;
+  --color-ios-text-muted: #A0A0A0;
+  --color-ios-element: #E0E0E0;
+  --color-ios-border: #D0D0D0;
+  --color-ios-accent: #FFC799;
+  --color-ios-secondary: #99FFE4;
+  --color-ios-info: #FFC799;
+  --color-ios-border-active: #FFC799;
+}
+.dark[data-color-theme="vesper"] {
+  --color-ios-bg-dark: #101010;
+  --color-ios-card-dark: #101010;
+  --color-ios-sep: #1C1C1C;
+  --color-ios-blue: #FFC799;
+  --color-ios-green: #99FFE4;
+  --color-ios-orange: #FFC799;
+  --color-ios-red: #FF8080;
+  --color-ios-text-dark: #FFF;
+  --color-ios-text-muted-dark: #A0A0A0;
+  --color-ios-element-dark: #101010;
+  --color-ios-border-dark: #282828;
+  --color-ios-accent-dark: #FFC799;
+  --color-ios-secondary-dark: #99FFE4;
+  --color-ios-info-dark: #FFC799;
+  --color-ios-border-active-dark: #FFC799;
+}
+
+/* ---- zenburn ---- */
+:root:not(.dark)[data-color-theme="zenburn"] {
+  --color-ios-bg: #ffffef;
+  --color-ios-card: #f5f5e5;
+  --color-ios-sep: #e0e0d0;
+  --color-ios-blue: #5f7f8f;
+  --color-ios-green: #5f8f5f;
+  --color-ios-orange: #8f8f5f;
+  --color-ios-red: #8f5f5f;
+  --color-ios-text: #3f3f3f;
+  --color-ios-text-muted: #6f6f6f;
+  --color-ios-element: #ebebdb;
+  --color-ios-border: #d0d0c0;
+  --color-ios-accent: #5f8f8f;
+  --color-ios-secondary: #8f5f8f;
+  --color-ios-info: #8f7f5f;
+  --color-ios-border-active: #5f7f8f;
+}
+.dark[data-color-theme="zenburn"] {
+  --color-ios-bg-dark: #3f3f3f;
+  --color-ios-card-dark: #4f4f4f;
+  --color-ios-sep: #4f4f4f;
+  --color-ios-blue: #8cd0d3;
+  --color-ios-green: #7f9f7f;
+  --color-ios-orange: #f0dfaf;
+  --color-ios-red: #cc9393;
+  --color-ios-text-dark: #dcdccc;
+  --color-ios-text-muted-dark: #9f9f9f;
+  --color-ios-element-dark: #5f5f5f;
+  --color-ios-border-dark: #5f5f5f;
+  --color-ios-accent-dark: #93e0e3;
+  --color-ios-secondary-dark: #dc8cc3;
+  --color-ios-info-dark: #dfaf8f;
+  --color-ios-border-active-dark: #8cd0d3;
+}
+
+/* ============================================================
+ * Overrides globais das classes fixas (valem para qualquer tema ativo,
+ * usando as variáveis definidas acima; sem tema ativo, os defaults de
+ * @theme em index.css são usados e nada muda visualmente).
+ * ============================================================ */
+
+/* --- modo claro --- */
+:root:not(.dark)[data-color-theme] {
+  .text-zinc-900,
+  .text-zinc-700,
+  .text-zinc-800,
+  .hover\:text-zinc-700:hover,
+  .group-hover\:text-zinc-900:hover,
+  .hover\:text-zinc-800:hover,
+  .hover\:text-zinc-900:hover {
+    color: var(--color-ios-text);
+  }
+  .text-zinc-400,
+  .text-zinc-500,
+  .text-zinc-300,
+  .text-zinc-600,
+  .text-zinc-400\/80,
+  .hover\:text-zinc-600:hover {
+    color: var(--color-ios-text-muted);
+  }
+  .text-blue-600,
+  .hover\:text-blue-600:hover {
+    color: var(--color-ios-blue);
+  }
+  .bg-white,
+  .focus\:bg-white:focus {
+    background-color: var(--color-ios-card);
+  }
+  .bg-black\/\[0\.06\],
+  .bg-zinc-900,
+  .bg-black\/\[0\.03\],
+  .bg-black\/\[0\.08\],
+  .bg-black\/\[0\.05\],
+  .bg-black\/\[0\.12\],
+  .bg-black\/\[0\.04\],
+  .bg-black\/\[0\.1\],
+  .bg-zinc-100,
+  .bg-zinc-200,
+  .bg-zinc-50,
+  .bg-white\/95,
+  .bg-black\/\[0\.15\],
+  .bg-black\/\[0\.07\],
+  .bg-white\/90,
+  .bg-white\/20 {
+    background-color: var(--color-ios-element);
+  }
+  .hover\:bg-black\/\[0\.1\]:hover,
+  .hover\:bg-black\/\[0\.03\]:hover,
+  .hover\:bg-black\/\[0\.2\]:hover,
+  .hover\:bg-black\/\[0\.06\]:hover,
+  .hover\:bg-black\/\[0\.08\]:hover,
+  .hover\:bg-zinc-100:hover,
+  .hover\:bg-zinc-200:hover,
+  .hover\:bg-black\/\[0\.05\]:hover,
+  .hover\:bg-black\/\[0\.04\]:hover {
+    background-color: var(--color-ios-element);
+  }
+  .border-black\/\[0\.04\],
+  .border-black\/\[0\.06\],
+  .border-zinc-300,
+  .border-zinc-200,
+  .border-zinc-100,
+  .border-zinc-200\/80,
+  .border-white\/30,
+  .border-black\/\[0\.05\],
+  .border-black\/\[0\.08\],
+  .border-black\/\[0\.1\],
+  .border-black\/\[0\.07\],
+  .border-zinc-200\/90,
+  .border-zinc-200\/60 {
+    border-color: var(--color-ios-border);
+  }
+  .hover\:border-zinc-300:hover {
+    border-color: var(--color-ios-border);
+  }
+}
+
+/* --- modo escuro --- */
+.dark[data-color-theme] {
+  .dark\:text-zinc-100,
+  .dark\:text-zinc-200,
+  .dark\:hover\:text-zinc-200:hover,
+  .dark\:hover\:text-zinc-100:hover {
+    color: var(--color-ios-text-dark);
+  }
+  .dark\:text-zinc-900,
+  .dark\:text-zinc-500,
+  .dark\:text-zinc-400,
+  .dark\:text-zinc-50,
+  .dark\:text-zinc-600,
+  .dark\:text-zinc-300,
+  .dark\:hover\:text-zinc-300:hover {
+    color: var(--color-ios-text-muted-dark);
+  }
+  .dark\:text-blue-400 {
+    color: var(--color-ios-blue);
+  }
+  .dark\:bg-white,
+  .dark\:bg-zinc-900 {
+    background-color: var(--color-ios-card-dark);
+  }
+  .dark\:bg-zinc-700,
+  .dark\:bg-zinc-800,
+  .dark\:focus\:bg-zinc-800 {
+    background-color: var(--color-ios-element-dark);
+  }
+  .dark\:hover\:bg-white:hover,
+  .dark\:hover\:bg-zinc-800:hover,
+  .dark\:hover\:bg-zinc-700:hover {
+    background-color: var(--color-ios-element-dark);
+  }
+  .dark\:border-white,
+  .dark\:border-zinc-600,
+  .dark\:border-white\/10,
+  .dark\:border-zinc-800,
+  .dark\:border-zinc-700,
+  .dark\:border-zinc-700\/50,
+  .dark\:border-zinc-700\/60,
+  .dark\:border-zinc-700\/80 {
+    border-color: var(--color-ios-border-dark);
+  }
+  .dark\:hover\:border-zinc-600:hover {
+    border-color: var(--color-ios-border-dark);
+  }
+}
+
+[data-color-theme] .focus\:ring-blue-500:focus {
+  --tw-ring-color: var(--color-ios-blue);
+}

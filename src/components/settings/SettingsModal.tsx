@@ -15,7 +15,7 @@ import { AddonSystem } from '../../services/addonSystem';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSwitch } from '../common/IOSSwitch';
 import { IOSSelect } from '../common/IOSSelect';
-import { COLOR_THEME_NAMES, DEFAULT_COLOR_THEME } from '../../themes';
+import { COLOR_THEMES, COLOR_THEME_NAMES, DEFAULT_COLOR_THEME } from '../../themes';
 import { Sun, Moon, Monitor, Palette } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -241,14 +241,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   maxMenuHeight={280}
                   className="w-full !text-[13px] !px-3 !py-2.5"
                   active={colorTheme !== DEFAULT_COLOR_THEME}
-                  options={COLOR_THEME_NAMES.map((id) => ({
-                    value: id,
-                    label: id,
-                    hint: id === DEFAULT_COLOR_THEME ? 'padrão' : undefined,
-                  }))}
+                  options={COLOR_THEME_NAMES.map((id) => {
+                    const modes = COLOR_THEMES[id]?.modes ?? [];
+                    const hints: string[] = [];
+                    if (id === DEFAULT_COLOR_THEME) hints.push('padrão');
+                    if (modes.length === 1) hints.push(modes[0] === 'dark' ? 'somente escuro' : 'somente claro');
+                    return { value: id, label: id, hint: hints.join(' · ') || undefined };
+                  })}
                 />
                 <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
-                  Temas de cores inspirados no OpenCode ({COLOR_THEME_NAMES.length} temas). Aplica sobre o tema claro/escuro acima.
+                  Temas de cores inspirados no OpenCode ({COLOR_THEME_NAMES.length} temas). Aplica sobre o tema claro/escuro acima. Temas "somente escuro" aplicam só no modo escuro.
                 </p>
               </div>
 
