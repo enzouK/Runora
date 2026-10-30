@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSe
               onClick={() => onTabChange(tab.id)}
               className={`flex items-center gap-1.5 px-3 py-[7px] rounded-[8px] text-[13px] font-semibold transition-all active:scale-[0.97] ${
                 activeTab === tab.id
-                  ? 'bg-white dark:bg-[#636366] text-zinc-900 dark:text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)]'
+                  ? 'bg-ios-card dark:bg-[#636366] text-zinc-900 dark:text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)]'
                   : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
               }`}
             >

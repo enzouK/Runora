@@ -93,7 +93,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-xl bg-white dark:bg-ios-card-dark rounded-[20px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col max-h-[88vh] ios-fade-in">
+      <div className="w-full max-w-xl bg-ios-card dark:bg-ios-card-dark rounded-[20px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col max-h-[88vh] ios-fade-in">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.05] dark:border-white/[0.07]">
           <div>
@@ -202,7 +202,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-[10px] text-[13px] font-medium transition-all active:scale-[0.98] ${
                         theme === t
                           ? 'bg-ios-blue text-white shadow-[0_2px_8px_rgba(0,122,255,0.35)]'
-                          : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 border border-black/[0.06] dark:border-white/[0.1] hover:border-ios-blue/50'
+                          : 'bg-ios-card dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 border border-black/[0.06] dark:border-white/[0.1] hover:border-ios-blue/50'
                       }`}
                     >
                       {t === 'light' && <Sun className="w-4 h-4" />}

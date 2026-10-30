@@ -61,7 +61,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
         }
       }}
     >
-      <div className="relative w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl transition-all scale-100 space-y-5">
+      <div className="relative w-full max-w-md bg-ios-card dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl transition-all scale-100 space-y-5">
         {/* Close Button */}
         <button
           type="button"

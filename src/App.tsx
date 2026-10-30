@@ -128,7 +128,7 @@ export default function App() {
       {/* Ambient top glow (subtle depth behind translucent surfaces) */}
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-x-0 top-0 h-80 bg-[radial-gradient(ellipse_55%_50%_at_50%_-12%,rgba(0,122,255,0.08),transparent)] dark:bg-[radial-gradient(ellipse_55%_50%_at_50%_-12%,rgba(64,156,255,0.14),transparent)]"
+        className="pointer-events-none fixed inset-x-0 top-0 h-80 bg-[radial-gradient(ellipse_55%_50%_at_50%_-12%,rgba(140,110,200,0.08),transparent)] dark:bg-[radial-gradient(ellipse_55%_50%_at_50%_-12%,rgba(64,156,255,0.14),transparent)]"
       />
 
       {/* Top iOS Header */}
