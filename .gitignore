@@ -15,3 +15,6 @@ backup-*/
 release/
 .electron-smoke/
 .opencode/
+
+# Chaves SSH privadas (nunca versionar)
+keys/
