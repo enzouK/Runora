@@ -1,8 +1,10 @@
 import React from 'react';
 import { Download, Puzzle, Settings, Trash2, Upload } from 'lucide-react';
 import { AddonSystem } from '../../services/addonSystem';
+import type { AddonManifest } from '../../services/addonSystem';
 import { importAddonFile, removeAddon } from '../../services/addonStorage';
 import { IOSSwitch } from '../common/IOSSwitch';
+import { AddonConfigModal } from './AddonConfigModal';
 
 /**
  * Addons JS — full-page view (accessible from the main nav, next to Note Types).
@@ -13,6 +15,7 @@ export const AddonsView: React.FC = () => {
   const [importMsg, setImportMsg] = React.useState<string | null>(null);
   const [importing, setImporting] = React.useState(false);
   const [addonsRootPath, setAddonsRootPath] = React.useState<string | null>(null);
+  const [configAddon, setConfigAddon] = React.useState<AddonManifest | null>(null);
   const importFileRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -33,8 +36,7 @@ export const AddonsView: React.FC = () => {
   };
 
   const handleAddonSettings = (id: string) => {
-    // TODO: abrir configurações específicas do addon (id)
-    setImportMsg(`Configurações do addon "${id}" ainda não implementadas.`);
+    setConfigAddon(addons.find((a) => a.id === id) || null);
   };
 
   const handleDeleteAddon = async (id: string) => {
@@ -122,7 +124,9 @@ export const AddonsView: React.FC = () => {
             </p>
           </div>
         ) : (
-          addons.map((addon) => (
+          addons.map((addon) => {
+            const hasConfig = !!addon.configSchema?.length;
+            return (
             <div key={addon.id} className="p-4 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -142,9 +146,14 @@ export const AddonsView: React.FC = () => {
                 <IOSSwitch checked={addon.enabled} onChange={() => handleToggle(addon.id)} />
                 <button
                   type="button"
-                  title={`Configurações de ${addon.name}`}
+                  title={hasConfig ? `Configurações de ${addon.name}` : `${addon.name} não tem configurações`}
+                  disabled={!hasConfig}
                   onClick={() => handleAddonSettings(addon.id)}
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors active:scale-90"
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                    hasConfig
+                      ? 'text-zinc-400 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] hover:text-zinc-600 dark:hover:text-zinc-200 active:scale-90'
+                      : 'text-zinc-300 dark:text-zinc-600 opacity-50 cursor-not-allowed'
+                  }`}
                 >
                   <Settings className="w-4 h-4" />
                 </button>
@@ -158,7 +167,8 @@ export const AddonsView: React.FC = () => {
                 </button>
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -203,6 +213,13 @@ export const AddonsView: React.FC = () => {
           Pasta: {addonsRootPath}
         </p>
       )}
+
+      {/* Configurações do addon selecionado (formulário gerado do configSchema) */}
+      <AddonConfigModal
+        addon={configAddon}
+        onClose={() => setConfigAddon(null)}
+        onSaved={(message) => setImportMsg(message)}
+      />
     </div>
   );
 };
