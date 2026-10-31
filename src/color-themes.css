@@ -1314,3 +1314,38 @@
 [data-color-theme] .hover\:bg-\[\#0071eb\]:hover {
   background-color: color-mix(in srgb, var(--color-ios-blue) 85%, #000);
 }
+
+/* --- glows do acento (sombras/drop-shadow/halo do topo/foco) acompanham a cor do tema --- */
+[data-color-theme] .shadow-\[0_2px_8px_rgba\(0\,122\,255\,0\.4\)\] {
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-ios-blue) 40%, transparent);
+}
+[data-color-theme] .shadow-\[0_1px_6px_rgba\(0\,122\,255\,0\.45\)\] {
+  box-shadow: 0 1px 6px color-mix(in srgb, var(--color-ios-blue) 45%, transparent);
+}
+[data-color-theme] .shadow-\[0_2px_8px_rgba\(0\,122\,255\,0\.35\)\] {
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-ios-blue) 35%, transparent);
+}
+[data-color-theme] .shadow-\[0_1px_4px_rgba\(0\,122\,255\,0\.35\)\] {
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--color-ios-blue) 35%, transparent);
+}
+[data-color-theme] .shadow-\[0_2px_10px_rgba\(0\,122\,255\,0\.35\)\] {
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-ios-blue) 35%, transparent);
+}
+[data-color-theme] .shadow-\[0_4px_14px_rgba\(0\,122\,255\,0\.35\)\] {
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--color-ios-blue) 35%, transparent);
+}
+[data-color-theme] .drop-shadow-\[0_2px_6px_rgba\(0\,122\,255\,0\.35\)\] {
+  filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--color-ios-blue) 35%, transparent));
+}
+  :root:not(.dark)[data-color-theme] .bg-\[radial-gradient\(ellipse_55\%_50\%_at_50\%_-12\%\,rgba\(0\,122\,255\,0\.14\)\,transparent\)\] {
+    background-image: radial-gradient(ellipse 55% 50% at 50% -12%,color-mix(in srgb, var(--color-ios-blue) 14%, transparent),transparent);
+  }
+  .dark[data-color-theme] .dark\:bg-\[radial-gradient\(ellipse_55\%_50\%_at_50\%_-12\%\,rgba\(64\,156\,255\,0\.14\)\,transparent\)\] {
+    background-image: radial-gradient(ellipse 55% 50% at 50% -12%,color-mix(in srgb, var(--color-ios-blue) 14%, transparent),transparent);
+  }
+  [data-color-theme] .focus-within\:ring-blue-500\/50:focus-within {
+    --tw-ring-color: color-mix(in srgb, var(--color-ios-blue) 50%, transparent);
+  }
+  [data-color-theme] .focus-within\:border-blue-500:focus-within {
+    border-color: var(--color-ios-blue);
+  }
