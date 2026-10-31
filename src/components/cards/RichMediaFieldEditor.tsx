@@ -534,7 +534,10 @@ const FieldImagePreview: React.FC<{
       {/* Lightbox Modal */}
       {showModal && (
         <div
-          onClick={() => setShowModal(false)}
+          // mousedown (not click): a text-selection drag released over the backdrop must not close
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowModal(false);
+          }}
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
         >
           <div

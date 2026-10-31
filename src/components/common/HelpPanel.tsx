@@ -66,7 +66,10 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
     <div
       ref={layerRef}
       className="absolute inset-0 z-20 bg-black/40 flex items-center justify-center p-5"
-      onClick={onClose}
+      // mousedown (not click): a text-selection drag released over the backdrop must not close
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         onClick={(e) => e.stopPropagation()}

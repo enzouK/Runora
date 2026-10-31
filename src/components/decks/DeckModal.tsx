@@ -974,7 +974,13 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const isFactoryPreset = presetId === StorageService.DEFAULT_PRESET_ID;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      // close on backdrop press (mousedown, so text-selection drags don't close)
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="relative w-full max-w-md bg-white dark:bg-ios-card-dark rounded-[20px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col max-h-[88vh] ios-fade-in">
         <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.05] dark:border-white/[0.07]">
           <h3 className="text-[17px] font-bold text-zinc-900 dark:text-zinc-50">
@@ -1031,7 +1037,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                 </button>
                 {presetMenuOpen && (
                   <>
-                    <div className="fixed inset-0 z-10" onClick={() => setPresetMenuOpen(false)} />
+                    <div className="fixed inset-0 z-10" onMouseDown={() => setPresetMenuOpen(false)} />
                     <div className="absolute right-0 top-full mt-1.5 z-20 w-52 py-1 rounded-[12px] bg-white dark:bg-zinc-900 border border-black/[0.08] dark:border-white/[0.1] shadow-[0_8px_30px_rgba(0,0,0,0.12)] ios-fade-in">
                       <button
                         type="button"
@@ -1669,7 +1675,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
         {presetPrompt && (
           <div
             className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-            onClick={(e) => e.target === e.currentTarget && setPresetPrompt(null)}
+            onMouseDown={(e) => e.target === e.currentTarget && setPresetPrompt(null)}
           >
             <div className="w-full max-w-xs bg-white dark:bg-ios-card-dark rounded-[16px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.25)] p-5 space-y-3 ios-fade-in">
               <h4 className="text-[15px] font-bold text-zinc-900 dark:text-zinc-50">
@@ -1713,7 +1719,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
         {presetDeleteOpen && (
           <div
             className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-            onClick={(e) => e.target === e.currentTarget && setPresetDeleteOpen(false)}
+            onMouseDown={(e) => e.target === e.currentTarget && setPresetDeleteOpen(false)}
           >
             <div className="w-full max-w-xs bg-white dark:bg-ios-card-dark rounded-[16px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.25)] p-5 space-y-3 ios-fade-in">
               <h4 className="text-[15px] font-bold text-red-600 dark:text-red-400">

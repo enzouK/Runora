@@ -55,7 +55,8 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
       aria-modal="true"
       aria-labelledby="confirm-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
-      onClick={(e) => {
+      // mousedown (not click): a text-selection drag released over the backdrop must not close
+      onMouseDown={(e) => {
         if (e.target === e.currentTarget && !isLoading) {
           onClose();
         }

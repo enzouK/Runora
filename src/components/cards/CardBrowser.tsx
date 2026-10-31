@@ -1108,7 +1108,10 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
         createPortal(
           <div
             className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-            onClick={() => setShowTagModal(false)}
+            // mousedown (not click): a text-selection drag released over the backdrop must not close
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setShowTagModal(false);
+            }}
           >
             <div
               onClick={(e) => e.stopPropagation()}
