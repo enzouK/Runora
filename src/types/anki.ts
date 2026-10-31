@@ -1,6 +1,6 @@
 /**
- * Anki 2.0 Core Data Types
- * Designed for full compatibility with Anki database schemas and FSRS scheduler.
+ * Runora Core Data Types
+ * Designed for compatibility with legacy external collection schemas and the FSRS scheduler.
  */
 
 export type FSRSRating = 1 | 2 | 3 | 4; // 1: Again, 2: Hard, 3: Good, 4: Easy
@@ -46,7 +46,7 @@ export interface NoteType {
   templates: CardTemplate[];
   css: string;
   isCloze: boolean;
-  // Specific Anki 2.0 features configured per Note Type:
+  // Specific Runora features configured per Note Type:
   hintsEnabled: boolean;           // Show "Show Hint" button on front of card
   voiceRecordingEnabled: boolean;  // Show "Record Voice" on front of card
   createdAt: number;
@@ -79,7 +79,7 @@ export interface Card {
   templateOrd: number;           // Ordinal index of template or cloze index
   due: number;                   // Due timestamp in ms
   fsrs: FSRSCardData;
-  position?: number;             // Anki "due #": fixed queue slot for new cards (states 0)
+  position?: number;             // Runora "due #": fixed queue slot for new cards (states 0)
   learningStep?: number;         // Current index into learning/relearning steps (states 1/3)
   suspended?: boolean;           // Suspended cards never appear in queues/counts (leech/manual)
   createdAt: number;
@@ -96,18 +96,18 @@ export type InsertionOrder = 'sequential' | 'random';
 export type LeechAction = 'suspend' | 'tag';
 
 /**
- * Anki-style deck options for New Cards and Lapses.
+ * Runora-style deck options for New Cards and Lapses.
  * null = inherit from parent deck (or app default at the root).
  */
 export interface SchedulerConfig {
   learningSteps: string | null;    // "1m 10m" — steps for new cards
   insertionOrder: InsertionOrder | null; // order new cards are introduced
   relearningSteps: string | null;  // "10m" — steps after a lapse
-  leechThreshold: number | null;   // lapses before leech action (Anki default: 8)
-  leechAction: LeechAction | null; // what to do with leeches (Anki default: suspend)
+  leechThreshold: number | null;   // lapses before leech action (Runora default: 8)
+  leechAction: LeechAction | null; // what to do with leeches (Runora default: suspend)
 }
 
-// ---- Display Order (Anki) ----
+// ---- Display Order (Runora) ----
 export type NewGatherOrder =
   | 'deck'
   | 'positionAsc'
@@ -136,14 +136,14 @@ export type ReviewSortOrder =
   | 'random';
 
 /**
- * Anki-style Display Order options. null = inherit from parent (or app default at root).
+ * Runora-style Display Order options. null = inherit from parent (or app default at root).
  */
 export interface DisplayOrderConfig {
-  newGatherOrder: NewGatherOrder | null;   // Anki default: deck
-  newSortOrder: NewSortOrder | null;       // Anki default: card type, then gathered
-  newReviewOrder: MixOrder | null;         // Anki default: mix with reviews
-  learnReviewOrder: MixOrder | null;       // Anki default: mix with reviews
-  reviewSortOrder: ReviewSortOrder | null; // Anki default: due date, then random
+  newGatherOrder: NewGatherOrder | null;   // Runora default: deck
+  newSortOrder: NewSortOrder | null;       // Runora default: card type, then gathered
+  newReviewOrder: MixOrder | null;         // Runora default: mix with reviews
+  learnReviewOrder: MixOrder | null;       // Runora default: mix with reviews
+  reviewSortOrder: ReviewSortOrder | null; // Runora default: due date, then random
 }
 
 export interface Deck {
@@ -152,23 +152,23 @@ export interface Deck {
   description: string;
   collapsed?: boolean;
   presetId?: string;             // Options preset this deck follows (see Preset)
-  // Anki-style "This deck" scopes: when set, they take priority over the preset
+  // Runora-style "This deck" scopes: when set, they take priority over the preset
   dailyLimitsOverride?: { newCardsPerDay: number; maxReviewsPerDay: number }; // Daily Limits scoped to "This deck"
   fsrsOverride?: {                          // FSRS scoped to "This deck"
     requestRetention: number;
     maximumInterval: number;
   };
   fsrsParams?: Partial<FSRSParameters>; // Custom deck-specific FSRS overrides if any
-  dailyLimits?: DailyLimits;     // Anki-style daily limits (legacy mirror of the preset)
-  schedulerConfig?: SchedulerConfig; // Anki-style New Cards / Lapses options
-  displayOrder?: DisplayOrderConfig; // Anki-style Display Order options
-  audioConfig?: AudioConfig;       // Anki-style Audio options (autoplay)
+  dailyLimits?: DailyLimits;     // Runora-style daily limits (legacy mirror of the preset)
+  schedulerConfig?: SchedulerConfig; // Runora-style New Cards / Lapses options
+  displayOrder?: DisplayOrderConfig; // Runora-style Display Order options
+  audioConfig?: AudioConfig;       // Runora-style Audio options (autoplay)
   createdAt: number;
   updatedAt: number;
 }
 
 /**
- * Anki-style preset: a shareable sheet of deck options ("Deck Options preset").
+ * Runora-style preset: a shareable sheet of deck options ("Deck Options preset").
  * A deck links to exactly one preset via `presetId`; editing a preset updates
  * every deck linked to it, regardless of the deck tree (parent/child agnostic).
  */
@@ -183,24 +183,24 @@ export interface Preset {
     learningSteps: string;        // "1m 10m" — steps for new cards
     insertionOrder: InsertionOrder;
     relearningSteps: string;      // "10m" — steps after a lapse
-    leechThreshold: number;       // lapses before leech action (Anki default: 8)
-    leechAction: LeechAction;     // what to do with leeches (Anki default: suspend)
+    leechThreshold: number;       // lapses before leech action (Runora default: 8)
+    leechAction: LeechAction;     // what to do with leeches (Runora default: suspend)
   };
   displayOrder: DisplayOrderConfig;
   audioConfig: AudioConfig;
   fsrsParams: {
-    requestRetention: number;     // Anki "desired retention"
-    maximumInterval: number;      // Anki "max. days per interval"
+    requestRetention: number;     // Runora "desired retention"
+    maximumInterval: number;      // Runora "max. days per interval"
   };
   createdAt: number;
   updatedAt: number;
 }
 
 /**
- * Anki-style Audio options. null = inherit from parent deck (or app default at root).
+ * Runora-style Audio options. null = inherit from parent deck (or app default at root).
  */
 export interface AudioConfig {
-  disableAutoplay: boolean | null; // Anki: "Don't play audio automatically" (default: false)
+  disableAutoplay: boolean | null; // Runora: "Don't play audio automatically" (default: false)
 }
 
 export interface RevlogEntry {

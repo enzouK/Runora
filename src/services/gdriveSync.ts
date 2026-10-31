@@ -1,9 +1,10 @@
 /**
  * DriveSyncService — sync with Google Drive, no paid hosting required.
  *
- * How it works (same idea as AnkiWeb, but on the user's own free Drive):
- * - The user creates a free Google Cloud project, enables the Drive API and
- *   creates an OAuth "Web application" client ID, then pastes it in Settings.
+ * How it works (sync on the user's own free Drive, no paid hosting):
+ * - The app ships a built-in OAuth "Web application" Client ID (like
+ *   reader.ttsu.app); the user just clicks "Conectar conta Google". A custom
+ *   Client ID can be pasted in Settings to override it.
  *   Login uses Google's GIS token client (no client secret in the app).
  * - Sync artifacts in Drive (created with the drive.file scope, invisible in
  *   the Drive web UI):
@@ -12,7 +13,7 @@
  *     anki2-sync-meta.json     SyncMeta: uploadedAt, deviceId, counts…
  *     anki2-sync.lock.json     cross-device lock so two devices never
  *                              overwrite each other's sync (TTL 10 min)
- * - Conflict (like AnkiWeb): if the remote backup is newer than our last sync
+ * - Conflict (cloud-sync style): if the remote backup is newer than our last sync
  *   AND this device has local changes since its last sync, the caller is asked
  *   "download the last backup or keep this device?". Keeping = upload and
  *   replace the Drive backup. Downloading = replace local data (a local backup

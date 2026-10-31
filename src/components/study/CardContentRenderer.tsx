@@ -10,7 +10,7 @@ interface CardContentRendererProps {
   onRecordingComplete?: (url: string | null) => void;
   isPreview?: boolean;
   cardId?: string;
-  /** Anki deck option: "Don't play audio automatically" */
+  /** Deck option: "Don't play audio automatically" */
   disableAutoplay?: boolean;
 }
 const TOKEN_SPLIT_REGEX = /(<!--VOICE_RECORD_SLOT-->|<!--VOICE_REPRODUCE_SLOT-->|<audio\b[^>]*>(?:<\/audio>)?|<audio\b[^>]*\/>|\[sound:[^\]]+\])/gi;
@@ -147,7 +147,7 @@ export const CardContentRenderer: React.FC<CardContentRendererProps> = ({
         }
 
         // 4. Raw [sound:...] fallback
-        // Anki: [sound:...] plays automatically when autoplay is enabled
+        // [sound:...] plays automatically when autoplay is enabled
         if (/^\[sound:/i.test(token.trim())) {
           const soundMatch = token.match(/\[sound:([^\]]+)\]/i);
           const soundUrl = soundMatch ? soundMatch[1].trim() : '';

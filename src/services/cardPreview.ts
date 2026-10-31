@@ -87,7 +87,7 @@ function escapeRegExp(s: string): string {
 
 /**
  * Scans a note type's templates (qfmt + afmt) and reports, per field name,
- * which Anki filter the template requests for it. Plain {{Field}} or no
+ * which filter the template requests for it. Plain {{Field}} or no
  * reference at all → 'plain'.
  */
 export function detectFieldModes(
@@ -172,7 +172,7 @@ function decodeEntities(s: string): string {
 }
 
 /**
- * Removes Anki media tags ([sound:...]) and reveals cloze text
+ * Removes [sound:...] media tags and reveals cloze text
  * ({{c1::answer::hint}} → answer) while KEEPING all other HTML intact.
  * Same cloze semantics as ClozeService.renderClozeBack.
  */

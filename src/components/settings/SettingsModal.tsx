@@ -149,7 +149,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.05] dark:border-white/[0.07]">
           <div>
             <h3 className="text-[17px] font-bold text-zinc-900 dark:text-zinc-50">
-              Configurações do Anki 2.0
+              Configurações do Runora
             </h3>
             <p className="text-xs text-zinc-400 dark:text-zinc-500">
               Motor FSRS e Gerenciamento de Coleção
@@ -232,7 +232,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   .
                 </p>
                 <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
-                  Ex.: com 4, revisar às 2:30 ainda conta para o dia anterior (padrão do Anki).
+                  Ex.: com 4, revisar às 2:30 ainda conta para o dia anterior (padrão do Runora).
                 </p>
               </div>
 

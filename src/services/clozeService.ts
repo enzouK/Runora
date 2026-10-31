@@ -1,5 +1,5 @@
 /**
- * Cloze Parser & Anki Template Engine
+ * Cloze Parser & Template Engine
  * Full support for:
  * - {{FieldName}}
  * - {{FrontSide}}
@@ -71,7 +71,7 @@ export class ClozeService {
   }
 
   /**
-   * Converts Anki Furigana format `漢字[かんじ]` into HTML `<ruby>漢字<rt>かんじ</rt></ruby>`
+   * Converts Furigana format `漢字[かんじ]` into HTML `<ruby>漢字<rt>かんじ</rt></ruby>`
    */
   public static renderFurigana(text: string): string {
     if (!text) return '';
@@ -98,7 +98,7 @@ export class ClozeService {
   }
 
   /**
-   * Evaluates a Card Template against a Note's field values with full Anki HTML support
+   * Evaluates a Card Template against a Note's field values with full HTML support
    */
   public static renderTemplate(
     templateHtml: string,
@@ -117,7 +117,7 @@ export class ClozeService {
       result = result.replace(/\{\{FrontSide\}\}/gi, '');
     }
 
-    // 2. Anki Conditionals: {{#FieldName}}content{{/FieldName}}
+    // 2. Conditionals: {{#FieldName}}content{{/FieldName}}
     for (const [name, val] of Object.entries(fields)) {
       const hasContent = val && val.trim().length > 0;
       const condRegex = new RegExp(`\\{\\{#${name}\\}\\}([\\s\\S]*?)\\{\\{/${name}\\}`, 'g');
@@ -222,7 +222,7 @@ export class ClozeService {
     // Clean any remaining unmapped {{FieldName}} tags that weren't in fields dictionary
     result = result.replace(/\{\{[^}]+\}\}/g, '');
 
-    // Normalize malformed HTML exactly like a browser does (Anki renders cards in
+    // Normalize malformed HTML exactly like a browser does (cards render in
     // a full document, so unclosed tables etc. still display). Without this,
     // deck templates authored with broken tag nesting lose content in React.
     if (typeof DOMParser !== 'undefined') {
@@ -241,7 +241,7 @@ export class ClozeService {
 
     let formatted = content;
 
-    // 1. Replace [sound:URL] with <audio autoplay> — Anki plays [sound:] automatically
+    // 1. Replace [sound:URL] with <audio autoplay> — [sound:] plays automatically
     // unless the deck option disables autoplay (handled downstream by CardContentRenderer)
     formatted = formatted.replace(
       /\[sound:([^\]]+)\]/gi,

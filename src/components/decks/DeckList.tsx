@@ -151,7 +151,7 @@ export const DeckList: React.FC<DeckListProps> = ({
 
           {/* Right: iOS colored counters & actions */}
           <div className="flex items-center gap-2.5 shrink-0">
-            {/* Anki tri-color counts (plain iOS numbers) */}
+            {/* Runora tri-color counts (plain iOS numbers) */}
             <div className="flex items-center gap-3 text-[15px] font-medium tabular-nums pr-1">
               <span
                 className={`w-6 text-center ${

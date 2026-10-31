@@ -28,11 +28,11 @@ export interface AnkiCollectionExport {
 export interface CollectionExportOptions {
   /** Deck ids to export; each deck brings its subdecks along. Omit = whole collection. */
   deckIds?: string[];
-  /** Anki "Include Scheduling Information": keeps the review history (revlog). */
+  /** "Include Scheduling Information": keeps the review history (revlog). */
   includeScheduling?: boolean;
-  /** Anki "Include Deck Presets": keeps the option presets used by the decks. */
+  /** "Include Deck Presets": keeps the option presets used by the decks. */
   includePresets?: boolean;
-  /** Anki "Include Media": brings the media files referenced by the notes. */
+  /** "Include Media": brings the media files referenced by the notes. */
   includeMedia?: boolean;
 }
 
@@ -143,8 +143,8 @@ export class ExportImportService {
     zip.file(
       'README.txt',
       isPartial
-        ? 'Partial export from Anki 2.0 (selected decks) with FSRS parameters and optional review history/presets/media.'
-        : 'Exported from Anki 2.0 with full FSRS algorithm parameters and review history.'
+        ? 'Partial export from Runora (selected decks) with FSRS parameters and optional review history/presets/media.'
+        : 'Exported from Runora with full FSRS algorithm parameters and review history.'
     );
 
     // Full export: every stored media file. Partial: only media referenced by
@@ -169,7 +169,7 @@ export class ExportImportService {
     zip.file('media', JSON.stringify(mediaMap));
 
     const blob = await zip.generateAsync({ type: 'blob' });
-    return { blob, filename: `Anki2_Collection_FSRS_${new Date().toISOString().slice(0, 10)}.colpkg` };
+    return { blob, filename: `Runora_Collection_${new Date().toISOString().slice(0, 10)}.colpkg` };
   }
 
   /** Legacy click-a-hidden-anchor download (fallback when the save picker is unavailable). */
@@ -242,7 +242,7 @@ export class ExportImportService {
       return {
         success: false,
         message:
-          'Pacote inválido: não contém nem dados do Anki 2.0 (JSON) nem uma coleção SQLite (collection.anki2).',
+          'Pacote inválido: não contém nem dados do Runora (JSON) nem uma coleção SQLite (collection.anki2).',
       };
     } catch (err) {
       console.error('Import error:', err);
@@ -254,10 +254,10 @@ export class ExportImportService {
   }
 
   /**
-   * Imports an Anki SQLite database (legacy collection.anki2 with models/decks
+   * Imports an external SQLite collection database (legacy collection.anki2 with models/decks
    * as JSON in `col`, or new schema 18 from decompressed collection.anki21b
    * with dedicated `decks`, `notetypes`, `fields` and `templates` tables).
-   * Card queue/type is mapped onto FSRS states; the Anki interval becomes the
+   * Card queue/type is mapped onto FSRS states; the imported interval becomes the
    * initial FSRS stability. Media files are not imported yet.
    */
   private static async importAnkiSqlite(
@@ -397,7 +397,7 @@ export class ExportImportService {
         'SELECT id, nid, did, ord, type, queue, ivl, due FROM cards'
       );
 
-      // Map noteId → deckId from first card (Anki notes don't belong to decks directly)
+      // Map noteId → deckId from first card (imported notes don't belong to decks directly)
       const deckIdByNoteId = new Map<number, number>();
       for (const [, nid, did] of cardRows) {
         if (!deckIdByNoteId.has(Number(nid))) deckIdByNoteId.set(Number(nid), Number(did));
@@ -408,7 +408,7 @@ export class ExportImportService {
         const nt = noteTypes.find((t) => t.id === typeId);
         const values = String(flds).split('');
         const fields: Record<string, string> = {};
-        // NB: the split above uses U+001F, the field separator used by Anki's flds column
+        // NB: the split above uses U+001F, the field separator used by the flds column
         (nt?.fields || []).forEach((f, i) => {
           fields[f.name] = values[i] ?? '';
         });
@@ -426,13 +426,13 @@ export class ExportImportService {
         };
       });
 
-      // ── Cards: map Anki queue/type → FSRS state, ivl → initial stability ──
+      // ── Cards: map queue/type → FSRS state, ivl → initial stability ──
       const cards: Card[] = cardRows.map(([id, nid, did, ord, type, queue, ivl, due]) => {
         const ankiType = Number(type); // 0 new, 1 learning, 2 review, 3 relearning
         const ankiQueue = Number(queue); // -1 suspended, -2 buried, -3 manually buried
         const ivlDays = Number(ivl);
         const state = ankiType === 2 ? 2 : ankiType === 0 ? 0 : ankiType === 3 ? 3 : 1;
-        // Convert Anki's due: for review cards it's days since collection creation
+        // Convert the due: for review cards it's days since collection creation
         const dueMs = state === 2
           ? (colCrt + Number(due) * 86400) * 1000
           : timestamp; // new/learning → available now
@@ -484,7 +484,7 @@ export class ExportImportService {
 
       return {
         success: true,
-        message: `Coleção Anki importada com sucesso! ${decks.length} decks, ${notes.length} notas, ${cards.length} cards convertidos para FSRS${
+        message: `Coleção importada com sucesso! ${decks.length} decks, ${notes.length} notas, ${cards.length} cards convertidos para FSRS${
           mediaCount > 0 ? ` e ${mediaCount} arquivos de mídia` : ''
         }.`,
         count: cards.length,
@@ -505,8 +505,8 @@ export class ExportImportService {
   /**
    * Import media files from a package ZIP into IndexedDB.
    * Formats supported:
-   * - legacy Anki: "media" file as JSON `{ "0": "name.webm" }` or Python pickle
-   * - new Anki (schema 18): "media" as a zstd-compressed protobuf list of
+   * - legacy format: "media" file as JSON `{ "0": "name.webm" }` or Python pickle
+   * - new format (schema 18): "media" as a zstd-compressed protobuf list of
    *   {name, size, sha1}; numeric ZIP entries are individually zstd-compressed
    *   and map positionally to the list (verified against the sha1 hashes)
    */
@@ -536,7 +536,7 @@ export class ExportImportService {
 
   /**
    * Parse the "media" map file (ordered by index) into an array of filenames.
-   * Handles: zstd+protobuf list (Anki 23+), JSON, and Python pickle (legacy).
+   * Handles: zstd+protobuf list (schema 18+), JSON, and Python pickle (legacy).
    */
   private static parseMediaMapOrdered(rawBytes: Uint8Array): string[] {
     // Zstd frame magic
@@ -569,7 +569,7 @@ export class ExportImportService {
       return out;
     }
 
-    // Protobuf list (Anki 23+): repeated field 1 (wire type 2) of MediaEntry{name,size,sha1}
+    // Protobuf list (schema 18+): repeated field 1 (wire type 2) of MediaEntry{name,size,sha1}
     const names: string[] = [];
     let i = 0;
     while (i < rawBytes.length && rawBytes[i] === 0x0a) {
@@ -592,7 +592,7 @@ export class ExportImportService {
   }
 
   /**
-   * Naive protobuf wire-format string extractor. Anki schema 18 stores template
+   * Naive protobuf wire-format string extractor. Schema 18 stores template
    * HTML and note-type CSS inside protobuf config blobs; we walk the wire format
    * and collect every length-delimited UTF-8 string (skipping nested messages
    * that fail to decode cleanly).

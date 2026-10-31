@@ -1,5 +1,5 @@
 /**
- * Electron main process — Anki 2.0 FSRS desktop shell.
+ * Electron main process — Runora desktop shell.
  *
  * Two modes:
  * - dev:   VITE_DEV_SERVER_URL is set → loads the Vite dev server (full HMR,
@@ -17,9 +17,29 @@ const path = require('path');
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || '';
 
-// Keep dev and packaged builds on the same userData folder (productName),
-// so Addons lands in %APPDATA%\Anki 2.0 FSRS\Addons in both cases.
-app.setName('Anki 2.0 FSRS');
+// Keep dev and packaged builds on the same userData folder (app name),
+// so Addons lands in %APPDATA%\Runora\Addons in both cases.
+app.setName('Runora');
+
+// One-time data migration on rename (Anki 2.0 FSRS → Runora): when the new
+// userData folder does not exist yet but the old one does, copy everything
+// over (IndexedDB, Local Storage, Addons, …). The storage keys inside
+// (localStorage "anki2_*", IndexedDB "anki2_media") are unchanged, so all
+// decks/notes/cards/media keep working after the move.
+const OLD_USER_DATA_DIR = path.join(app.getPath('appData'), 'Anki 2.0 FSRS');
+const NEW_USER_DATA_DIR = app.getPath('userData');
+try {
+  if (
+    NEW_USER_DATA_DIR !== OLD_USER_DATA_DIR &&
+    !fs.existsSync(NEW_USER_DATA_DIR) &&
+    fs.existsSync(OLD_USER_DATA_DIR)
+  ) {
+    fs.cpSync(OLD_USER_DATA_DIR, NEW_USER_DATA_DIR, { recursive: true });
+    console.log('[migrate] copied old data folder to:', NEW_USER_DATA_DIR);
+  }
+} catch (err) {
+  console.error('[migrate] failed to copy old data folder:', err);
+}
 
 /** Fixed-candidate ports: localStorage is scoped by origin, so the port
  * must stay stable between runs or user data would "vanish". */
@@ -31,7 +51,7 @@ function createWindow() {
     height: 840,
     minWidth: 420,
     minHeight: 640,
-    title: 'Anki 2.0 — FSRS Flashcards',
+    title: 'Runora — FSRS Flashcards',
     backgroundColor: '#00000000',
     autoHideMenuBar: true,
     webPreferences: {

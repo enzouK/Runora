@@ -1,7 +1,7 @@
 /**
  * FSRS (Free Spaced Repetition Scheduler) Algorithm
- * Faithful implementation of Anki's FSRS-5 logic and default weights (Anki 24.04+).
- * Note: Anki 25.07+ ships FSRS-6 with two extra weights (w19, w20) that modulate
+ * Faithful implementation of the FSRS-5 reference logic and default weights (upstream 24.04+).
+ * Note: upstream 25.07+ ships FSRS-6 with two extra weights (w19, w20) that modulate
  * same-day stability by elapsed time — not implemented here yet.
  */
 
@@ -150,7 +150,7 @@ export class FSRS {
   }
 
   /**
-   * Anki-style fuzz range for a review interval (matches Anki's rslib):
+   * Fuzz range for a review interval (matches the rslib reference):
    * - below 2.5 days: no fuzz
    * - 2.5 to 7 days: ±25% (minimum bound of 2 days)
    * - 7 days and above: ±5%
@@ -167,7 +167,7 @@ export class FSRS {
     };
   }
 
-  /** Pick a uniformly random integer day within Anki's fuzz range. */
+  /** Pick a uniformly random integer day within the fuzz range. */
   public fuzzInterval(interval: number): number {
     if (!this.params.enableFuzz) return interval;
     const { min, max } = FSRS.getFuzzRange(interval);
@@ -202,7 +202,7 @@ export class FSRS {
 
   /**
    * Days elapsed since the last review. When a card has no lastReview
-   * (e.g., just imported from Anki), fall back to its scheduled interval or
+   * (e.g., freshly imported), fall back to its scheduled interval or
    * its recorded elapsedDays — otherwise retrievability would be 100% and
    * Good/Easy would produce identical stability (never diverging).
    */
@@ -269,7 +269,7 @@ export class FSRS {
       nextD = this.initDifficulty(rating);
 
       if (rating === 1 || rating === 2) {
-        // Anki: Again repeats the FIRST learning step; Hard repeats the CURRENT
+        // Runora: Again repeats the FIRST learning step; Hard repeats the CURRENT
         // step. Steps come from the deck config — the FSRS core does not know
         // them, so the caller (StudyView) applies step timing. scheduledDays=0
         // means "in-learning; caller decides".
@@ -288,7 +288,7 @@ export class FSRS {
       if (rating === 1 || rating === 2) {
         // Again → back to step 0; Hard → repeat current step. The caller
         // (StudyView) applies the deck's learning/relearning steps, matching
-        // Anki. No fabricated 10m/12h here.
+        // Runora. No fabricated 10m/12h here.
         nextState = card.state;
         scheduledDays = 0;
 
@@ -303,7 +303,7 @@ export class FSRS {
 
         if (elapsedDays < 1) {
           // Same-day graduation (FSRS-5): short-term growth, never below the
-          // initial stability for that rating (Anki's k graduation floor).
+          // initial stability for that rating (Runora's k graduation floor).
           nextS = Math.max(
             this.nextShortTermStability(card.stability, rating),
             this.initStability(rating)
@@ -327,7 +327,7 @@ export class FSRS {
         lapses += 1;
         nextS = this.nextForgetStability(card.difficulty, card.stability, rRetrievability);
         nextD = this.nextDifficulty(card.difficulty, rating);
-        scheduledDays = 0; // caller applies the deck's relearning steps (Anki)
+        scheduledDays = 0; // caller applies the deck's relearning steps (Runora)
       } else {
         // Success (Hard, Good, Easy)
         nextState = 2; // Keep in review
@@ -339,7 +339,7 @@ export class FSRS {
       }
     }
 
-    // Apply Anki-style fuzz only to real scheduling of review intervals
+    // Apply Runora-style fuzz only to real scheduling of review intervals
     // (never to learning steps, and never to the prediction labels)
     if (applyFuzz && nextState === 2 && scheduledDays >= 1) {
       scheduledDays = this.fuzzInterval(scheduledDays);

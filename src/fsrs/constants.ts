@@ -1,7 +1,7 @@
 import { FSRSParameters } from '../types/anki';
 
 /**
- * Official default FSRS-6 weights (Anki 25.x+, 21 parameters).
+ * Official default FSRS-6 weights (21 parameters).
  * Source: open-spaced-repetition/awesome-fsfs ("The Algorithm" wiki):
  * https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm
  */
@@ -25,5 +25,5 @@ export const DEFAULT_FSRS_PARAMETERS: FSRSParameters = {
 
 export const FACTOR = 19 / 81; // FSRS retrievability constant: (100/81)^(-0.5) = 9/10 = 0.9
 
-/** Anki's FSRS stability floor (rslib S_MIN). */
+/** FSRS stability floor (rslib S_MIN). */
 export const STABILITY_MIN = 0.01;

@@ -28,7 +28,7 @@ interface DirectoryPickerHandle {
   }>;
 }
 
-/** Square checkbox (Anki export-dialog style) — box on the LEFT of the label. */
+/** Square checkbox (Runora export-dialog style) — box on the LEFT of the label. */
 const SqCheck: React.FC<{ checked: boolean; onChange: () => void; label: React.ReactNode }> = ({
   checked,
   onChange,

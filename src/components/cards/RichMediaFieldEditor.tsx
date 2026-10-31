@@ -63,7 +63,7 @@ export const isImageUrl = (url: string): boolean => {// ...existing code...
 };
 
 /**
- * Resolve a possibly bare filename (e.g., "vcm_123.webm" from an imported Anki package)
+ * Resolve a possibly bare filename (e.g., "vcm_123.webm" from an imported package)
  * to a playable Blob URL from MediaStore (IndexedDB). If it's already a proper URL
  * (data:, blob:, http), return it untouched.
  */
@@ -202,16 +202,16 @@ export const parseFieldSegments = (raw: string): FieldSegment[] => {
 };
 
 /**
- * Re-serializes segments back into standard Anki string
+ * Re-serializes segments back into the standard field string
  */
 export const serializeSegments = (segments: FieldSegment[]): string => {
   return segments
     .map((seg) => {
       if (seg.type === 'text') {
-        // Newlines typed in the textarea are stored as <br> (Anki-compatible HTML)
+        // Newlines typed in the textarea are stored as <br> (HTML-compatible)
         return (seg.content || '').replace(/\n/g, '<br>');
       } else if (seg.type === 'audio') {
-        // Standard Anki sound tag format
+        // Standard [sound:...] tag format
         return `[sound:${seg.url}]`;
       } else if (seg.type === 'image') {
         return `<img src="${seg.url}" class="rounded-xl max-h-60 my-2 shadow-sm" alt="Image" />`;

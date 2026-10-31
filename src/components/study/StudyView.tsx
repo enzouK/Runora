@@ -51,13 +51,13 @@ export const StudyView: React.FC<StudyViewProps> = ({
     });
   }, [deck]);
 
-  // Anki-style scheduler config (learning steps, insertion order, lapses)
+  // Runora-style scheduler config (learning steps, insertion order, lapses)
   const schedulerConfig = useMemo(
     () => StorageService.getEffectiveSchedulerConfig(deck.id),
     [deck]
   );
 
-  // Anki-style Audio config ("Don't play audio automatically")
+  // Runora-style Audio config ("Don't play audio automatically")
   const audioConfig = useMemo(
     () => StorageService.getEffectiveAudioConfig(deck.id),
     [deck]
@@ -78,7 +78,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
     const today = dayOf(now);
     const allCards = StorageService.getCards().filter((c) => !c.suspended);
 
-    // Anki-style daily limits:
+    // Runora-style daily limits:
     // 1) The studied deck (and its ancestors) impose a SHARED pool across all subdecks
     // 2) Each subdeck additionally has its own budget (its limit minus today's usage)
     // 3) The review limit is applied first to interday learning cards (i.e. (re)learning
@@ -116,7 +116,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
     const isOfDeck = (c: Card): boolean => matchingDeckIds.has(c.deckId);
 
     // (Re)learning cards due later today are intraday and are never hidden;
-    // due on a later day = interday learning → consumes the review limit first (Anki)
+    // due on a later day = interday learning → consumes the review limit first (Runora)
     const intraLearning = allCards.filter(
       (c) =>
         isOfDeck(c) &&
@@ -142,7 +142,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
       ...allCards.filter((c) => isOfDeck(c) && c.fsrs.state === 0).filter(admitNewBudget),
     ];
 
-    // ---- Display Order (Anki) ----
+    // ---- Display Order (Runora) ----
     const displayOrder = StorageService.getEffectiveDisplayOrder(deck.id);
     const shuffle = <T,>(arr: T[]): T[] => {
       for (let i = arr.length - 1; i > 0; i--) {
@@ -158,7 +158,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
     };
     const deckNameOf = (deckId: string): string =>
       allDecks.find((d) => d.id === deckId)?.name ?? '';
-    // Anki "due #": fixed position for new cards; falls back to creation
+    // Runora "due #": fixed position for new cards; falls back to creation
     // order for cards that never had a position assigned
     const positionOf = (c: Card): number => c.position ?? c.createdAt;
 
@@ -174,7 +174,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         shuffle(newCards);
         break;
       case 'deckThenRandomNotes': {
-        // Anki: "Deck, then random notes" — decks in order, notes shuffled inside
+        // Runora: "Deck, then random notes" — decks in order, notes shuffled inside
         const deckIds = [...new Set(newCards.map((c) => c.deckId))].sort();
         const out: Card[] = [];
         for (const deckId of deckIds) {
@@ -193,7 +193,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         break;
       }
       case 'randomNotes': {
-        // Anki: "Random notes" — notes picked at random, their cards kept together
+        // Runora: "Random notes" — notes picked at random, their cards kept together
         const noteIds = [...new Set(newCards.map((c) => c.noteId))];
         shuffle(noteIds);
         const out: Card[] = [];
@@ -230,7 +230,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
     } else if (displayOrder.newSortOrder === 'template') {
       newCards.sort((a, b) => a.templateOrd - b.templateOrd);
     } else if (displayOrder.newSortOrder === 'templateRandom') {
-      // Anki: "Card type, then random" — template groups in order, shuffled inside
+      // Runora: "Card type, then random" — template groups in order, shuffled inside
       const ords = [...new Set(newCards.map((c) => c.templateOrd))].sort((a, b) => a - b);
       const out: Card[] = [];
       for (const ord of ords) {
@@ -240,7 +240,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
       }
       newCards = out;
     } else if (displayOrder.newSortOrder === 'noteThenCardType') {
-      // Anki: "Random note, then card type"
+      // Runora: "Random note, then card type"
       const noteIds = [...new Set(newCards.map((c) => c.noteId))];
       shuffle(noteIds);
       const out: Card[] = [];
@@ -267,7 +267,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         reviews.sort((a, b) => b.due - a.due);
         break;
       case 'dueDeck': {
-        // Anki: "Due date, then deck"
+        // Runora: "Due date, then deck"
         reviews.sort((a, b) => {
           if (a.due !== b.due) return a.due - b.due;
           const na = deckNameOf(a.deckId);
@@ -277,7 +277,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         break;
       }
       case 'deckThenDue': {
-        // Anki: "Deck, then due date"
+        // Runora: "Deck, then due date"
         reviews.sort((a, b) => {
           const na = deckNameOf(a.deckId);
           const nb = deckNameOf(b.deckId);
@@ -299,7 +299,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         reviews.sort((a, b) => a.fsrs.difficulty - b.fsrs.difficulty);
         break;
       case 'retrievabilityAsc': {
-        // FSRS equivalent of Anki's "Relative overdueness": most-forgettable first
+        // FSRS equivalent of Runora's "Relative overdueness": most-forgettable first
         const rOf = (c: Card): number =>
           c.fsrs.stability > 0
             ? fsrsEngine.retrievability(c.fsrs.elapsedDays, c.fsrs.stability)
@@ -309,7 +309,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
       }
       case 'dueRandom':
       default: {
-        // Due date ascending, random within the same day (Anki default)
+        // Due date ascending, random within the same day (Runora default)
         const dayOf = (t: number) => Math.floor(t / 86400000);
         reviews.sort((a, b) => {
           const d = dayOf(a.due) - dayOf(b.due);
@@ -358,7 +358,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   /**
    * Step-aware interval for a rating (minutes), or null when the FSRS result applies.
-   * Mirrors Anki: Again → first step, Hard → repeat current step, Good → next step
+   * Mirrors Runora: Again → first step, Hard → repeat current step, Good → next step
    * (graduating past the last step), Easy → always graduates.
    */
   const stepOverrideMinutes = useCallback(
@@ -488,7 +488,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
     else if (rating === 4) AudioService.playHapticTone('easy');
     else AudioService.playHapticTone('good');
 
-    // applyFuzz=true: real scheduling uses Anki's interval fuzz to avoid card bunching
+    // applyFuzz=true: real scheduling uses Runora's interval fuzz to avoid card bunching
     const fsrsNext = fsrsEngine.step(currentCard.fsrs, rating, undefined, undefined, true);
     const now = Date.now();
     const state = currentCard.fsrs.state;
@@ -500,7 +500,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
     let nextDueMs = now + Math.round(fsrsNext.scheduledDays * 24 * 60 * 60 * 1000);
 
     if (state === 2 && rating === 1) {
-      // Lapse: Review + Again → first relearning step (Anki behavior)
+      // Lapse: Review + Again → first relearning step (Runora behavior)
       const step0 = schedulerConfig.relearningSteps[0];
       nextCardData = { ...fsrsNext, state: 3, scheduledDays: step0 / 1440 };
       learningStep = 0;
@@ -553,7 +553,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
     const updatedCardsList = allCards.map((c) => (c.id === updatedCard.id ? updatedCard : c));
     StorageService.saveCards(updatedCardsList);
 
-    // Leech action (Anki): both suspend and tag label the note with "leech";
+    // Leech action (Runora): both suspend and tag label the note with "leech";
     // suspend additionally hides the card until it is manually enabled again
     if (hitLeech) {
       const notes = StorageService.getNotes().map((n) =>
@@ -597,7 +597,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
     setSessionReviewedCount((c) => c + 1);
 
     // Keep learning/relearning cards coming back within the session
-    // (Anki learn-ahead limit: 20 min — previously we used 10)
+    // (Runora learn-ahead limit: 20 min — previously we used 10)
     const stillLearning = updatedCard.fsrs.state === 1 || updatedCard.fsrs.state === 3;
     const dueSoon = updatedCard.due - now <= 20 * 60 * 1000;
     if (stillLearning && dueSoon && !updatedCard.suspended) {
@@ -809,7 +809,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
           <style dangerouslySetInnerHTML={{ __html: noteType.css }} />
         )}
 
-        {/* Edit button (like Anki's Edit during review) */}
+        {/* Edit button (like Runora's Edit during review) */}
         {currentCard && (
           <button
             type="button"
@@ -878,7 +878,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         </div>
       )}
 
-      {/* Editar card durante a revisão (como o Anki: botão "Editar Nota") */}
+      {/* Editar card durante a revisão (como o Runora: botão "Editar Nota") */}
       <CardEditorModal
         isOpen={editNoteId !== null}
         onClose={() => setEditNoteId(null)}

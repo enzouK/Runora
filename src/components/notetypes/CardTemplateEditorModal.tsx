@@ -323,7 +323,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
               </div>
 
               <span className="text-[11px] font-mono text-zinc-400 hidden sm:inline">
-                HTML + tags Anki
+                HTML + tags do Runora
               </span>
             </div>
 
@@ -379,7 +379,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                     insertSnippet(`{{furigana:${readField?.name || 'Reading'}}}`);
                   }}
                   className="px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60 font-mono text-[11px] transition-colors"
-                  title="Furigana Anki: converte 漢字[かんじ] em ruby tags"
+                  title="Furigana: converte 漢字[かんじ] em ruby tags"
                 >
                   +furigana
                 </button>

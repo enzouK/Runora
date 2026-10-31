@@ -2,7 +2,7 @@
   "name": "react-example",
   "private": true,
   "version": "0.1.0",
-  "description": "Anki 2.0 style flashcards with FSRS scheduler",
+  "description": "Runora — modern flashcards with the official FSRS scheduler",
   "author": "enzouK <enzouk@users.noreply.github.com>",
   "type": "module",
   "scripts": {
@@ -20,7 +20,7 @@
   "main": "electron/main.cjs",
   "build": {
     "appId": "com.enzouk.anki2fsrs",
-    "productName": "Anki 2.0 FSRS",
+    "productName": "Runora",
     "directories": {
       "output": "release"
     },

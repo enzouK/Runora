@@ -340,7 +340,7 @@ export default function App() {
         parentDeckName={parentDeckNameForSubdeck}
       />
 
-      {/* Export picker (Anki-style deck selection + include options) */}
+      {/* Export picker (Runora-style deck selection + include options) */}
       <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} />
 
       {/* Transient toast (import result, etc.) */}
@@ -357,7 +357,7 @@ export default function App() {
         onRefresh={refreshAll}
       />
 
-      {/* Drive sync conflict (AnkiWeb-style): download last backup or keep this device */}
+      {/* Drive sync conflict (cloud-sync style): download last backup or keep this device */}
       <SyncConflictModal
         conflict={sync.conflict}
         onResolve={(choice) => sync.conflict?.resolve(choice)}

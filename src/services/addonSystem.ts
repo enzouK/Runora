@@ -1,5 +1,5 @@
 /**
- * Anki 2.0 Addon Architecture
+ * Runora Addon Architecture
  * Provides standard JavaScript hooks to extend review UI, card rendering, and shortcuts,
  * ensuring 100% cross-platform parity on Windows 11 and Android.
  *

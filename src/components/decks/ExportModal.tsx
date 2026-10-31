@@ -10,7 +10,7 @@ interface ExportModalProps {
   onClose: () => void;
 }
 
-/** Square checkbox (Anki export-dialog style). */
+/** Square checkbox (Runora export-dialog style). */
 const SqCheck: React.FC<{ checked: boolean; onChange: () => void; label: React.ReactNode }> = ({
   checked,
   onChange,
@@ -95,7 +95,7 @@ const DeckNode: React.FC<{
 };
 
 /**
- * Anki-style export dialog: pick decks (a checked parent selects its whole
+ * Runora-style export dialog: pick decks (a checked parent selects its whole
  * subtree) and include scheduling / presets / media — then download a .colpkg.
  */
 export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
@@ -105,7 +105,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
   const [includeMedia, setIncludeMedia] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Export format: real Anki .apkg (official clients) or our internal .colpkg
+  // Export format: universal .apkg package or our internal .colpkg
   const [format, setFormat] = useState<'apkg' | 'colpkg'>('apkg');
   // Selection: null = every deck checked (reset on each open)
   const [selected, setSelected] = useState<Set<string> | null>(null);
@@ -125,7 +125,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
 
   if (!isOpen) return null;
 
-  /** Toggle a deck and its whole subtree, like Anki's export deck picker. */
+  /** Toggle a deck and its whole subtree in the export picker. */
   const toggleWithDescendants = (node: DeckTreeNode, next: boolean) => {
     setSelected(() => {
       const nextSet = new Set(checked);
@@ -163,7 +163,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
         // File System Access API is blocked, e.g. embedded Chromium).
         const ext = isApkg ? 'apkg' : 'colpkg';
         const pick = await desktop.pickSavePath(suggestedExportName(opts, isApkg), [
-          { name: isApkg ? 'Anki Deck Package' : 'Anki 2.0 Coleção (FSRS)', extensions: [ext] },
+          { name: isApkg ? 'Pacote de Deck (.apkg)' : 'Runora Coleção (.colpkg)', extensions: [ext] },
         ]);
         if (pick.canceled || !pick.path) {
           setBusy(false);
@@ -212,7 +212,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
             suggestedName,
             types: [
               {
-                description: isApkg ? 'Anki Deck Package' : 'Anki 2.0 Coleção (FSRS)',
+                description: isApkg ? 'Pacote de Deck (.apkg)' : 'Runora Coleção (.colpkg)',
                 accept: { 'application/zip': [isApkg ? '.apkg' : '.colpkg'] },
               },
             ],
@@ -227,7 +227,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
       }
 
       const built = isApkg
-        ? await AnkiApkgExportService.buildDeckPackage(opts) // official Anki package
+        ? await AnkiApkgExportService.buildDeckPackage(opts) // universal .apkg package
         : await ExportImportService.buildCollectionPackage(opts); // internal restore package
 
       if (handle) {
@@ -283,7 +283,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
               <p className="text-[13px] font-semibold text-zinc-700 dark:text-zinc-200">Formato de Exportação</p>
               <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
                 {format === 'apkg'
-                  ? 'Pacote Anki oficial — abre no desktop, AnkiDroid e AnkiMobile'
+                  ? 'Pacote .apkg universal — abre em clientes compatíveis (desktop, Android e iOS)'
                   : 'Pacote interno com FSRS completo para restaurar neste app'}
               </p>
             </div>
@@ -292,8 +292,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
               onChange={(e) => setFormat(e.target.value as 'apkg' | 'colpkg')}
               className="shrink-0 max-w-[55%] px-3 py-2 rounded-[12px] bg-white dark:bg-zinc-900 border border-black/[0.08] dark:border-white/[0.12] text-[12px] font-semibold text-zinc-800 dark:text-zinc-100 focus:outline-none focus:border-ios-blue cursor-pointer"
             >
-              <option value="apkg">Anki Deck Package (.apkg)</option>
-              <option value="colpkg">Anki 2.0 Coleção (.colpkg)</option>
+              <option value="apkg">Pacote de Deck (.apkg)</option>
+              <option value="colpkg">Runora Coleção (.colpkg)</option>
             </select>
           </div>
 
@@ -322,7 +322,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
             )}
           </div>
 
-          {/* Include options (Anki export-dialog checkboxes) */}
+          {/* Include options (Runora export-dialog checkboxes) */}
           <div className="rounded-[16px] border border-black/[0.06] dark:border-white/[0.08] p-4 space-y-3.5">
             <SqCheck
               checked={includeScheduling}
@@ -429,7 +429,7 @@ function suggestedExportName(
 ): string {
   return isApkg
     ? `${AnkiApkgExportService.pickFileName(opts)}.apkg`
-    : `Anki2_Collection_FSRS_${new Date().toISOString().slice(0, 10)}.colpkg`;
+    : `Runora_Collection_${new Date().toISOString().slice(0, 10)}.colpkg`;
 }
 
 interface SaveFileHandle {

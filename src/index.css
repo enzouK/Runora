@@ -79,7 +79,7 @@
   animation: ios-fade-in 0.25s ease-out;
 }
 
-/* Cloze Deletion Styling (FSRS / Anki Compatible) */
+/* Cloze Deletion Styling (FSRS / Runora) */
 .anki-cloze-front-placeholder {
   color: #007aff;
   font-weight: 700;

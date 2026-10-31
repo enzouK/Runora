@@ -19,7 +19,7 @@ function fmt(ts: number): string {
 }
 
 /**
- * AnkiWeb-style conflict dialog: a newer backup exists in Drive AND this
+ * Cloud-sync conflict dialog: a newer backup exists in Drive AND this
  * device has unsynced local changes. Exactly the question the user asked for:
  * "Baixar conteúdo do último backup ou manter deste dispositivo?"
  * - Baixar → replace local data with the Drive backup (local state is backed
@@ -95,7 +95,7 @@ export const SyncConflictModal: React.FC<Props> = ({ conflict, onResolve }) => {
             <span className="text-left">
               Manter deste dispositivo
               <span className="block text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
-                envia estes dados e substitui o último backup no Drive (estilo AnkiWeb)
+                envia estes dados e substitui o último backup no Drive
               </span>
             </span>
           </button>

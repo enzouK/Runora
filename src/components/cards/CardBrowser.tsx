@@ -104,7 +104,7 @@ const RowImage: React.FC<{
   );
 };
 
-/** AnkiDroid-style headphone button: plays the card audio inline with the text. */
+/** Headphone button: plays the card audio inline with the text. */
 const RowAudioButton: React.FC<{
   audioRef: string | null;
   fallbackAudio?: string;

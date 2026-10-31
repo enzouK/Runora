@@ -22,7 +22,7 @@ const FlashcardLogo: React.FC = () => (
     aria-hidden="true"
   >
     <defs>
-      <linearGradient id="anki-logo-grad" x1="0" y1="0" x2="1" y2="1">
+      <linearGradient id="runora-logo-grad" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" stopColor="#4aa8ff" />
         <stop offset="100%" stopColor="#0064d2" />
       </linearGradient>
@@ -34,12 +34,12 @@ const FlashcardLogo: React.FC = () => (
       width="24"
       height="18"
       rx="5.5"
-      fill="url(#anki-logo-grad)"
+      fill="url(#runora-logo-grad)"
       opacity="0.45"
       transform="rotate(-7 20 13)"
     />
     {/* Front card */}
-    <rect x="7" y="13" width="26" height="22" rx="6" fill="url(#anki-logo-grad)" />
+    <rect x="7" y="13" width="26" height="22" rx="6" fill="url(#runora-logo-grad)" />
     {/* Content hint lines */}
     <rect x="12" y="19" width="16" height="3.2" rx="1.6" fill="#ffffff" opacity="0.95" />
     <rect x="12" y="25" width="10" height="3.2" rx="1.6" fill="#ffffff" opacity="0.55" />
@@ -62,10 +62,10 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSe
           <FlashcardLogo />
           <div className="flex flex-col items-center leading-none">
             <span className="font-bold text-[19px] tracking-tight text-zinc-900 dark:text-white leading-none">
-              Anki
+              Run
             </span>
             <span className="mt-[2px] bg-gradient-to-br from-[#4aa8ff] to-[#0064d2] bg-clip-text text-transparent font-extrabold text-[16px] tracking-tight leading-none">
-              2.0
+              ora
             </span>
           </div>
         </div>

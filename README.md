@@ -1,16 +1,16 @@
 <div align="center">
-<img width="1200" alt="Anki FSRS Flashcards Multi-Platform" src="https://raw.githubusercontent.com/enzouK/Anki2.0/main/src/assets/logo.svg" />
+<img width="1200" alt="Runora Multi-Platform" src="https://raw.githubusercontent.com/enzouK/Anki2.0/main/src/assets/logo.svg" />
 </div>
 
-# Anki FSRS Flashcards
+# Runora
 
-Uma versão personalizada e moderna do **Anki 2.0** com algoritmo **FSRS** integrado, disponível para **Windows (.exe)** e **Android (.apk)**.
+Um app moderno e multiplataforma de flashcards com algoritmo **FSRS** integrado, disponível para **Windows (.exe)** e **Android (.apk)**.
 
 ## 📋 Visão Geral
 
 Este projeto transforma o algoritmo **FSRS** (Free Spaced Repetition System) em uma experiência completa de flashcards, empacotada como aplicativos nativos para desktop e mobile.
 
-**Diferente de addons tradicionais**, esta é uma versão modificada do Anki 2.0 própria, com:
+**Diferente de addons tradicionais**, este é um app próprio de flashcards, com:
 
 - ✅ Algoritmo FSRS otimizado como sistema principal
 - ✅ Interface moderna construída com React + TypeScript + Tailwind
@@ -138,11 +138,11 @@ Este projeto está licenciado sob a licença **MIT** - veja o arquivo [LICENSE](
 
 | Aspecto | Addons Tradicionais | Este Projeto |
 |---------|---------------------|--------------|
-| **Distribuição** | .ankiaddon (requiere Anki instalado) | .exe e .apk autônomos |
-| **Interface** | Componentes nativos do Anki | Interface moderna React + shadcn/ui |
+| **Distribuição** | .ankiaddon (requer app externo instalado) | .exe e .apk autônomos |
+| **Interface** | Componentes nativos do app externo | Interface moderna React + shadcn/ui |
 | **Personalização** | Limitada (CSS/HTML) | Controle total sobre todos os aspectos |
 | **Plataforma** | Apenas desktop (Windows/Mac/Linux) | Windows + Android (multi-platform) |
-| **Atualizações** | Via loja Anki ou manual | Atualizações diretas do .exe/.apk |
+| **Atualizações** | Via loja do app externo ou manual | Atualizações diretas do .exe/.apk |
 
 ---
 

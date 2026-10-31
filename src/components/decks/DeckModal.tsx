@@ -53,7 +53,7 @@ type HelpSectionId =
   | 'audio'
   | 'displayorder';
 
-/** Anki-style scope switcher: the values live on the preset sheet or on this deck only. */
+/** Runora-style scope switcher: the values live on the preset sheet or on this deck only. */
 const ScopeSwitch: React.FC<{
   value: 'preset' | 'deck';
   onChange: (v: 'preset' | 'deck') => void;
@@ -141,8 +141,8 @@ const HELP_SECTIONS: Record<
         label: 'Retenção desejada',
         content: (
           <p>
-            Por padrão, o Anki agenda os cards para que você tenha 90% de chance de lembrá-los
-            quando voltarem à revisão. Se você aumentar esse valor, o Anki mostrará os cards com
+            Por padrão, o Runora agenda os cards para que você tenha 90% de chance de lembrá-los
+            quando voltarem à revisão. Se você aumentar esse valor, o Runora mostrará os cards com
             mais frequência para aumentar as chances de memorização. Se diminuir, os cards
             aparecerão com menos frequência e você esquecerá mais deles. Seja conservador ao
             ajustar — valores altos aumentarão muito sua carga de estudo, e valores baixos podem
@@ -574,14 +574,14 @@ const HELP_SECTIONS: Record<
                   Facilidade crescente:
                 </span>{' '}
                 os mais difíceis primeiro — no app usa a dificuldade estimada pelo FSRS, no
-                lugar da facilidade do Anki.
+                lugar da facilidade do Runora.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                   Facilidade decrescente:
                 </span>{' '}
                 os mais fáceis primeiro — no app usa a dificuldade estimada pelo FSRS, no
-                lugar da facilidade do Anki.
+                lugar da facilidade do Runora.
               </li>
               <li>
                 <span className="font-semibold text-zinc-800 dark:text-zinc-200">
@@ -646,11 +646,11 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   // its editable copy, saved back when "Salvar" is pressed
   const [presetList, setPresetList] = useState<Preset[]>([]);
   const [presetId, setPresetId] = useState('');
-  // Anki-style preset management: ▾ menu + dimmed popups for add/clone/rename/remove
+  // Runora-style preset management: ▾ menu + dimmed popups for add/clone/rename/remove
   const [presetMenuOpen, setPresetMenuOpen] = useState(false);
   const [presetPrompt, setPresetPrompt] = useState<null | { mode: 'add' | 'clone' | 'rename'; value: string }>(null);
   const [presetDeleteOpen, setPresetDeleteOpen] = useState(false);
-  // Anki-style section scopes: edit the preset sheet or just this deck
+  // Runora-style section scopes: edit the preset sheet or just this deck
   const [limitScope, setLimitScope] = useState<'preset' | 'deck'>('preset');
   const [fsrsScope, setFsrsScope] = useState<'preset' | 'deck'>('preset');
 
@@ -948,7 +948,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       AddonSystem.runHook('onDeckCreated', { deckId: newDeck.id, deckName: newDeck.name, deck: newDeck });
     }
 
-    // Anki-style: changing the insertion order reassigns the "due #" (position)
+    // Runora-style: changing the insertion order reassigns the "due #" (position)
     // of every new card in this deck and its subdecks (subdecks follow parent)
     if (editDeck && prevInsertionOrder !== insertionOrder) {
       const prefix = `${editDeck.name}::`;
@@ -996,7 +996,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {/* ── Preset (folha de opções compartilhada, estilo Anki) ── */}
+          {/* ── Preset (folha de opções compartilhada, estilo Runora) ── */}
           <div>
             <div className="flex items-center gap-1 mb-1.5">
               <Layers className="w-3.5 h-3.5 text-zinc-400" />
@@ -1321,7 +1321,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             </div>
           </div>
 
-          {/* ── Novos Cards (Anki) ── */}
+          {/* ── Novos Cards (Runora) ── */}
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <GraduationCap className="w-3.5 h-3.5 text-zinc-400" />
@@ -1391,7 +1391,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             </div>
           </div>
 
-          {/* ── Lapses (Anki) ── */}
+          {/* ── Lapses (Runora) ── */}
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <AlertTriangle className="w-3.5 h-3.5 text-zinc-400" />
@@ -1479,7 +1479,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             </div>
           </div>
 
-          {/* ── Áudio (Anki) ── */}
+          {/* ── Áudio (Runora) ── */}
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <Volume2 className="w-3.5 h-3.5 text-zinc-400" />
@@ -1532,7 +1532,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
 
           </div>
 
-          {/* ── Ordem de Exibição (Anki Display Order) ── */}
+          {/* ── Ordem de Exibição (Runora Display Order) ── */}
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <ArrowUpDown className="w-3.5 h-3.5 text-zinc-400" />
@@ -1647,7 +1647,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
             <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
               Controla a ordem da fila de estudo: coleta e ordenação de novos cards, mistura de
               aprendizado/novos com revisões e ordenação das revisões — igual ao Display Order do
-              Anki.
+              Runora.
             </p>
           </div>
         </div>
@@ -1671,7 +1671,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
           </button>
         </div>
 
-        {/* ── Popups de gestão de preset (fundo escurecido, estilo Anki) ── */}
+        {/* ── Popups de gestão de preset (fundo escurecido, estilo Runora) ── */}
         {presetPrompt && (
           <div
             className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
@@ -1760,7 +1760,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
           </div>
         )}
 
-        {/* Painel de ajuda (estilo Anki) */}
+        {/* Painel de ajuda (estilo Runora) */}
         <HelpPanel
           isOpen={helpSection !== null}
           onClose={() => setHelpSection(null)}

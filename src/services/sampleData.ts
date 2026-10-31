@@ -1,8 +1,8 @@
 import { Deck, Note, NoteType, Card } from '../types/anki';
 
 /**
- * New collections start clean (like a fresh Anki profile):
- * - A single "Padrão" deck (Anki's structural "Default" deck)
+ * New collections start clean (like a fresh profile):
+ * - A single "Padrão" deck (the structural "Default" deck)
  * - 3 note types: Básico, Cloze, Shadowing
  * - No demo notes or cards
  */
