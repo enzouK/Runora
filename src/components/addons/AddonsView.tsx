@@ -1,5 +1,5 @@
 import React from 'react';
-import { Puzzle } from 'lucide-react';
+import { Download, Puzzle, Upload } from 'lucide-react';
 import { AddonSystem } from '../../services/addonSystem';
 import { IOSSwitch } from '../common/IOSSwitch';
 
@@ -13,6 +13,14 @@ export const AddonsView: React.FC = () => {
   const handleToggle = (id: string) => {
     AddonSystem.toggleAddon(id);
     setAddons(AddonSystem.getAddons());
+  };
+
+  const handleImport = () => {
+    // TODO: abrir fluxo de importação de addons (arquivo/URL)
+  };
+
+  const handleExport = () => {
+    // TODO: abrir fluxo de exportação de addons
   };
 
   return (
@@ -68,6 +76,28 @@ export const AddonsView: React.FC = () => {
             </div>
           ))
         )}
+      </div>
+
+      {/* Importar / Exportar — rodapé da página de Addons */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={handleImport}
+          title="Importar Addons (em breve)"
+          className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-all active:scale-[0.98]"
+        >
+          <Download className="w-4 h-4 text-ios-blue" />
+          <span>Importar</span>
+        </button>
+        <button
+          type="button"
+          onClick={handleExport}
+          title="Exportar Addons (em breve)"
+          className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-all active:scale-[0.98]"
+        >
+          <Upload className="w-4 h-4 text-ios-blue" />
+          <span>Exportar</span>
+        </button>
       </div>
     </div>
   );
