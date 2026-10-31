@@ -19,7 +19,12 @@
  * ============================================================ */
 
 /* ---- aura ---- */
-/* aura é somente dark: no modo claro usa a paleta iOS padrão */
+/* aura é somente dark: no modo claro usa a paleta iOS padrão (só a borda muda p/ github) */
+:root:not(.dark)[data-color-theme="aura"] {
+  /* fallback claro para tema somente-dark: paleta iOS padrão,
+     apenas com borda estilo github (#d0d7de) nos cards/botões */
+  --color-ios-border: #d0d7de;
+}
 
 .dark[data-color-theme="aura"] {
   --color-ios-bg-dark: #0f0f0f;
@@ -40,7 +45,12 @@
 }
 
 /* ---- ayu ---- */
-/* ayu é somente dark: no modo claro usa a paleta iOS padrão */
+/* ayu é somente dark: no modo claro usa a paleta iOS padrão (só a borda muda p/ github) */
+:root:not(.dark)[data-color-theme="ayu"] {
+  /* fallback claro para tema somente-dark: paleta iOS padrão,
+     apenas com borda estilo github (#d0d7de) nos cards/botões */
+  --color-ios-border: #d0d7de;
+}
 
 .dark[data-color-theme="ayu"] {
   --color-ios-bg-dark: #0B0E14;
@@ -133,7 +143,12 @@
 }
 
 /* ---- catppuccin-frappe ---- */
-/* catppuccin-frappe é somente dark: no modo claro usa a paleta iOS padrão */
+/* catppuccin-frappe é somente dark: no modo claro usa a paleta iOS padrão (só a borda muda p/ github) */
+:root:not(.dark)[data-color-theme="catppuccin-frappe"] {
+  /* fallback claro para tema somente-dark: paleta iOS padrão,
+     apenas com borda estilo github (#d0d7de) nos cards/botões */
+  --color-ios-border: #d0d7de;
+}
 
 .dark[data-color-theme="catppuccin-frappe"] {
   --color-ios-bg-dark: #303446;
@@ -154,7 +169,12 @@
 }
 
 /* ---- catppuccin-macchiato ---- */
-/* catppuccin-macchiato é somente dark: no modo claro usa a paleta iOS padrão */
+/* catppuccin-macchiato é somente dark: no modo claro usa a paleta iOS padrão (só a borda muda p/ github) */
+:root:not(.dark)[data-color-theme="catppuccin-macchiato"] {
+  /* fallback claro para tema somente-dark: paleta iOS padrão,
+     apenas com borda estilo github (#d0d7de) nos cards/botões */
+  --color-ios-border: #d0d7de;
+}
 
 .dark[data-color-theme="catppuccin-macchiato"] {
   --color-ios-bg-dark: #24273a;
@@ -637,7 +657,12 @@
 }
 
 /* ---- nightowl ---- */
-/* nightowl é somente dark: no modo claro usa a paleta iOS padrão */
+/* nightowl é somente dark: no modo claro usa a paleta iOS padrão (só a borda muda p/ github) */
+:root:not(.dark)[data-color-theme="nightowl"] {
+  /* fallback claro para tema somente-dark: paleta iOS padrão,
+     apenas com borda estilo github (#d0d7de) nos cards/botões */
+  --color-ios-border: #d0d7de;
+}
 
 .dark[data-color-theme="nightowl"] {
   --color-ios-bg-dark: #011627;
