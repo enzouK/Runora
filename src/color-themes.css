@@ -1310,3 +1310,7 @@
 [data-color-theme] .focus\:ring-blue-500:focus {
   --tw-ring-color: var(--color-ios-blue);
 }
+
+[data-color-theme] .hover\:bg-\[\#0071eb\]:hover {
+  background-color: color-mix(in srgb, var(--color-ios-blue) 85%, #000);
+}
