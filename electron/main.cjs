@@ -102,6 +102,16 @@ ipcMain.handle('desktop:write-file', async (_e, filePath, bytes) => {
   }
 });
 
+/** Opens a native "choose folder" dialog (used e.g. to pick the addon export destination). */
+ipcMain.handle('desktop:pick-directory', async (_e, title) => {
+  const win = BrowserWindow.getAllWindows()[0];
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: title || 'Escolher pasta',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  return canceled || filePaths.length === 0 ? { canceled: true } : { canceled: false, path: filePaths[0] };
+});
+
 /* ── Addons folder bridge (rooted at userData/Addons) ─────────────────── */
 
 function addonsRoot() {
@@ -142,6 +152,27 @@ ipcMain.handle('desktop:addons-list', async () => {
     await fs.promises.mkdir(root, { recursive: true });
     const entries = await fs.promises.readdir(root, { withFileTypes: true });
     return { ok: true, dirs: entries.filter((e) => e.isDirectory()).map((e) => e.name).sort() };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+async function walkFiles(dir, base, out) {
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  for (const e of entries) {
+    const full = path.join(dir, e.name);
+    const rel = base ? `${base}/${e.name}` : e.name;
+    if (e.isDirectory()) await walkFiles(full, rel, out);
+    else out.push(rel);
+  }
+}
+
+ipcMain.handle('desktop:addons-list-files', async (_e, rel) => {
+  try {
+    const root = safeAddonsPath(String(rel || ''));
+    const out = [];
+    await walkFiles(root, '', out);
+    return { ok: true, files: out.sort() };
   } catch (err) {
     return { ok: false, error: String((err && err.message) || err) };
   }

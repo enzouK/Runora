@@ -26,6 +26,8 @@ export interface AddonFs {
   ensureAddonsDir(): Promise<void>;
   rootPath(): Promise<string | null>;
   listAddonDirs(): Promise<string[]>;
+  /** Recursive file list (relative paths) under a directory inside Addons/. */
+  listFiles(relDir: string): Promise<string[]>;
   exists(relPath: string): Promise<boolean>;
   read(relPath: string, encoding?: AddonFsEncoding): Promise<AddonFsEntry | null>;
   write(relPath: string, data: string | Uint8Array): Promise<void>;
@@ -65,6 +67,7 @@ interface DesktopAddonsBridge {
   addonsRoot(): Promise<{ ok: boolean; root?: string; error?: string }>;
   addonsEnsure(): Promise<{ ok: boolean; error?: string }>;
   addonsList(): Promise<{ ok: boolean; dirs?: string[]; error?: string }>;
+  addonsListFiles(rel: string): Promise<{ ok: boolean; files?: string[]; error?: string }>;
   addonsExists(rel: string): Promise<{ ok: boolean; exists: boolean; error?: string }>;
   addonsRead(rel: string, encoding: AddonFsEncoding): Promise<{ ok: boolean; found: boolean; encoding?: AddonFsEncoding; data?: string; error?: string }>;
   addonsWrite(rel: string, encoding: AddonFsEncoding, data: string): Promise<{ ok: boolean; error?: string }>;
@@ -87,6 +90,11 @@ function desktopFs(): AddonFs {
       const r = await bridge.addonsList();
       if (!r.ok) throw new Error(r.error || 'addons list failed');
       return r.dirs || [];
+    },
+    listFiles: async (relDir) => {
+      const r = await bridge.addonsListFiles(normalizeRel(relDir));
+      if (!r.ok) throw new Error(r.error || 'addons list-files failed');
+      return r.files || [];
     },
     exists: async (relPath) => {
       const r = await bridge.addonsExists(normalizeRel(relPath));
@@ -139,6 +147,24 @@ function capacitorFs(): AddonFs {
       await Filesystem.mkdir({ path: capRoot(), directory: Directory.Data, recursive: true }).catch(() => undefined);
       const res = await Filesystem.readdir({ path: capRoot(), directory: Directory.Data });
       return res.files.filter((f) => f.type === 'directory').map((f) => f.name);
+    },
+    listFiles: async (relDir) => {
+      const base = capPath(relDir);
+      const out: string[] = [];
+      const walk = async (dir: string, prefix: string): Promise<void> => {
+        const res = await Filesystem.readdir({ path: dir, directory: Directory.Data });
+        for (const f of res.files) {
+          const rel = prefix ? `${prefix}/${f.name}` : f.name;
+          if (f.type === 'directory') await walk(`${dir}/${f.name}`, rel);
+          else out.push(rel);
+        }
+      };
+      try {
+        await walk(base, '');
+      } catch {
+        // missing dir -> empty list
+      }
+      return out.sort();
     },
     exists: async (relPath) => {
       try {
@@ -214,6 +240,13 @@ function webFs(): AddonFs {
         if (parts[0] === ADDONS_DIR && parts.length >= 3) dirs.add(parts[1]);
       }
       return [...dirs].sort();
+    },
+    listFiles: async (relDir) => {
+      const prefix = `${keyOf(relDir)}/`;
+      return Object.keys(webLoad())
+        .filter((k) => k.startsWith(prefix))
+        .map((k) => k.slice(prefix.length))
+        .sort();
     },
     exists: async (relPath) => {
       const k = keyOf(relPath);

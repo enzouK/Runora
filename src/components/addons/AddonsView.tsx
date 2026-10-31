@@ -5,6 +5,7 @@ import type { AddonManifest } from '../../services/addonSystem';
 import { importAddonFile, removeAddon } from '../../services/addonStorage';
 import { IOSSwitch } from '../common/IOSSwitch';
 import { AddonConfigModal } from './AddonConfigModal';
+import { AddonExportModal } from './AddonExportModal';
 
 /**
  * Addons JS — full-page view (accessible from the main nav, next to Note Types).
@@ -16,6 +17,7 @@ export const AddonsView: React.FC = () => {
   const [importing, setImporting] = React.useState(false);
   const [addonsRootPath, setAddonsRootPath] = React.useState<string | null>(null);
   const [configAddon, setConfigAddon] = React.useState<AddonManifest | null>(null);
+  const [exportOpen, setExportOpen] = React.useState(false);
   const importFileRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -88,7 +90,7 @@ export const AddonsView: React.FC = () => {
   };
 
   const handleExport = () => {
-    // TODO: abrir fluxo de exportação de addons
+    setExportOpen(true);
   };
 
   return (
@@ -195,14 +197,13 @@ export const AddonsView: React.FC = () => {
         <button
           type="button"
           onClick={handleExport}
-          title="Exportar Addons (em breve)"
+          title="Exportar Addons"
           className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-all active:scale-[0.98]"
         >
           <Upload className="w-4 h-4 text-ios-blue" />
           <span>Exportar</span>
         </button>
       </div>
-
       {/* Seletor de arquivo escondido usado pelo botão Importar */}
       <input
         ref={importFileRef}
@@ -228,6 +229,15 @@ export const AddonsView: React.FC = () => {
         onClose={() => setConfigAddon(null)}
         onSaved={(message) => setImportMsg(message)}
       />
+
+      {/* Exportar addons selecionados (pacote .anki2addon com config.json) */}
+      {exportOpen && (
+        <AddonExportModal
+          addons={addons}
+          onClose={() => setExportOpen(false)}
+          onExported={(message) => setImportMsg(message)}
+        />
+      )}
     </div>
   );
 };
