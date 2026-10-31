@@ -1,5 +1,5 @@
 <div align="center">
-<img width="1200" alt="Runora Multi-Platform" src="https://raw.githubusercontent.com/enzouK/Anki2.0/main/src/assets/logo.svg" />
+<img width="1200" alt="Runora Multi-Platform" src="https://raw.githubusercontent.com/enzouK/Runora/main/src/assets/logo.svg" />
 </div>
 
 # Runora
@@ -60,8 +60,8 @@ Git
 
 ```bash
 # Clonar repositório
-git clone https://github.com/enzouK/Anki2.0.git
-cd anki-2.0---fsrs-flashcards
+git clone https://github.com/enzouK/Runora.git
+cd Runora
 
 # Instalar dependências
 npm install
