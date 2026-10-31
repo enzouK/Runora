@@ -102,6 +102,18 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
     };
   }, [isOpen]);
 
+  // When the menu opens, scroll it so the currently selected option is
+  // visible (centered) instead of always starting at the top of the list.
+  useEffect(() => {
+    if (!isOpen) return;
+    const menu = menuRef.current;
+    const selectedEl = menu?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
+    if (menu && selectedEl) {
+      menu.scrollTop =
+        selectedEl.offsetTop - menu.clientHeight / 2 + selectedEl.clientHeight / 2;
+    }
+  }, [isOpen]);
+
   const toggle = () => {
     if (isOpen) {
       setIsOpen(false);
