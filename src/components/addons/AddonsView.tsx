@@ -1,7 +1,7 @@
 import React from 'react';
-import { Download, Puzzle, Upload } from 'lucide-react';
+import { Download, Puzzle, Settings, Trash2, Upload } from 'lucide-react';
 import { AddonSystem } from '../../services/addonSystem';
-import { importAddonFile } from '../../services/addonStorage';
+import { importAddonFile, removeAddon } from '../../services/addonStorage';
 import { IOSSwitch } from '../common/IOSSwitch';
 
 /**
@@ -30,6 +30,25 @@ export const AddonsView: React.FC = () => {
   const handleToggle = (id: string) => {
     AddonSystem.toggleAddon(id);
     setAddons(AddonSystem.getAddons());
+  };
+
+  const handleAddonSettings = (id: string) => {
+    // TODO: abrir configurações específicas do addon (id)
+    setImportMsg(`Configurações do addon "${id}" ainda não implementadas.`);
+  };
+
+  const handleDeleteAddon = async (id: string) => {
+    const addon = addons.find((a) => a.id === id);
+    const label = addon?.name || id;
+    if (!window.confirm(`Excluir o addon "${label}"? Isso remove a pasta dele de Addons.`)) return;
+    try {
+      await removeAddon(id);
+      await AddonSystem.refresh();
+      setAddons(AddonSystem.getAddons());
+      setImportMsg(`Addon "${label}" excluído.`);
+    } catch (err) {
+      setImportMsg(`Erro ao excluir: ${err instanceof Error ? err.message : String(err)}`);
+    }
   };
 
   const handleImport = () => {
@@ -119,7 +138,25 @@ export const AddonsView: React.FC = () => {
                 </p>
               </div>
 
-              <IOSSwitch checked={addon.enabled} onChange={() => handleToggle(addon.id)} />
+              <div className="flex items-center gap-1.5 shrink-0">
+                <IOSSwitch checked={addon.enabled} onChange={() => handleToggle(addon.id)} />
+                <button
+                  type="button"
+                  title={`Configurações de ${addon.name}`}
+                  onClick={() => handleAddonSettings(addon.id)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors active:scale-90"
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  title={`Excluir ${addon.name}`}
+                  onClick={() => void handleDeleteAddon(addon.id)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:bg-ios-red/10 hover:text-ios-red transition-colors active:scale-90"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))
         )}

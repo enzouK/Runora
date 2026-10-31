@@ -37,6 +37,16 @@ export async function setAddonEnabled(id: string, enabled: boolean): Promise<voi
   await writeSettings(settings);
 }
 
+export async function removeAddon(id: string): Promise<void> {
+  const fs = await getAddonFs();
+  await fs.remove(id);
+  const settings = await readSettings();
+  if (settings.addons[id]) {
+    delete settings.addons[id];
+    await writeSettings(settings);
+  }
+}
+
 function sanitizeAddonId(id: unknown): string | null {
   if (typeof id !== 'string') return null;
   const trimmed = id.trim();

@@ -18,7 +18,7 @@ export const IOSSwitch: React.FC<IOSSwitchProps> = ({ checked, onChange, disable
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative w-[46px] h-[28px] rounded-full transition-colors duration-200 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ios-blue/40 disabled:opacity-40 ${
-        checked ? 'bg-ios-green' : 'bg-black/[0.15] dark:bg-white/[0.2]'
+        checked ? 'bg-ios-green' : 'bg-[color-mix(in_srgb,var(--color-ios-bg)_70%,black)] dark:bg-[color-mix(in_srgb,var(--color-ios-bg-dark)_70%,black)]'
       }`}
     >
       <span
