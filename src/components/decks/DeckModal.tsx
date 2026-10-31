@@ -37,6 +37,7 @@ import {
   ReviewSortOrder,
 } from '../../types/anki';
 import { StorageService } from '../../services/storage';
+import { AddonSystem } from '../../services/addonSystem';
 import { IOSSelect } from '../common/IOSSelect';
 import { HelpPanel, HelpTopic } from '../common/HelpPanel';
 
@@ -943,6 +944,8 @@ export const DeckModal: React.FC<DeckModalProps> = ({
         updatedAt: Date.now(),
       };
       StorageService.saveDecks([...decks, newDeck]);
+      // Addon hook: new deck created
+      AddonSystem.runHook('onDeckCreated', { deckId: newDeck.id, deckName: newDeck.name, deck: newDeck });
     }
 
     // Anki-style: changing the insertion order reassigns the "due #" (position)

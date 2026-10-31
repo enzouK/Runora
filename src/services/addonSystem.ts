@@ -60,7 +60,11 @@ export type AddonHookType =
   | 'afterCardRender'
   | 'beforeReviewSubmit'
   | 'afterReviewSubmit'
-  | 'onDeckSelect';
+  | 'onDeckSelect'
+  | 'onAppStart'
+  | 'onNoteSaved'
+  | 'onDeckCreated'
+  | 'onDeckDeleted';
 
 export type AddonHookCallback = (context: Record<string, unknown>) => unknown;
 

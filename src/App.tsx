@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, FolderPlus, Inbox, GraduationCap, Repeat, Download, Upload } from 'lucide-react';
 import { Deck, NoteType } from './types/anki';
 import { StorageService } from './services/storage';
-import { AddonSystem } from './services/addonSystem';
+import { AddonSystem, APP_VERSION } from './services/addonSystem';
 import { ExportImportService } from './services/exportImport';
 import { Header, MainNavTab } from './components/navbar/Header';
 import { DeckList } from './components/decks/DeckList';
@@ -38,6 +38,8 @@ export default function App() {
 
   useEffect(() => {
     refreshAll();
+    // Addon hook: fired once when the app shell mounts
+    AddonSystem.runHook('onAppStart', { appVersion: APP_VERSION });
   }, [refreshAll]);
 
   // Addon toasts: Anki2Addons.toast() dispatches this event; show it in the global toast

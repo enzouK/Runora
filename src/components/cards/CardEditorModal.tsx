@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Deck, Note, NoteType } from '../../types/anki';
 import { StorageService } from '../../services/storage';
+import { AddonSystem } from '../../services/addonSystem';
 import { AudioService } from '../../services/audioService';
 import { RichMediaFieldEditor } from './RichMediaFieldEditor';
 import { IOSSelect } from '../common/IOSSelect';
@@ -129,6 +130,15 @@ export const CardEditorModal: React.FC<CardEditorModalProps> = ({
     // Automatically synchronize corresponding Cards for FSRS
     StorageService.syncCardsForNote(noteToSave);
     AudioService.playHapticTone('flip');
+
+    // Addon hook: note created/edited and persisted
+    AddonSystem.runHook('onNoteSaved', {
+      noteId: noteToSave.id,
+      deckId: noteToSave.deckId,
+      noteTypeId: noteToSave.noteTypeId,
+      isNew: !editNoteId,
+      note: noteToSave,
+    });
 
     onSaved();
     onClose();

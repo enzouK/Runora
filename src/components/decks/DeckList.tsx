@@ -14,6 +14,7 @@ import {
 import { Deck } from '../../types/anki';
 import { DeckTreeNode, DeckService } from '../../services/deckService';
 import { StorageService } from '../../services/storage';
+import { AddonSystem } from '../../services/addonSystem';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 
 interface DeckListProps {
@@ -79,6 +80,8 @@ export const DeckList: React.FC<DeckListProps> = ({
   const handleConfirmDelete = () => {
     if (deckToDelete) {
       StorageService.deleteDeck(deckToDelete.id);
+      // Addon hook: deck deleted
+      AddonSystem.runHook('onDeckDeleted', { deckId: deckToDelete.id, deckName: deckToDelete.name });
       setDeckToDelete(null);
       onRefresh();
     }
