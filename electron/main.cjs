@@ -39,7 +39,16 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // native window.open (browser-like popups, no node in child windows):
+      // required for the Google Identity Services login popup used by Drive sync
+      nativeWindowOpen: true,
     },
+  });
+
+  // Only the Google OAuth popup may open as a new window; block everything else
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://accounts.google.com/')) return { action: 'allow' };
+    return { action: 'deny' };
   });
 
   if (DEV_SERVER_URL) {

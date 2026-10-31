@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   Clock,
   RotateCcw,
   Check,
   AlertCircle,
+  Cloud,
 } from 'lucide-react';
 import { FSRSParameters } from '../../types/anki';
 import { StorageService } from '../../services/storage';
+import { DriveSyncService } from '../../services/gdriveSync';
 import { ExportImportService } from '../../services/exportImport';
 import { DEFAULT_FSRS_PARAMETERS } from '../../fsrs/constants';
 import { ConfirmationModal } from '../common/ConfirmationModal';
@@ -34,6 +36,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [rolloverHour, setRolloverHour] = useState<number>(() => StorageService.getRolloverHour());
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => StorageService.getTheme());
   const [colorTheme, setColorTheme] = useState<string>(() => StorageService.getColorTheme());
+  // Google Drive sync
+  const [clientId, setClientId] = useState<string>(() => localStorage.getItem('anki2_gdrive_client_id') || '');
+  const [driveAccount, setDriveAccount] = useState(() => DriveSyncService.getAccount());
+  const [driveAutoSync, setDriveAutoSync] = useState<boolean>(() => DriveSyncService.getAutoSync());
+  const [driveBusy, setDriveBusy] = useState(false);
+  const [driveLastSync, setDriveLastSync] = useState(() => DriveSyncService.getLastSync());
+  const [driveRemote, setDriveRemote] = useState<Awaited<ReturnType<typeof DriveSyncService.getRemoteInfo>>>(null);
+
+  // Refresh Drive status info whenever the settings open while connected
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    setDriveLastSync(DriveSyncService.getLastSync());
+    if (DriveSyncService.getAccount()) {
+      DriveSyncService.getRemoteInfo()
+        .then((r) => {
+          if (!cancelled) setDriveRemote(r);
+        })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
     setTheme(newTheme);
@@ -77,6 +103,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleResetDefaultData = () => {
     setConfirmResetData(true);
+  };
+
+  const handleConnectDrive = async () => {
+    setDriveBusy(true);
+    setStatusMsg(null);
+    try {
+      const email = await DriveSyncService.connect();
+      setDriveAccount(DriveSyncService.getAccount());
+      setStatusMsg({ type: 'success', text: `Google Drive conectado: ${email}` });
+    } catch (e) {
+      setStatusMsg({ type: 'error', text: (e as Error).message });
+    } finally {
+      setDriveBusy(false);
+    }
+  };
+
+  const handleDisconnectDrive = () => {
+    DriveSyncService.disconnect();
+    setDriveAccount(null);
+    setStatusMsg({ type: 'success', text: 'Conta do Google Drive desconectada.' });
   };
 
   const executeResetDefaultData = () => {
@@ -248,6 +294,120 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
                   Temas de cores inspirados no OpenCode ({COLOR_THEME_NAMES.length} temas). Aplica sobre o tema claro/escuro acima. Temas "somente escuro" aplicam só no modo escuro.
                 </p>
+              </div>
+
+              {/* Google Drive sync account */}
+              <div className="px-3.5 py-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06]">
+                <div className="flex items-center gap-2 mb-2">
+                  <Cloud className="w-4 h-4 text-ios-blue shrink-0" />
+                  <span className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
+                    Google Drive — Sincronização
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-relaxed">
+                  Sincroniza decks, cards, histórico FSRS e mídia com o seu próprio Google Drive — sem
+                  hospedagem paga. Basta conectar sua conta Google abaixo: o app já vem com o Client ID
+                  padrão (igual ao reader.ttsu.app), então você não precisa criar nada no Google Cloud.
+                </p>
+
+                {/* Sync status rows */}
+                <div className="mt-2.5 rounded-[10px] bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.1] divide-y divide-black/[0.05] dark:divide-white/[0.07]">
+                  <div className="flex items-center justify-between gap-3 px-3 py-2">
+                    <span className="text-[11px] text-zinc-500 dark:text-zinc-400">Último sync neste dispositivo</span>
+                    <span className="text-[11px] font-semibold text-zinc-800 dark:text-zinc-100">
+                      {driveLastSync
+                        ? new Date(driveLastSync.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                        : 'nunca'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 px-3 py-2">
+                    <span className="text-[11px] text-zinc-500 dark:text-zinc-400">Último backup no Drive</span>
+                    <span className="text-[11px] font-semibold text-zinc-800 dark:text-zinc-100 text-right">
+                      {driveRemote
+                        ? `${new Date(driveRemote.meta.uploadedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${driveRemote.meta.deviceName}`
+                        : 'nenhum'}
+                    </span>
+                  </div>
+                </div>
+
+                <details className="mt-2.5 text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  <summary className="cursor-pointer font-semibold text-zinc-600 dark:text-zinc-300 select-none">
+                    Usar meu próprio Client ID (avançado, opcional)
+                  </summary>
+                  <p className="mt-1.5">
+                    Client ID em uso:{' '}
+                    <span className="font-semibold text-zinc-700 dark:text-zinc-200">
+                      {DriveSyncService.hasCustomClientId() ? 'personalizado' : 'padrão do app'}
+                    </span>
+                  </p>
+                  <input
+                    type="text"
+                    value={clientId}
+                    onChange={(e) => {
+                      setClientId(e.target.value);
+                      DriveSyncService.setClientId(e.target.value);
+                    }}
+                    placeholder="123456789-xxxx.apps.googleusercontent.com (vazio = padrão do app)"
+                    spellCheck={false}
+                    className="w-full mt-1.5 px-3 py-2 rounded-[10px] bg-white dark:bg-zinc-900 border border-black/[0.08] dark:border-white/[0.12] text-[12px] font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-ios-blue"
+                  />
+                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1.5 leading-relaxed">
+                    Para um Client ID próprio: crie um projeto grátis em console.cloud.google.com, ative a
+                    Google Drive API, crie um “ID do cliente OAuth” do tipo “Aplicativo da Web” e registre
+                    como origens JavaScript autorizadas: <code className="font-mono text-[10px] text-ios-blue break-all">{window.location.origin}</code>{' '}
+                    mais http://localhost:3000, http://127.0.0.1:39102–39105/39110–39119 (app desktop) e
+                    https://localhost (Android).
+                  </p>
+                </details>
+
+                <div className="flex items-center gap-2 mt-3">
+                  {driveAccount ? (
+                    <>
+                      <span className="flex-1 text-[12px] font-semibold text-ios-green truncate">
+                        Conectado: {driveAccount.email || 'conta Google'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleDisconnectDrive}
+                        className="px-3 py-1.5 rounded-full text-[12px] font-semibold text-zinc-600 dark:text-zinc-300 bg-black/[0.05] dark:bg-white/[0.08] hover:bg-black/[0.09] dark:hover:bg-white/[0.14] transition-colors"
+                      >
+                        Desconectar
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleConnectDrive}
+                      disabled={driveBusy}
+                      className="flex-1 px-3 py-2 rounded-[10px] bg-ios-blue hover:bg-[#0071eb] text-white text-[12px] font-semibold transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    >
+                      <Cloud className="w-3.5 h-3.5" />
+                      {driveBusy ? 'Conectando…' : 'Conectar conta Google'}
+                    </button>
+                  )}
+                </div>
+                {!DriveSyncService.getClientId() && (
+                  <p className="text-[11px] text-ios-orange mt-2 leading-relaxed">
+                    Nenhum Client ID configurado neste build ainda — cole o seu próprio em “Client ID
+                    personalizado” acima para conseguir conectar (o padrão do app é embutido pelo
+                    desenvolvedor).
+                  </p>
+                )}
+
+                <label className="flex items-center gap-2 mt-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={driveAutoSync}
+                    onChange={(e) => {
+                      setDriveAutoSync(e.target.checked);
+                      DriveSyncService.setAutoSync(e.target.checked);
+                    }}
+                    className="w-4 h-4 accent-ios-blue"
+                  />
+                  <span className="text-[12px] text-zinc-600 dark:text-zinc-300">
+                    Sincronizar automaticamente ao abrir o app
+                  </span>
+                </label>
               </div>
 
               <div className="flex items-center justify-between pt-3">

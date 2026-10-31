@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Library, Puzzle, Search, Settings } from 'lucide-react';
+import { Layers, Library, Puzzle, RefreshCw, Search, Settings } from 'lucide-react';
 
 export type MainNavTab = 'decks' | 'browser' | 'notetypes' | 'addons';
 
@@ -9,6 +9,9 @@ interface HeaderProps {
   onOpenAddCard: () => void;
   onOpenSettings: () => void;
   onNewDeck: () => void;
+  /** Runs a Google Drive sync immediately (button next to the Addons tab). */
+  onSync: () => void;
+  syncRunning: boolean;
 }
 
 /** Custom flashcard-stack logo (two overlapping cards, iOS-gradient) */
@@ -50,7 +53,7 @@ const TABS: { id: MainNavTab; label: string; icon: React.ReactNode }[] = [
   { id: 'addons', label: 'Addons', icon: <Puzzle className="w-3.5 h-3.5" /> },
 ];
 
-export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSettings }) => {
+export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSettings, onSync, syncRunning }) => {
   return (
     <header className="sticky top-0 z-40 w-full bg-ios-bg/85 dark:bg-ios-bg-dark/80 backdrop-blur-xl border-b border-black/[0.07] dark:border-white/[0.08]">
       <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
@@ -67,23 +70,35 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSe
           </div>
         </div>
 
-        {/* iOS Segmented Control */}
-        <div className="flex items-center rounded-[10px] bg-black/[0.06] dark:bg-white/[0.08] p-[2px]">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onTabChange(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-[7px] rounded-[8px] text-[13px] font-semibold transition-all active:scale-[0.97] ${
-                activeTab === tab.id
-                  ? 'bg-white dark:bg-[#636366] text-zinc-900 dark:text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)]'
-                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
-              }`}
-            >
-              {tab.icon}
-              <span className="hidden sm:inline">{tab.label}</span>
-            </button>
-          ))}
+        {/* iOS Segmented Control + Sync action button (right next to Addons) */}
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center rounded-[10px] bg-black/[0.06] dark:bg-white/[0.08] p-[2px]">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => onTabChange(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-[7px] rounded-[8px] text-[13px] font-semibold transition-all active:scale-[0.97] ${
+                  activeTab === tab.id
+                    ? 'bg-white dark:bg-[#636366] text-zinc-900 dark:text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)]'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
+                }`}
+              >
+                {tab.icon}
+                <span className="hidden sm:inline">{tab.label}</span>
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={onSync}
+            disabled={syncRunning}
+            title="Sincronizar agora com o Google Drive"
+            className="flex items-center gap-1.5 px-3 py-[7px] rounded-[10px] text-[13px] font-semibold text-ios-blue bg-ios-blue/10 hover:bg-ios-blue/20 transition-all active:scale-[0.97] disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncRunning ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Sync</span>
+          </button>
         </div>
 
         {/* Right Actions */}

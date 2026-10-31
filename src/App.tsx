@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, FolderPlus, Inbox, GraduationCap, Repeat, Download, Upload } from 'lucide-react';
 import { Deck, NoteType } from './types/anki';
 import { StorageService } from './services/storage';
@@ -14,6 +14,9 @@ import { CardBrowser } from './components/cards/CardBrowser';
 import { NoteTypeManager } from './components/notetypes/NoteTypeManager';
 import { AddonsView } from './components/addons/AddonsView';
 import { SettingsModal } from './components/settings/SettingsModal';
+import { SyncConflictModal } from './components/sync/SyncConflictModal';
+import { useDriveSync } from './components/sync/useDriveSync';
+import { DriveSyncService } from './services/gdriveSync';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<MainNavTab>('decks');
@@ -35,6 +38,41 @@ export default function App() {
     setDecks(StorageService.getDecks());
     setRefreshKey((k) => k + 1);
   }, []);
+
+  // Google Drive sync controller (shared with the Sync tab + conflict modal)
+  const sync = useDriveSync(refreshAll);
+
+  // Auto-sync once per app session on start, then periodically, when enabled
+  const autoSyncRan = useRef(false);
+  useEffect(() => {
+    if (autoSyncRan.current) return;
+    autoSyncRan.current = true;
+    if (DriveSyncService.getAutoSync() && DriveSyncService.getAccount()) {
+      void sync.runSync();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!DriveSyncService.getAutoSync()) return;
+    const id = window.setInterval(() => {
+      if (DriveSyncService.getAccount() && !DriveSyncService.isRunning()) {
+        void sync.runSync();
+      }
+    }, 5 * 60 * 1000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Header Sync button: runs a sync right away and reports the result as a toast
+  const handleSyncClick = useCallback(() => {
+    void sync.runSync().then((res) => {
+      if (!res) return;
+      setToast(res.message);
+      window.setTimeout(() => setToast(null), 7000);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sync.running, sync.account]);
 
   useEffect(() => {
     refreshAll();
@@ -160,6 +198,8 @@ export default function App() {
         onOpenAddCard={handleOpenAddCard}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onNewDeck={handleOpenCreateDeck}
+        onSync={handleSyncClick}
+        syncRunning={sync.running}
       />
 
       {/* Main Content Area */}
@@ -315,6 +355,12 @@ export default function App() {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         onRefresh={refreshAll}
+      />
+
+      {/* Drive sync conflict (AnkiWeb-style): download last backup or keep this device */}
+      <SyncConflictModal
+        conflict={sync.conflict}
+        onResolve={(choice) => sync.conflict?.resolve(choice)}
       />
     </div>
   );
