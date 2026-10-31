@@ -153,7 +153,11 @@ export const AddonConfigModal: React.FC<AddonConfigModalProps> = ({ addon, onClo
       aria-modal="true"
       aria-labelledby="addon-config-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
-      onClick={(e) => {
+      // onMouseDown (not onClick): a text-selection drag that starts inside the
+      // modal and is released over the backdrop must NOT close it — with onClick
+      // the browser fires click on the common ancestor (the backdrop) and the
+      // modal would close as if the user had clicked outside.
+      onMouseDown={(e) => {
         if (e.target === e.currentTarget && !saving) onClose();
       }}
     >

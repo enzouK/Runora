@@ -30,7 +30,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   return (
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
+      // onMouseDown (not onClick): a text-selection drag that starts inside the
+      // modal and is released over the backdrop must NOT close it.
+      onMouseDown={(e) => e.target === e.currentTarget && onCancel()}
     >
       <div className="w-full max-w-sm bg-white dark:bg-ios-card-dark rounded-[20px] border border-black/[0.04] dark:border-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col ios-fade-in">
         <div className="p-6 text-center space-y-2.5">
