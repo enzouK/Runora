@@ -176,12 +176,20 @@ function capacitorFs(): AddonFs {
     },
     read: async (relPath, encoding = 'utf8') => {
       const rel = normalizeRel(relPath);
-      const res = await Filesystem.readFile({
-        path: capPath(rel),
-        directory: Directory.Data,
-        ...(encoding === 'utf8' ? { encoding: Encoding.UTF8 } : {}),
-      });
-      return { path: rel, encoding, data: String(res.data) };
+      try {
+        const res = await Filesystem.readFile({
+          path: capPath(rel),
+          directory: Directory.Data,
+          ...(encoding === 'utf8' ? { encoding: Encoding.UTF8 } : {}),
+        });
+        return { path: rel, encoding, data: String(res.data) };
+      } catch (err) {
+        // Missing file is not an error for callers (they expect null) — e.g.
+        // settings.json before the first addon is ever imported.
+        const msg = String((err as Error)?.message || err);
+        if (/does not exist|not exist|not found|enoent/i.test(msg)) return null;
+        throw err;
+      }
     },
     write: async (relPath, data) => {
       const rel = normalizeRel(relPath);

@@ -100,12 +100,21 @@ export class AddonSystem {
     await this.reloadScripts();
   }
 
+  private static initPromise: Promise<string | null> | null = null;
+
   /**
    * App-start initialization: makes sure the Addons folder exists (so users can
-   * drop addon folders manually) and loads installed addons. Returns the
-   * absolute folder path when the backend exposes one (desktop/Android).
+   * drop addon folders manually) and loads installed addons. Memoized — every
+   * caller gets the same promise, so e.g. the app shell can await it before
+   * firing the onAppStart hook. Returns the absolute folder path when the
+   * backend exposes one (desktop/Android).
    */
-  public static async init(): Promise<string | null> {
+  public static init(): Promise<string | null> {
+    if (!this.initPromise) this.initPromise = this.doInit();
+    return this.initPromise;
+  }
+
+  private static async doInit(): Promise<string | null> {
     let root: string | null = null;
     try {
       const fs = await getAddonFs();

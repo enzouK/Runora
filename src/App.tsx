@@ -38,8 +38,12 @@ export default function App() {
 
   useEffect(() => {
     refreshAll();
-    // Addon hook: fired once when the app shell mounts
-    AddonSystem.runHook('onAppStart', { appVersion: APP_VERSION });
+    // Addon hook: fired once when the app shell mounts. Await addon loading
+    // first — on slow FS backends (Android) init() may not have finished when
+    // the shell mounts, and onAppStart would fire with no addon hooks yet.
+    void AddonSystem.init().then(() => {
+      AddonSystem.runHook('onAppStart', { appVersion: APP_VERSION });
+    });
   }, [refreshAll]);
 
   // Addon toasts: Anki2Addons.toast() dispatches this event; show it in the global toast
