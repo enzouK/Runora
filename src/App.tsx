@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, FolderPlus, Inbox, GraduationCap, Repeat, Download, Upload } from 'lucide-react';
 import { Deck, NoteType } from './types/anki';
 import { StorageService } from './services/storage';
+import { AddonSystem } from './services/addonSystem';
 import { ExportImportService } from './services/exportImport';
 import { Header, MainNavTab } from './components/navbar/Header';
 import { DeckList } from './components/decks/DeckList';
@@ -209,7 +210,10 @@ export default function App() {
             <div className="rounded-[20px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] overflow-hidden">
               <DeckList
                 decks={decks}
-                onSelectDeckToStudy={(deck) => setActiveStudyDeck(deck)}
+                onSelectDeckToStudy={(deck) => {
+                  AddonSystem.runHook('onDeckSelect', { deckId: deck.id, deckName: deck.name });
+                  setActiveStudyDeck(deck);
+                }}
                 onEditDeck={handleEditDeck}
                 onCreateSubdeck={handleCreateSubdeck}
                 onRefresh={refreshAll}

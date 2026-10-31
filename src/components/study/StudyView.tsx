@@ -14,6 +14,7 @@ import { FSRS } from '../../fsrs/algorithm';
 import { ClozeService } from '../../services/clozeService';
 import { AudioService } from '../../services/audioService';
 import { StorageService } from '../../services/storage';
+import { AddonSystem } from '../../services/addonSystem';
 import { RatingButtons } from './RatingButtons';
 import { CardContentRenderer } from './CardContentRenderer';
 import { CardEditorModal } from '../cards/CardEditorModal';
@@ -400,45 +401,66 @@ export const StudyView: React.FC<StudyViewProps> = ({
     return base;
   }, [currentCard, fsrsEngine, stepOverrideMinutes]);
 
-  // Render Front HTML
+  // Render Front HTML (addon hooks beforeCardRender/afterCardRender may inspect or replace the HTML)
   const frontHtml = useMemo(() => {
     if (!noteData || !currentCard) return '';
     const { note, noteType } = noteData;
     if (!noteType) return '';
 
+    const hookCtx = AddonSystem.runHook('beforeCardRender', {
+      cardId: currentCard.id,
+      noteId: currentCard.noteId,
+      deckId: deck.id,
+      side: 'front',
+    });
+
+    let html = '';
     if (noteType.isCloze) {
       const textField = note.fields['Texto'] || Object.values(note.fields)[0] || '';
-      return ClozeService.formatMediaContent(ClozeService.renderClozeFront(textField, currentCard.templateOrd));
+      html = ClozeService.formatMediaContent(ClozeService.renderClozeFront(textField, currentCard.templateOrd));
+    } else {
+      const template = noteType.templates[currentCard.templateOrd] || noteType.templates[0];
+      if (template) {
+        html = ClozeService.renderTemplate(template.qfmt, note.fields, false, undefined, currentCard.templateOrd);
+      }
     }
 
-    const template = noteType.templates[currentCard.templateOrd] || noteType.templates[0];
-    if (!template) return '';
+    const after = AddonSystem.runHook('afterCardRender', { ...hookCtx, html });
+    return typeof after.html === 'string' ? after.html : html;
+  }, [noteData, currentCard, deck.id]);
 
-    return ClozeService.renderTemplate(template.qfmt, note.fields, false, undefined, currentCard.templateOrd);
-  }, [noteData, currentCard]);
-
-  // Render Back HTML
+  // Render Back HTML (addon hooks beforeCardRender/afterCardRender may inspect or replace the HTML)
   const backHtml = useMemo(() => {
     if (!noteData || !currentCard) return '';
     const { note, noteType } = noteData;
     if (!noteType) return '';
 
+    const hookCtx = AddonSystem.runHook('beforeCardRender', {
+      cardId: currentCard.id,
+      noteId: currentCard.noteId,
+      deckId: deck.id,
+      side: 'back',
+    });
+
+    let html = '';
     if (noteType.isCloze) {
       const textField = note.fields['Texto'] || Object.values(note.fields)[0] || '';
       const extraField = note.fields['Extra'] || '';
       const renderedCloze = ClozeService.formatMediaContent(ClozeService.renderClozeBack(textField, currentCard.templateOrd));
       const formattedExtra = ClozeService.formatMediaContent(extraField);
-      return `<div>${renderedCloze}</div>${
+      html = `<div>${renderedCloze}</div>${
         extraField ? `<hr class="my-4 border-black/10 dark:border-white/10" /><div class="text-sm opacity-85">${formattedExtra}</div>` : ''
       }`;
+    } else {
+      const template = noteType.templates[currentCard.templateOrd] || noteType.templates[0];
+      if (template) {
+        html = ClozeService.renderTemplate(template.afmt, note.fields, true, frontHtml, currentCard.templateOrd);
+      }
     }
 
-    const template = noteType.templates[currentCard.templateOrd] || noteType.templates[0];
-    if (!template) return '';
-
-    const out = ClozeService.renderTemplate(template.afmt, note.fields, true, frontHtml, currentCard.templateOrd);
-    return out;
-  }, [noteData, currentCard, frontHtml]);
+    const after = AddonSystem.runHook('afterCardRender', { ...hookCtx, html });
+    return typeof after.html === 'string' ? after.html : html;
+  }, [noteData, currentCard, frontHtml, deck.id]);
 
   // Handle revealing answer
   const handleRevealAnswer = () => {
@@ -449,6 +471,17 @@ export const StudyView: React.FC<StudyViewProps> = ({
   // Handle rating with FSRS
   const handleRate = (rating: FSRSRating) => {
     if (!currentCard || !predictions) return;
+
+    // Addon hook: may inspect the review and even change the rating (1-4)
+    const submitCtx = AddonSystem.runHook('beforeReviewSubmit', {
+      cardId: currentCard.id,
+      noteId: currentCard.noteId,
+      deckId: deck.id,
+      rating,
+    });
+    if (typeof submitCtx.rating === 'number' && [1, 2, 3, 4].includes(submitCtx.rating)) {
+      rating = submitCtx.rating as FSRSRating;
+    }
 
     // Haptic sound
     if (rating === 1) AudioService.playHapticTone('again');
@@ -549,6 +582,16 @@ export const StudyView: React.FC<StudyViewProps> = ({
       state: currentCard.fsrs.state,
       stability: nextCardData.stability,
       difficulty: nextCardData.difficulty,
+    });
+
+    // Addon hook: fired after the review was persisted
+    AddonSystem.runHook('afterReviewSubmit', {
+      cardId: currentCard.id,
+      noteId: currentCard.noteId,
+      deckId: deck.id,
+      rating,
+      updatedCard,
+      scheduledDays: nextCardData.scheduledDays,
     });
 
     setSessionReviewedCount((c) => c + 1);
