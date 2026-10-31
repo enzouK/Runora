@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, Puzzle, Settings, Trash2, Upload } from 'lucide-react';
+import { Download, Puzzle, Settings, ShieldAlert, Trash2, Upload } from 'lucide-react';
 import { AddonSystem } from '../../services/addonSystem';
 import type { AddonManifest } from '../../services/addonSystem';
 import { importAddonFile, removeAddon } from '../../services/addonStorage';
@@ -170,6 +170,14 @@ export const AddonsView: React.FC = () => {
             );
           })
         )}
+      </div>
+
+      {/* Aviso de segurança — addons rodam com acesso total ao app */}
+      <div className="flex items-start gap-2.5 px-4 py-3 rounded-[16px] bg-amber-500/10 border border-amber-500/20 text-[12px] leading-relaxed text-amber-700 dark:text-amber-400">
+        <ShieldAlert className="w-4 h-4 shrink-0 mt-[1px]" />
+        <span>
+          Instale apenas addons de fontes confiáveis: o código de um addon roda com acesso total ao app.
+        </span>
       </div>
 
       {/* Importar / Exportar — rodapé da página de Addons */}
