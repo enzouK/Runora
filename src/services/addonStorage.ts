@@ -4,7 +4,7 @@
  * localStorage in dev) and keeps enabled/disabled state in Addons/settings.json.
  */
 import JSZip from 'jszip';
-import type { AddonManifest } from './addonSystem';
+import type { AddonConfigField, AddonManifest } from './addonSystem';
 import { getAddonFs, normalizeRel } from './addonFs';
 
 export interface AddonSettings {
@@ -47,6 +47,69 @@ export async function removeAddon(id: string): Promise<void> {
   }
 }
 
+/* ── Per-addon config (Addons/<id>/config.json) ───────────────────────── */
+
+/**
+ * Reads Addons/<id>/config.json merged with the defaults declared in the
+ * manifest's configSchema. Unknown stored keys are preserved.
+ */
+export async function readAddonConfig(id: string): Promise<Record<string, unknown>> {
+  const fs = await getAddonFs();
+  let schema: AddonConfigField[] | undefined;
+  const manifestEntry = await fs.read(`${id}/manifest.json`, 'utf8').catch(() => null);
+  if (manifestEntry) {
+    try {
+      schema = validateManifest(JSON.parse(manifestEntry.data))?.configSchema;
+    } catch {
+      schema = undefined;
+    }
+  }
+
+  let stored: Record<string, unknown> = {};
+  const entry = await fs.read(`${id}/config.json`, 'utf8').catch(() => null);
+  if (entry) {
+    try {
+      const parsed = JSON.parse(entry.data);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) stored = parsed as Record<string, unknown>;
+    } catch {
+      stored = {};
+    }
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const field of schema || []) {
+    out[field.key] = field.key in stored ? stored[field.key] : field.default;
+  }
+  for (const key of Object.keys(stored)) {
+    if (!schema?.some((f) => f.key === key)) out[key] = stored[key];
+  }
+  return out;
+}
+
+export async function writeAddonConfig(id: string, config: Record<string, unknown>): Promise<void> {
+  const fs = await getAddonFs();
+  await fs.write(`${id}/config.json`, JSON.stringify(config, null, 2));
+}
+
+/* ── Per-addon data (Addons/<id>/data.json) ───────────────────────────── */
+
+export async function readAddonData(id: string): Promise<Record<string, unknown>> {
+  const fs = await getAddonFs();
+  const entry = await fs.read(`${id}/data.json`, 'utf8').catch(() => null);
+  if (!entry) return {};
+  try {
+    const parsed = JSON.parse(entry.data);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function writeAddonData(id: string, data: Record<string, unknown>): Promise<void> {
+  const fs = await getAddonFs();
+  await fs.write(`${id}/data.json`, JSON.stringify(data, null, 2));
+}
+
 function sanitizeAddonId(id: unknown): string | null {
   if (typeof id !== 'string') return null;
   const trimmed = id.trim();
@@ -71,6 +134,19 @@ function validateManifest(raw: unknown): AddonManifest | null {
   };
   if (typeof m.author === 'string') manifest.author = m.author;
   if (typeof m.script === 'string') manifest.script = m.script;
+  if (typeof m.minAppVersion === 'string' && m.minAppVersion.trim()) {
+    manifest.minAppVersion = m.minAppVersion.trim();
+  }
+  if (Array.isArray(m.configSchema)) {
+    manifest.configSchema = m.configSchema.filter(
+      (f): f is AddonConfigField =>
+        !!f &&
+        typeof f === 'object' &&
+        typeof (f as AddonConfigField).key === 'string' &&
+        typeof (f as AddonConfigField).label === 'string' &&
+        ['string', 'number', 'boolean', 'color', 'select'].includes((f as AddonConfigField).type)
+    );
+  }
   return manifest;
 }
 

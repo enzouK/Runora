@@ -11,8 +11,22 @@
  * addon id, so hooks can be removed when the addon is disabled/deleted.
  */
 
-import { listAddons, setAddonEnabled } from './addonStorage';
+import { listAddons, setAddonEnabled, readAddonConfig, writeAddonConfig, readAddonData, writeAddonData } from './addonStorage';
 import { getAddonFs } from './addonFs';
+import pkg from '../../package.json';
+
+/** App version (from package.json) used for manifest minAppVersion checks. */
+export const APP_VERSION: string = pkg.version;
+
+export interface AddonConfigField {
+  key: string;
+  label: string;
+  type: 'string' | 'number' | 'boolean' | 'color' | 'select';
+  default?: unknown;
+  /** Options for type 'select'. */
+  options?: string[];
+  description?: string;
+}
 
 export interface AddonManifest {
   id: string;
@@ -22,6 +36,23 @@ export interface AddonManifest {
   description: string;
   enabled: boolean;
   script?: string;
+  /** Minimum app version required to run this addon. */
+  minAppVersion?: string;
+  /** Declarative settings schema — rendered by the in-app Configurações button. */
+  configSchema?: AddonConfigField[];
+}
+
+/** Simple semver-ish check: is `have` >= `need`? */
+export function versionAtLeast(have: string, need: string): boolean {
+  const parse = (v: string) => v.split('.').map((n) => parseInt(n, 10) || 0);
+  const a = parse(have);
+  const b = parse(need);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (x !== y) return x > y;
+  }
+  return true;
 }
 
 export type AddonHookType =
@@ -47,6 +78,12 @@ export class AddonSystem {
   private static currentOwner: string | null = null;
   /** Serializes script load/unload so concurrent refresh/toggle calls don't interleave. */
   private static scriptChain: Promise<void> = Promise.resolve();
+  /** Cached config.json contents per addon id (loaded before scripts run). */
+  private static configCache: Map<string, Record<string, unknown>> = new Map();
+  /** Cached data.json contents per addon id. */
+  private static dataCache: Map<string, Record<string, unknown>> = new Map();
+  /** onConfigChange listeners per addon id. */
+  private static configListeners: Map<string, Array<(config: Record<string, unknown>) => void>> = new Map();
 
   /** Reloads the addon list from the on-device Addons folder + settings.json and re-runs enabled scripts. */
   public static async refresh(): Promise<void> {
@@ -79,13 +116,27 @@ export class AddonSystem {
 
   /**
    * Register a hook callback. When called from inside an addon's main.js,
-   * the callback is attributed to that addon (so it can be unloaded later).
+   * the callback is attributed to that addon (so it can be unloaded later),
+   * and currentOwner stays set while the callback runs (so getConfig/getData/
+   * log/toast inside the hook know which addon is calling).
    */
   public static addHook(hook: AddonHookType, callback: AddonHookCallback): void {
     if (!this.hooks.has(hook)) {
       this.hooks.set(hook, []);
     }
-    this.hooks.get(hook)!.push({ owner: this.currentOwner, callback });
+    const owner = this.currentOwner;
+    const wrapped: AddonHookCallback = owner
+      ? (ctx) => {
+          const prev = AddonSystem.currentOwner;
+          AddonSystem.currentOwner = owner;
+          try {
+            return callback(ctx);
+          } finally {
+            AddonSystem.currentOwner = prev;
+          }
+        }
+      : callback;
+    this.hooks.get(hook)!.push({ owner, callback: wrapped });
   }
 
   /**
@@ -120,10 +171,84 @@ export class AddonSystem {
     for (const [hook, entries] of this.hooks) {
       this.hooks.set(hook, entries.filter((e) => e.owner !== addonId));
     }
+    this.configListeners.delete(addonId);
+  }
+
+  /* ── Per-addon API exposed to addon scripts (window.Anki2Addons) ─────── */
+
+  /** Reads this addon's config (config.json merged with configSchema defaults). */
+  public static getConfig(key?: string): unknown {
+    const owner = this.currentOwner;
+    if (!owner) return undefined;
+    const cfg = this.configCache.get(owner) || {};
+    return key === undefined ? { ...cfg } : cfg[key];
+  }
+
+  /** Current config of any addon — used by the in-app Configurações UI. */
+  public static getAddonConfig(addonId: string): Record<string, unknown> {
+    return { ...(this.configCache.get(addonId) || {}) };
+  }
+
+  /** Registers a listener fired when this addon's config changes (from the app UI). */
+  public static onConfigChange(callback: (config: Record<string, unknown>) => void): void {
+    const owner = this.currentOwner;
+    if (!owner) return;
+    if (!this.configListeners.has(owner)) this.configListeners.set(owner, []);
+    this.configListeners.get(owner)!.push(callback);
+  }
+
+  /** Persists new config values for an addon and notifies its onConfigChange listeners. */
+  public static async updateConfig(addonId: string, config: Record<string, unknown>): Promise<void> {
+    await writeAddonConfig(addonId, config);
+    const merged = { ...config };
+    this.configCache.set(addonId, merged);
+    for (const cb of this.configListeners.get(addonId) || []) {
+      try {
+        cb({ ...merged });
+      } catch (err) {
+        console.error(`Addon onConfigChange error [${addonId}]:`, err);
+      }
+    }
+  }
+
+  /** Reads this addon's persisted key-value data (data.json). */
+  public static getData(): Record<string, unknown> {
+    const owner = this.currentOwner;
+    if (!owner) return {};
+    return { ...(this.dataCache.get(owner) || {}) };
+  }
+
+  /** Replaces this addon's persisted key-value data (data.json). */
+  public static async setData(data: Record<string, unknown>): Promise<void> {
+    const owner = this.currentOwner;
+    if (!owner) throw new Error('Anki2Addons.setData() só pode ser chamado de dentro de um addon');
+    const next = { ...data };
+    await writeAddonData(owner, next);
+    this.dataCache.set(owner, next);
+  }
+
+  /** Shows the app-wide toast with this addon's name as prefix. */
+  public static toast(message: string): void {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('anki2:addon-toast', { detail: { addonId: this.currentOwner, message } })
+      );
+    }
+  }
+
+  /** console.log prefixed with the calling addon's id. */
+  public static log(...args: unknown[]): void {
+    console.log(`[addon:${this.currentOwner ?? 'app'}]`, ...args);
   }
 
   /** Executes the main.js of a single addon, attributing its hooks to it. */
   private static async executeAddonScript(addon: AddonManifest): Promise<void> {
+    if (addon.minAppVersion && !versionAtLeast(APP_VERSION, addon.minAppVersion)) {
+      console.warn(
+        `Addon "${addon.name}" (${addon.id}) requires app >= ${addon.minAppVersion} but app is ${APP_VERSION}; skipping.`
+      );
+      return;
+    }
     try {
       const fs = await getAddonFs();
       const entry = await fs.read(`${addon.id}/main.js`, 'utf8').catch(() => null);
@@ -155,6 +280,13 @@ export class AddonSystem {
         this.hooks.set(hook, entries.filter((e) => e.owner === null));
       }
       for (const addon of this.registeredAddons) {
+        // load per-addon config/data caches before running any script
+        try {
+          this.configCache.set(addon.id, await readAddonConfig(addon.id));
+          this.dataCache.set(addon.id, await readAddonData(addon.id));
+        } catch (err) {
+          console.error(`Failed to load config/data for addon [${addon.id}]:`, err);
+        }
         if (!addon.enabled) continue;
         await this.loadAddon(addon);
       }

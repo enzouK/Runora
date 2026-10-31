@@ -40,6 +40,20 @@ export default function App() {
     refreshAll();
   }, [refreshAll]);
 
+  // Addon toasts: Anki2Addons.toast() dispatches this event; show it in the global toast
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ addonId?: string | null; message?: unknown }>).detail;
+      const msg = detail?.message;
+      if (typeof msg !== 'string' || !msg) return;
+      const prefix = detail?.addonId ? `[${detail.addonId}] ` : '';
+      setToast(`${prefix}${msg}`);
+      window.setTimeout(() => setToast(null), 5000);
+    };
+    window.addEventListener('anki2:addon-toast', handler);
+    return () => window.removeEventListener('anki2:addon-toast', handler);
+  }, []);
+
   // Global keyboard shortcuts (e.g. Ctrl+N to add card)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
