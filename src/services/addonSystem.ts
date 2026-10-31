@@ -75,6 +75,9 @@ interface HookEntry {
 }
 
 export class AddonSystem {
+  /** App version exposed to addon scripts (window.Anki2Addons.APP_VERSION). */
+  public static readonly APP_VERSION: string = pkg.version;
+
   private static hooks: Map<AddonHookType, HookEntry[]> = new Map();
   private static registeredAddons: AddonManifest[] = [];
   private static loaded = false;
@@ -142,10 +145,32 @@ export class AddonSystem {
       ? (ctx) => {
           const prev = AddonSystem.currentOwner;
           AddonSystem.currentOwner = owner;
+          // Async callbacks: keep the owner set until the returned promise
+          // settles. Restoring synchronously (finally) would drop attribution
+          // right after the first `await`, so getConfig/getData/setData/toast
+          // called later in an async hook would see currentOwner = null.
+          const restore = () => {
+            if (AddonSystem.currentOwner === owner) AddonSystem.currentOwner = prev;
+          };
           try {
-            return callback(ctx);
-          } finally {
-            AddonSystem.currentOwner = prev;
+            const result = callback(ctx);
+            if (result && typeof (result as Promise<unknown>).then === 'function') {
+              return (result as Promise<unknown>).then(
+                (value) => {
+                  restore();
+                  return value;
+                },
+                (err) => {
+                  restore();
+                  throw err;
+                }
+              );
+            }
+            restore();
+            return result;
+          } catch (err) {
+            restore();
+            throw err;
           }
         }
       : callback;
@@ -163,7 +188,12 @@ export class AddonSystem {
     for (const entry of entries) {
       try {
         const result = entry.callback(currentCtx);
-        if (result && typeof result === 'object') {
+        if (result && typeof (result as Promise<unknown>).then === 'function') {
+          // Async hook: log rejections instead of leaving them unhandled.
+          void (result as Promise<unknown>).catch((err) => {
+            console.error(`Addon hook async error [${hook}] (addon: ${entry.owner ?? 'builtin'}):`, err);
+          });
+        } else if (result && typeof result === 'object') {
           currentCtx = { ...currentCtx, ...(result as Record<string, unknown>) };
         }
       } catch (err) {
@@ -192,7 +222,7 @@ export class AddonSystem {
   /** Reads this addon's config (config.json merged with configSchema defaults). */
   public static getConfig(key?: string): unknown {
     const owner = this.currentOwner;
-    if (!owner) return undefined;
+    if (!owner) return key === undefined ? {} : undefined;
     const cfg = this.configCache.get(owner) || {};
     return key === undefined ? { ...cfg } : cfg[key];
   }
