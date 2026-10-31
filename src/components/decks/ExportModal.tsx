@@ -149,7 +149,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
     setBusy(true);
     setError(null);
     try {
-      const desktop = (window as unknown as { ankiDesktop?: AnkiDesktopBridge }).ankiDesktop;
+      const w = window as unknown as { runoraDesktop?: DesktopBridge; ankiDesktop?: DesktopBridge };
+      const desktop = w.runoraDesktop ?? w.ankiDesktop;
       const opts = {
         deckIds: Array.from(checked),
         includeScheduling,
@@ -413,7 +414,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
 /* ── File System Access API types (not in the default DOM lib) ───────── */
 
 /** Native bridge injected by our Electron preload (electron/preload.cjs). */
-interface AnkiDesktopBridge {
+interface DesktopBridge {
   isDesktop: boolean;
   pickSavePath: (
     suggestedName: string,

@@ -4,13 +4,15 @@ import { decompress as zstdDecompress } from 'fzstd';
 // sql.js ships a wasm binary; Vite serves it as an asset URL
 // @ts-ignore - vite/client provides '?url' module typing
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
-import { Card, Deck, FSRSParameters, Note, NoteType, Preset, RevlogEntry } from '../types/anki';
+import { Card, Deck, FSRSParameters, Note, NoteType, Preset, RevlogEntry } from '../types/runora';
 import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
 
-export interface AnkiCollectionExport {
+export interface RunoraCollectionExport {
   version: string;
-  anki2_compatible: boolean;
+  /** New exports set runora_compatible; legacy pre-rebrand exports set anki2_compatible — both accepted on import. */
+  runora_compatible?: boolean;
+  anki2_compatible?: boolean;
   exportedAt: number;
   fsrsParameters: FSRSParameters;
   decks: Deck[];
@@ -115,9 +117,9 @@ export class ExportImportService {
     const subset = this.collectExportedSubset(options);
     const isPartial = subset.isPartial;
 
-    const exportData: AnkiCollectionExport = {
-      version: 'Anki2.0-FSRS-v1',
-      anki2_compatible: true,
+    const exportData: RunoraCollectionExport = {
+      version: 'Runora-FSRS-v1',
+      runora_compatible: true,
       exportedAt: Date.now(),
       fsrsParameters: StorageService.getFSRSSettings(),
       decks: subset.decks,
@@ -132,9 +134,9 @@ export class ExportImportService {
 
     const zip = new JSZip();
     zip.file(
-      'collection.anki20.json',
+      'collection.runora.json',
       JSON.stringify(
-        isPartial ? { ...exportData, version: 'Anki2.0-FSRS-v1-partial' } : exportData,
+        isPartial ? { ...exportData, version: 'Runora-FSRS-v1-partial' } : exportData,
         null,
         2
       )
@@ -198,17 +200,18 @@ export class ExportImportService {
     try {
       if (file.name.endsWith('.json')) {
         const text = await file.text();
-        const data = JSON.parse(text) as AnkiCollectionExport;
+        const data = JSON.parse(text) as RunoraCollectionExport;
         return this.applyCollectionData(data);
       }
 
       // Read ZIP (.colpkg / .apkg)
       const zip = await JSZip.loadAsync(file);
-      const collectionFile = zip.file('collection.anki20.json');
+      // New name first; the legacy pre-rebrand name is still accepted on import.
+      const collectionFile = zip.file('collection.runora.json') ?? zip.file('collection.anki20.json');
 
       if (collectionFile) {
         const text = await collectionFile.async('text');
-        const data = JSON.parse(text) as AnkiCollectionExport;
+        const data = JSON.parse(text) as RunoraCollectionExport;
         const result = this.applyCollectionData(data);
         await this.importZipMedia(zip);
         return result;
@@ -218,7 +221,7 @@ export class ExportImportService {
       const jsonFiles = Object.keys(zip.files).filter((k) => k.endsWith('.json') && k !== 'media' && k !== 'media.json');
       if (jsonFiles.length > 0) {
         const text = await zip.files[jsonFiles[0]].async('text');
-        const data = JSON.parse(text) as AnkiCollectionExport;
+        const data = JSON.parse(text) as RunoraCollectionExport;
         const result = this.applyCollectionData(data);
         await this.importZipMedia(zip);
         return result;
@@ -652,7 +655,7 @@ export class ExportImportService {
     return out;
   }
 
-  private static applyCollectionData(data: AnkiCollectionExport): { success: boolean; message: string; count: number } {
+  private static applyCollectionData(data: RunoraCollectionExport): { success: boolean; message: string; count: number } {
     if (!data.decks || !data.notes || !data.cards) {
       throw new Error('Arquivo de coleção inválido ou incompleto.');
     }
@@ -671,7 +674,7 @@ export class ExportImportService {
     StorageService.saveNotes(data.notes);
     StorageService.saveCards(data.cards);
     if (data.revlog) {
-      localStorage.setItem('anki2_revlog', JSON.stringify(data.revlog));
+      localStorage.setItem('runora_revlog', JSON.stringify(data.revlog));
     }
     if (data.fsrsParameters) {
       StorageService.saveFSRSSettings(data.fsrsParameters);

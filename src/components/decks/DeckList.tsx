@@ -11,7 +11,7 @@ import {
   Trash2,
   Edit2,
 } from 'lucide-react';
-import { Deck } from '../../types/anki';
+import { Deck } from '../../types/runora';
 import { DeckTreeNode, DeckService } from '../../services/deckService';
 import { StorageService } from '../../services/storage';
 import { AddonSystem } from '../../services/addonSystem';

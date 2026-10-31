@@ -1,13 +1,16 @@
 /**
  * MediaStore — persistent binary media storage backed by IndexedDB.
  *
- * Like Anki's collection.media folder, media is stored by FILE NAME and
+ * Like a collection.media folder, media is stored by FILE NAME and
  * references in card content ([sound:x.mp3], <img src="x.png">) are resolved
  * at render time into blob: URLs. Works identically in the browser and inside
  * Tauri/Capacitor WebViews, so imported media carries over when packaging.
  */
 
-const DB_NAME = 'anki2_media';
+import { migrateLegacyIDB } from './legacyMigration';
+
+const DB_NAME = 'runora_media';
+const LEGACY_DB_NAME = 'anki2_media'; // pre-rebrand name — migrated & deleted on first run
 const STORE = 'media';
 const DB_VERSION = 1;
 
@@ -18,16 +21,21 @@ export class MediaStore {
 
   private static open(): Promise<IDBDatabase> {
     if (!this.dbPromise) {
-      this.dbPromise = new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = () => {
-          if (!req.result.objectStoreNames.contains(STORE)) {
-            req.result.createObjectStore(STORE);
-          }
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
+      this.dbPromise = (async () => {
+        // Copy the legacy anki2_media DB into runora_media, then DELETE the
+        // legacy DB so no orphaned media data is left behind.
+        await migrateLegacyIDB(LEGACY_DB_NAME, DB_NAME);
+        return new Promise<IDBDatabase>((resolve, reject) => {
+          const req = indexedDB.open(DB_NAME, DB_VERSION);
+          req.onupgradeneeded = () => {
+            if (!req.result.objectStoreNames.contains(STORE)) {
+              req.result.createObjectStore(STORE);
+            }
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      })();
     }
     return this.dbPromise;
   }

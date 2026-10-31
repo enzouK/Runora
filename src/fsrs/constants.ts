@@ -1,4 +1,4 @@
-import { FSRSParameters } from '../types/anki';
+import { FSRSParameters } from '../types/runora';
 
 /**
  * Official default FSRS-6 weights (21 parameters).

@@ -19,7 +19,7 @@ import initSqlJs from 'sql.js';
 // sql.js ships a wasm binary; Vite serves it as an asset URL
 // @ts-ignore - vite/client provides '?url' module typing
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
-import { Card, Deck, Note, NoteType, Preset } from '../types/anki';
+import { Card, Deck, Note, NoteType, Preset } from '../types/runora';
 import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
 import { ExportImportService, type CollectionExportOptions } from './exportImport';

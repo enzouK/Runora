@@ -11,7 +11,7 @@ import {
   Scissors,
   Code2,
 } from 'lucide-react';
-import { FieldDefinition, NoteType } from '../../types/anki';
+import { FieldDefinition, NoteType } from '../../types/runora';
 import { StorageService } from '../../services/storage';
 import { CardTemplateEditorModal } from './CardTemplateEditorModal';
 import { ConfirmationModal } from '../common/ConfirmationModal';

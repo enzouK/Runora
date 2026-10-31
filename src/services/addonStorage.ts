@@ -230,8 +230,9 @@ function finalizeManifestFiles(parsedManifest: unknown, manifest: AddonManifest,
 /**
  * Parses an addon file into one or more addons:
  * - `.json`            -> single addon, manifest with optional inline `script`
- * - `.anki2addon`/zip with manifest.json at the root -> single addon package
- * - `.anki2addon`/zip with `<id>/manifest.json` folders   -> multi-addon bundle
+ * - `.runoraaddon`/zip with manifest.json at the root -> single addon package
+ *   (legacy `.anki2addon` files are still accepted on import)
+ * - `.runoraaddon`/zip with `<id>/manifest.json` folders   -> multi-addon bundle
  *   (this is what Exportar produces when more than one addon is selected)
  */
 async function parsePackage(file: File): Promise<ParsedPackage> {
@@ -246,7 +247,7 @@ async function parsePackage(file: File): Promise<ParsedPackage> {
     return { addons: [{ manifest, files }] };
   }
 
-  if (lowerName.endsWith('.zip') || lowerName.endsWith('.anki2addon')) {
+  if (lowerName.endsWith('.zip') || lowerName.endsWith('.runoraaddon') || lowerName.endsWith('.anki2addon')) {
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
     const names = Object.keys(zip.files);
     const clean = (n: string) => n.replace(/^\.?\//, '');
@@ -285,7 +286,7 @@ async function parsePackage(file: File): Promise<ParsedPackage> {
     throw new Error('Pacote inválido: não encontrei manifest.json (na raiz para 1 addon, ou em pastas <id>/manifest.json para vários).');
   }
 
-  throw new Error('Formato não suportado. Use .json (manifest com script inline) ou .anki2addon/.zip (pacote).');
+  throw new Error('Formato não suportado. Use .json (manifest com script inline) ou .runoraaddon/.anki2addon/.zip (pacote).');
 }
 
 export async function importAddonFile(file: File, overwrite = false): Promise<ImportAddonResult> {
@@ -357,8 +358,8 @@ export interface ExportAddonsResult {
 
 /**
  * Builds an exportable package from installed addons:
- * - 1 addon  -> `<id>.anki2addon` with the files at the zip root (single-addon format)
- * - N addons -> `anki2-addons-<N>.anki2addon` with one `<id>/` folder per addon
+ * - 1 addon  -> `<id>.runoraaddon` with the files at the zip root (single-addon format)
+ * - N addons -> `runora-addons-<N>.runoraaddon` with one `<id>/` folder per addon
  * Every file of each addon folder is included — manifest.json, main.js,
  * config.json (the user's configured values), data.json and any assets.
  */
@@ -386,7 +387,7 @@ export async function exportAddons(ids: string[]): Promise<ExportAddonsResult> {
     }
   }
 
-  const fileName = ids.length === 1 ? `${ids[0]}.anki2addon` : `anki2-addons-${ids.length}.anki2addon`;
+  const fileName = ids.length === 1 ? `${ids[0]}.runoraaddon` : `runora-addons-${ids.length}.runoraaddon`;
   const bytes = await zip.generateAsync({ type: 'uint8array' });
   return { bytes, fileName, count: ids.length, names };
 }

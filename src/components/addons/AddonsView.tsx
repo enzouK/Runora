@@ -232,7 +232,7 @@ export const AddonsView: React.FC = () => {
       <input
         ref={importFileRef}
         type="file"
-        accept=".json,.anki2addon,.zip"
+        accept=".json,.runoraaddon,.anki2addon,.zip"
         className="hidden"
         onChange={(event) => void handleImportFile(event)}
       />
@@ -254,7 +254,7 @@ export const AddonsView: React.FC = () => {
         onSaved={(message) => setImportMsg(message)}
       />
 
-      {/* Exportar addons selecionados (pacote .anki2addon com config.json) */}
+      {/* Exportar addons selecionados (pacote .runoraaddon com config.json) */}
       {exportOpen && (
         <AddonExportModal
           addons={addons}

@@ -1,21 +1,26 @@
-import { Card, DailyLimits, Deck, DeckCounts, DisplayOrderConfig, FSRSParameters, InsertionOrder, LeechAction, MixOrder, NewGatherOrder, NewSortOrder, Note, NoteType, Preset, ReviewSortOrder, RevlogEntry } from '../types/anki';
+import { Card, DailyLimits, Deck, DeckCounts, DisplayOrderConfig, FSRSParameters, InsertionOrder, LeechAction, MixOrder, NewGatherOrder, NewSortOrder, Note, NoteType, Preset, ReviewSortOrder, RevlogEntry } from '../types/runora';
 import { ClozeService } from './clozeService';
 import { INITIAL_CARDS, INITIAL_DECKS, INITIAL_NOTE_TYPES, INITIAL_NOTES } from './sampleData';
 import { DEFAULT_FSRS_PARAMETERS } from '../fsrs/constants';
+import { migrateLegacyLocalStorage } from './legacyMigration';
+
+// Rebrand migration (anki2_* → runora_*): copy legacy keys to the new names and
+// remove the old ones, so no orphaned data is left behind. Idempotent.
+migrateLegacyLocalStorage();
 
 const STORAGE_KEYS = {
-  DECKS: 'anki2_decks',
-  NOTETYPES: 'anki2_notetypes',
-  NOTES: 'anki2_notes',
-  CARDS: 'anki2_cards',
-  REVLOG: 'anki2_revlog',
-  SETTINGS: 'anki2_fsrs_settings',
-  SEED_VERSION: 'anki2_seed_version',
-  DELETED_DEFAULTS: 'anki2_deleted_defaults',
-  PREFS: 'anki2_prefs',
-  PRESETS: 'anki2_presets',
-  THEME: 'anki2_theme',
-  COLOR_THEME: 'anki2_color_theme',
+  DECKS: 'runora_decks',
+  NOTETYPES: 'runora_notetypes',
+  NOTES: 'runora_notes',
+  CARDS: 'runora_cards',
+  REVLOG: 'runora_revlog',
+  SETTINGS: 'runora_fsrs_settings',
+  SEED_VERSION: 'runora_seed_version',
+  DELETED_DEFAULTS: 'runora_deleted_defaults',
+  PREFS: 'runora_prefs',
+  PRESETS: 'runora_presets',
+  THEME: 'runora_theme',
+  COLOR_THEME: 'runora_color_theme',
 };
 
 // Bump this when INITIAL_* sample data changes meaningfully,
@@ -115,7 +120,7 @@ export class StorageService {
       if (keepCards.length !== rawCards.length) localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(keepCards));
       if (keepTypes.length !== rawTypes.length) localStorage.setItem(STORAGE_KEYS.NOTETYPES, JSON.stringify(keepTypes));
 
-      // Guarantee the structural default deck exists (like Anki's "Default")
+      // Guarantee the structural default deck exists (like Runora's "Default")
       const afterDecks: Deck[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.DECKS) || '[]');
       if (!afterDecks.some((d) => d.id === 'deck-default')) {
         localStorage.setItem(
@@ -312,7 +317,7 @@ export class StorageService {
   }
 
   /**
-   * Anki-style: when a deck's insertion order changes, every NEW card of that deck
+   * Runora-style: when a deck's insertion order changes, every NEW card of that deck
    * (and of any subdeck following it) gets its "due #" (position) reassigned:
    * sequential → 1..N in creation order; random → 1..N after a shuffle.
    * Afterwards the order is FIXED — no reshuffling per session.
@@ -420,7 +425,7 @@ export class StorageService {
 
     let allCards = [...otherCards, ...updatedNoteCards];
 
-    // Anki-style positions ("due #") for the brand-new cards of this note
+    // Runora-style positions ("due #") for the brand-new cards of this note
     const freshCards = updatedNoteCards.filter((c) => c.position === undefined);
     if (freshCards.length > 0) {
       const mode = this.getEffectiveSchedulerConfig(note.deckId).insertionOrder;
@@ -510,12 +515,12 @@ export class StorageService {
     if (cardsToDelete.length > 0) this.addTombstone('cards', cardsToDelete);
   }
 
-  // ---- Anki-style Daily Limits ----
+  // ---- Runora-style Daily Limits ----
 
-  /** App-wide defaults, same as Anki: 20 new/day, 200 reviews/day */
+  /** App-wide defaults, same as Runora: 20 new/day, 200 reviews/day */
   public static readonly DEFAULT_DAILY_LIMITS = { newCardsPerDay: 20, maxReviewsPerDay: 200 };
 
-  /** Start of "today": Anki's rollover (default 4 AM) — a study at 2 AM still counts for yesterday. */
+  /** Start of "today": Runora's rollover (default 4 AM) — a study at 2 AM still counts for yesterday. */
   private static todayStart(now = Date.now()): number {
     const d = new Date(now);
     const rollover = this.getRolloverHour();
@@ -528,7 +533,7 @@ export class StorageService {
   }
 
   // ---- Preferences ----
-  /** Rollover hour for "today" (Anki default: 4). */
+  /** Rollover hour for "today" (Runora default: 4). */
   public static getRolloverHour(): number {
     const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
     if (!raw) return 4;
@@ -721,7 +726,7 @@ export class StorageService {
   }
 
   // ---- Bulk operations (CardBrowser selection) ----
-  // Tags live on NOTES (Anki semantics): operating on card ids maps to their
+  // Tags live on NOTES (Runora semantics): operating on card ids maps to their
   // notes, so sibling cards generated from the same note are affected too.
 
   /** Adds tags to the notes behind the given card ids (deduplicated). */
@@ -779,7 +784,7 @@ export class StorageService {
    * How many new/review cards were already studied today across the deck's subtree.
    * A revlog entry counts as "new" when the card was New at review time (state 0),
    * and as "review" when it was in the Review queue (state 2) — learning/relearning
-   * steps do not consume the review limit. This matches Anki exactly
+   * steps do not consume the review limit. This matches Runora exactly
    * (pylib: revlog type = Review only).
    */
   public static getDailyUsage(deckId: string, now = Date.now()): { newUsed: number; reviewUsed: number } {
@@ -808,7 +813,7 @@ export class StorageService {
   }
 
   /**
-   * Remaining allowance for a deck, Anki-style: its preset limits minus today's
+   * Remaining allowance for a deck, Runora-style: its preset limits minus today's
    * usage across the deck's subtree (usage of the deck and its subdecks).
    */
   public static getRemainingDailyLimits(deckId: string, now = Date.now()): { newRemaining: number; reviewRemaining: number } {
@@ -824,12 +829,12 @@ export class StorageService {
     };
   }
 
-  // ---- Anki-style Scheduler Config (Learning steps, Insertion order, Lapses) ----
+  // ---- Runora-style Scheduler Config (Learning steps, Insertion order, Lapses) ----
 
   /**
-   * Anki-style factory preset ("Padrão"): every option exactly like the app
+   * Runora-style factory preset ("Padrão"): every option exactly like the app
    * defaults. Permanent — it can never be deleted; decks re-linked from a
-   * deleted preset land here. Renaming is allowed, like in Anki.
+   * deleted preset land here. Renaming is allowed, like in Runora.
    */
   public static readonly DEFAULT_PRESET_ID = 'preset-default';
 
@@ -909,7 +914,7 @@ export class StorageService {
     this.saveDecks(decks);
   }
 
-  /** Create an empty preset with the app defaults (like Anki's "Add" preset option). */
+  /** Create an empty preset with the app defaults (like Runora's "Add" preset option). */
   public static createPreset(name: string): Preset {
     const preset: Preset = {
       ...this.buildDefaultPreset(),
@@ -1006,7 +1011,7 @@ export class StorageService {
     };
   }
 
-  /** Anki defaults: 1m 10m learning, sequential insertion, 10m relearning, leech at 8 lapses → suspend */
+  /** Runora defaults: 1m 10m learning, sequential insertion, 10m relearning, leech at 8 lapses → suspend */
   public static readonly DEFAULT_SCHEDULER = {
     learningSteps: [1, 10] as number[], // minutes
     insertionOrder: 'sequential' as InsertionOrder,
@@ -1016,7 +1021,7 @@ export class StorageService {
   };
 
   /**
-   * Parse Anki-style step strings into minutes: "1m 10m", "30s 5m 1h 1d", or bare minutes "1 10".
+   * Parse Runora-style step strings into minutes: "1m 10m", "30s 5m 1h 1d", or bare minutes "1 10".
    * Invalid/empty input → null.
    */
   public static parseSteps(input: string): number[] | null {
@@ -1067,9 +1072,9 @@ export class StorageService {
     };
   }
 
-  // ---- Anki-style Display Order ----
+  // ---- Runora-style Display Order ----
 
-  /** Anki defaults for Display Order */
+  /** Runora defaults for Display Order */
   public static readonly DEFAULT_DISPLAY_ORDER = {
     newGatherOrder: 'deck' as NewGatherOrder,
     newSortOrder: 'template' as NewSortOrder,
@@ -1096,9 +1101,9 @@ export class StorageService {
     };
   }
 
-  // ---- Anki-style Audio Config ----
+  // ---- Runora-style Audio Config ----
 
-  /** Anki default: audio plays automatically (disableAutoplay = false) */
+  /** Runora default: audio plays automatically (disableAutoplay = false) */
   public static readonly DEFAULT_AUDIO = {
     disableAutoplay: false,
   };
@@ -1113,7 +1118,7 @@ export class StorageService {
 
   /**
    * Calculate due cards counts for a deck (including subdecks).
-   * Counts are capped by the daily limits still available today, like Anki's deck list.
+   * Counts are capped by the daily limits still available today, like Runora's deck list.
    */
   public static getDeckCounts(deckId: string, now = Date.now()): DeckCounts {
     const decks = this.getDecks();
@@ -1147,7 +1152,7 @@ export class StorageService {
       }
     }
 
-    // Cap displayed counts by today's remaining limits, like Anki's deck list
+    // Cap displayed counts by today's remaining limits, like Runora's deck list
     const { newRemaining, reviewRemaining } = this.getRemainingDailyLimits(deckId, now);
 
     return {

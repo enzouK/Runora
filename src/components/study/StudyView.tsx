@@ -9,7 +9,7 @@ import {
   AlertTriangle,
   Edit,
 } from 'lucide-react';
-import { Card, CardState, Deck, FSRSPrediction, FSRSRating, Note, NoteType } from '../../types/anki';
+import { Card, CardState, Deck, FSRSPrediction, FSRSRating, Note, NoteType } from '../../types/runora';
 import { FSRS } from '../../fsrs/algorithm';
 import { ClozeService } from '../../services/clozeService';
 import { AudioService } from '../../services/audioService';

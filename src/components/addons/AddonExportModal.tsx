@@ -10,7 +10,7 @@ interface AddonExportModalProps {
   onExported?: (message: string) => void;
 }
 
-interface AnkiDesktopBridge {
+interface DesktopBridge {
   isDesktop: boolean;
   pickSavePath: (
     suggestedName: string,
@@ -52,7 +52,7 @@ const SqCheck: React.FC<{ checked: boolean; onChange: () => void; label: React.R
 
 /**
  * Export dialog: lists installed addons with a checkbox on the left of each
- * row (plus "select all") and exports the chosen ones as a .anki2addon package
+ * row (plus "select all") and exports the chosen ones as a .runoraaddon package
  * that includes each addon's config.json (the user's configured values).
  */
 export const AddonExportModal: React.FC<AddonExportModalProps> = ({ addons, onClose, onExported }) => {
@@ -80,7 +80,8 @@ export const AddonExportModal: React.FC<AddonExportModalProps> = ({ addons, onCl
     setBusy(true);
     setError(null);
     try {
-      const desktop = (window as unknown as { ankiDesktop?: AnkiDesktopBridge }).ankiDesktop;
+      const w = window as unknown as { runoraDesktop?: DesktopBridge; ankiDesktop?: DesktopBridge };
+      const desktop = w.runoraDesktop ?? w.ankiDesktop;
 
       // Ask WHERE to save FIRST (the web directory picker needs the click's
       // user activation, so it must run before any await-heavy work).
@@ -102,7 +103,7 @@ export const AddonExportModal: React.FC<AddonExportModalProps> = ({ addons, onCl
         const isEmbeddedPreview = /OpenCode\//.test(navigator.userAgent);
         if (picker && window === window.top && !isEmbeddedPreview) {
           try {
-            webDir = await picker.call(window, { id: 'anki2-addons-export', mode: 'readwrite' });
+            webDir = await picker.call(window, { id: 'runora-addons-export', mode: 'readwrite' });
           } catch (pickerErr) {
             if ((pickerErr as DOMException)?.name === 'AbortError') {
               setBusy(false);

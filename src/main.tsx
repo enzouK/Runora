@@ -1,3 +1,4 @@
+import './services/legacyMigration'; // runs the anki2_* → runora_* storage migration before anything reads storage
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import { StorageService } from './services/storage';

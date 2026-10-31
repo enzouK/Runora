@@ -1,4 +1,4 @@
-import { Deck, DeckCounts } from '../types/anki';
+import { Deck, DeckCounts } from '../types/runora';
 import { StorageService } from './storage';
 
 export interface DeckTreeNode {

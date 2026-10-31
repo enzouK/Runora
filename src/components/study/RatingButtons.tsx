@@ -1,5 +1,5 @@
 import React from 'react';
-import { FSRSPrediction, FSRSRating } from '../../types/anki';
+import { FSRSPrediction, FSRSRating } from '../../types/runora';
 
 interface RatingButtonsProps {
   predictions: Record<FSRSRating, FSRSPrediction> | null;

@@ -23,9 +23,10 @@ app.setName('Runora');
 
 // One-time data migration on rename (Anki 2.0 FSRS → Runora): when the new
 // userData folder does not exist yet but the old one does, copy everything
-// over (IndexedDB, Local Storage, Addons, …). The storage keys inside
-// (localStorage "anki2_*", IndexedDB "anki2_media") are unchanged, so all
-// decks/notes/cards/media keep working after the move.
+// over (IndexedDB, Local Storage, Addons, …). The storage identifiers inside
+// (localStorage "anki2_*", IndexedDB "anki2_media") are migrated to the new
+// "runora_*" names by src/services/legacyMigration.ts on first run, which
+// copies the data and then deletes the legacy keys/DBs.
 const OLD_USER_DATA_DIR = path.join(app.getPath('appData'), 'Anki 2.0 FSRS');
 const NEW_USER_DATA_DIR = app.getPath('userData');
 try {

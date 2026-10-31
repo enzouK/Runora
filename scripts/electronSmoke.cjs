@@ -56,7 +56,7 @@ const OUT = process.env.OUT_APKG || path.join(ROOT, '.electron-smoke', 'export.a
 
     // seed one deck so the export picker has something checked
     await win.evaluate(() => {
-      const decks = JSON.parse(localStorage.getItem('anki2_decks') || '[]');
+      const decks = JSON.parse(localStorage.getItem('runora_decks') || '[]');
       decks.push({
         id: 'deck-electron-smoke',
         name: 'ElectronSmoke',
@@ -66,7 +66,7 @@ const OUT = process.env.OUT_APKG || path.join(ROOT, '.electron-smoke', 'export.a
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
-      localStorage.setItem('anki2_decks', JSON.stringify(decks));
+      localStorage.setItem('runora_decks', JSON.stringify(decks));
     });
     await win.reload();
     await win.waitForLoadState('domcontentloaded');

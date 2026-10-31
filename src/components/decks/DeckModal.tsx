@@ -35,7 +35,7 @@ import {
   NewSortOrder,
   Preset,
   ReviewSortOrder,
-} from '../../types/anki';
+} from '../../types/runora';
 import { StorageService } from '../../services/storage';
 import { AddonSystem } from '../../services/addonSystem';
 import { IOSSelect } from '../common/IOSSelect';

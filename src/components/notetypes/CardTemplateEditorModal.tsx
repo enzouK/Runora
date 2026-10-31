@@ -12,7 +12,7 @@ import {
   Columns,
   RotateCcw,
 } from 'lucide-react';
-import { CardTemplate, NoteType } from '../../types/anki';
+import { CardTemplate, NoteType } from '../../types/runora';
 import { ClozeService } from '../../services/clozeService';
 import { StorageService } from '../../services/storage';
 import { CardContentRenderer } from '../study/CardContentRenderer';

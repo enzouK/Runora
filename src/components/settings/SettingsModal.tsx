@@ -7,7 +7,7 @@ import {
   AlertCircle,
   Cloud,
 } from 'lucide-react';
-import { FSRSParameters } from '../../types/anki';
+import { FSRSParameters } from '../../types/runora';
 import { StorageService } from '../../services/storage';
 import { DriveSyncService } from '../../services/gdriveSync';
 import { ExportImportService } from '../../services/exportImport';
@@ -37,7 +37,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => StorageService.getTheme());
   const [colorTheme, setColorTheme] = useState<string>(() => StorageService.getColorTheme());
   // Google Drive sync
-  const [clientId, setClientId] = useState<string>(() => localStorage.getItem('anki2_gdrive_client_id') || '');
+  const [clientId, setClientId] = useState<string>(() => localStorage.getItem('runora_gdrive_client_id') || '');
   const [driveAccount, setDriveAccount] = useState(() => DriveSyncService.getAccount());
   const [driveAutoSync, setDriveAutoSync] = useState<boolean>(() => DriveSyncService.getAutoSync());
   const [driveBusy, setDriveBusy] = useState(false);

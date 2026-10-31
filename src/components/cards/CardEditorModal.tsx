@@ -5,7 +5,7 @@ import {
   HelpCircle,
   Check,
 } from 'lucide-react';
-import { Deck, Note, NoteType } from '../../types/anki';
+import { Deck, Note, NoteType } from '../../types/runora';
 import { StorageService } from '../../services/storage';
 import { AddonSystem } from '../../services/addonSystem';
 import { AudioService } from '../../services/audioService';

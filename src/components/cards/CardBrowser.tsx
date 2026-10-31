@@ -14,7 +14,7 @@ import {
   ListChecks,
   Tags,
 } from 'lucide-react';
-import { Card, Note, NoteType } from '../../types/anki';
+import { Card, Note, NoteType } from '../../types/runora';
 import { StorageService } from '../../services/storage';
 import { FSRS } from '../../fsrs/algorithm';
 import { MediaStore } from '../../services/mediaStore';

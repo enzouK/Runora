@@ -1,4 +1,4 @@
-import { Deck, Note, NoteType, Card } from '../types/anki';
+import { Deck, Note, NoteType, Card } from '../types/runora';
 
 /**
  * New collections start clean (like a fresh profile):

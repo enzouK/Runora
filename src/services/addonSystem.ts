@@ -7,7 +7,7 @@
  *   Addons/<id>/manifest.json   -> AddonManifest
  *   Addons/<id>/main.js         -> JavaScript executed at startup when enabled
  *
- * While a main.js runs, every Anki2Addons.addHook() call is attributed to that
+ * While a main.js runs, every RunoraAddons.addHook() call is attributed to that
  * addon id, so hooks can be removed when the addon is disabled/deleted.
  */
 
@@ -75,7 +75,7 @@ interface HookEntry {
 }
 
 export class AddonSystem {
-  /** App version exposed to addon scripts (window.Anki2Addons.APP_VERSION). */
+  /** App version exposed to addon scripts (window.RunoraAddons.APP_VERSION). */
   public static readonly APP_VERSION: string = pkg.version;
 
   private static hooks: Map<AddonHookType, HookEntry[]> = new Map();
@@ -217,7 +217,7 @@ export class AddonSystem {
     this.configListeners.delete(addonId);
   }
 
-  /* ── Per-addon API exposed to addon scripts (window.Anki2Addons) ─────── */
+  /* ── Per-addon API exposed to addon scripts (window.RunoraAddons) ─────── */
 
   /** Reads this addon's config (config.json merged with configSchema defaults). */
   public static getConfig(key?: string): unknown {
@@ -264,7 +264,7 @@ export class AddonSystem {
   /** Replaces this addon's persisted key-value data (data.json). */
   public static async setData(data: Record<string, unknown>): Promise<void> {
     const owner = this.currentOwner;
-    if (!owner) throw new Error('Anki2Addons.setData() só pode ser chamado de dentro de um addon');
+    if (!owner) throw new Error('RunoraAddons.setData() só pode ser chamado de dentro de um addon');
     const next = { ...data };
     await writeAddonData(owner, next);
     this.dataCache.set(owner, next);
@@ -274,7 +274,7 @@ export class AddonSystem {
   public static toast(message: string): void {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
-        new CustomEvent('anki2:addon-toast', { detail: { addonId: this.currentOwner, message } })
+        new CustomEvent('runora:addon-toast', { detail: { addonId: this.currentOwner, message } })
       );
     }
   }
@@ -300,8 +300,12 @@ export class AddonSystem {
       try {
         // No CSP is set (dev, packaged Electron and Capacitor WebView all allow
         // dynamic code), so new Function is available on every channel.
-        const run = new Function('Anki2Addons', `'use strict';\n${entry.data}`) as (api: unknown) => void;
-        run(AddonSystem);
+        // Both names are passed so legacy addons (Anki2Addons.xxx) keep working
+        const run = new Function('RunoraAddons', 'Anki2Addons', `'use strict';\n${entry.data}`) as (
+          api: unknown,
+          legacyApi: unknown
+        ) => void;
+        run(AddonSystem, AddonSystem);
       } finally {
         this.currentOwner = null;
       }
@@ -361,9 +365,12 @@ export class AddonSystem {
   }
 }
 
-// Expose on window for runtime JavaScript addons
+// Expose on window for runtime JavaScript addons. RunoraAddons is the primary
+// name; Anki2Addons stays as a legacy alias so already-installed addons keep working.
 if (typeof window !== 'undefined') {
-  (window as unknown as { Anki2Addons: typeof AddonSystem }).Anki2Addons = AddonSystem;
+  const w = window as unknown as { RunoraAddons?: typeof AddonSystem; Anki2Addons?: typeof AddonSystem };
+  w.RunoraAddons = AddonSystem;
+  w.Anki2Addons = AddonSystem;
   // Create the Addons folder at startup and load installed addons.
   void AddonSystem.init();
 }

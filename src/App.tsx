@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, FolderPlus, Inbox, GraduationCap, Repeat, Download, Upload } from 'lucide-react';
-import { Deck, NoteType } from './types/anki';
+import { Deck, NoteType } from './types/runora';
 import { StorageService } from './services/storage';
 import { AddonSystem, APP_VERSION } from './services/addonSystem';
 import { ExportImportService } from './services/exportImport';
@@ -84,7 +84,7 @@ export default function App() {
     });
   }, [refreshAll]);
 
-  // Addon toasts: Anki2Addons.toast() dispatches this event; show it in the global toast
+  // Addon toasts: RunoraAddons.toast() dispatches this event; show it in the global toast
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ addonId?: string | null; message?: unknown }>).detail;
@@ -94,8 +94,8 @@ export default function App() {
       setToast(`${prefix}${msg}`);
       window.setTimeout(() => setToast(null), 5000);
     };
-    window.addEventListener('anki2:addon-toast', handler);
-    return () => window.removeEventListener('anki2:addon-toast', handler);
+    window.addEventListener('runora:addon-toast', handler);
+    return () => window.removeEventListener('runora:addon-toast', handler);
   }, []);
 
   // Global keyboard shortcuts (e.g. Ctrl+N to add card)

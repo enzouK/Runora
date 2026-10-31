@@ -5,7 +5,7 @@
  * same-day stability by elapsed time — not implemented here yet.
  */
 
-import { CardState, FSRSCardData, FSRSParameters, FSRSPrediction, FSRSRating } from '../types/anki';
+import { CardState, FSRSCardData, FSRSParameters, FSRSPrediction, FSRSRating } from '../types/runora';
 import { DEFAULT_FSRS_PARAMETERS, FACTOR, STABILITY_MIN } from './constants';
 
 export class FSRS {
