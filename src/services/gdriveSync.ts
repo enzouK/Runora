@@ -48,7 +48,8 @@ const LS = {
  *   https://localhost                                              (Capacitor Android WebView)
  * Scope used at runtime: drive.file + openid email.
  */
-export const DEFAULT_GOOGLE_CLIENT_ID = '';
+export const DEFAULT_GOOGLE_CLIENT_ID =
+  '209118424285-9pc42j7taleit3fobb8bof5ig11srp7j.apps.googleusercontent.com';
 
 export const DRIVE_FILES = {
   COLPKG: 'runora-sync.colpkg',
