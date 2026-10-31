@@ -22,11 +22,11 @@ export const INITIAL_NOTE_TYPES: NoteType[] = [
         id: 'tmpl-basic-1',
         name: 'Card 1',
         ord: 0,
-        qfmt: '<div class="anki-front-content">{{Frente}}</div>',
-        afmt: '<div class="anki-front-content">{{FrontSide}}</div><hr class="anki-divider my-4 border-black/10 dark:border-white/10" /><div class="anki-back-content">{{Verso}}</div>',
+        qfmt: '<div class="runora-front-content">{{Frente}}</div>',
+        afmt: '<div class="runora-front-content">{{FrontSide}}</div><hr class="runora-divider my-4 border-black/10 dark:border-white/10" /><div class="runora-back-content">{{Verso}}</div>',
       },
     ],
-    css: '.anki-front-content { font-size: 1.25rem; font-weight: 500; }',
+    css: '.runora-front-content { font-size: 1.25rem; font-weight: 500; }',
     createdAt: Date.now(),
     updatedAt: Date.now(),
   },
@@ -45,11 +45,11 @@ export const INITIAL_NOTE_TYPES: NoteType[] = [
         id: 'tmpl-cloze-1',
         name: 'Cloze Card',
         ord: 0,
-        qfmt: '<div class="anki-cloze-prompt">{{cloze:Texto}}</div>',
-        afmt: '<div class="anki-cloze-prompt">{{cloze:Texto}}</div><hr class="anki-divider my-4 border-black/10 dark:border-white/10" /><div class="anki-extra-content text-sm opacity-80">{{Extra}}</div>',
+        qfmt: '<div class="runora-cloze-prompt">{{cloze:Texto}}</div>',
+        afmt: '<div class="runora-cloze-prompt">{{cloze:Texto}}</div><hr class="runora-divider my-4 border-black/10 dark:border-white/10" /><div class="runora-extra-content text-sm opacity-80">{{Extra}}</div>',
       },
     ],
-    css: '.anki-cloze-prompt { font-size: 1.15rem; line-height: 1.6; }',
+    css: '.runora-cloze-prompt { font-size: 1.15rem; line-height: 1.6; }',
     createdAt: Date.now(),
     updatedAt: Date.now(),
   },
@@ -76,7 +76,7 @@ export const INITIAL_NOTE_TYPES: NoteType[] = [
                {{voice:record}}`,
         // Back: hear again, compare with your recording, read phrase & translation
         afmt: `{{FrontSide}}
-               <hr class="anki-divider my-4 border-black/10 dark:border-white/10" />
+               <hr class="runora-divider my-4 border-black/10 dark:border-white/10" />
                <div class="space-y-3">
                  <div class="text-xl font-semibold">{{Frase}}</div>
                  <div class="text-base text-emerald-600 dark:text-emerald-400">{{Tradução}}</div>
@@ -84,7 +84,7 @@ export const INITIAL_NOTE_TYPES: NoteType[] = [
                </div>`,
       },
     ],
-    css: '.anki-front-content { font-size: 1.2rem; }',
+    css: '.runora-front-content { font-size: 1.2rem; }',
     createdAt: Date.now(),
     updatedAt: Date.now(),
   },

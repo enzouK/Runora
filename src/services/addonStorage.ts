@@ -231,7 +231,6 @@ function finalizeManifestFiles(parsedManifest: unknown, manifest: AddonManifest,
  * Parses an addon file into one or more addons:
  * - `.json`            -> single addon, manifest with optional inline `script`
  * - `.runoraaddon`/zip with manifest.json at the root -> single addon package
- *   (legacy `.anki2addon` files are still accepted on import)
  * - `.runoraaddon`/zip with `<id>/manifest.json` folders   -> multi-addon bundle
  *   (this is what Exportar produces when more than one addon is selected)
  */
@@ -247,7 +246,7 @@ async function parsePackage(file: File): Promise<ParsedPackage> {
     return { addons: [{ manifest, files }] };
   }
 
-  if (lowerName.endsWith('.zip') || lowerName.endsWith('.runoraaddon') || lowerName.endsWith('.anki2addon')) {
+  if (lowerName.endsWith('.zip') || lowerName.endsWith('.runoraaddon')) {
     const zip = await JSZip.loadAsync(await file.arrayBuffer());
     const names = Object.keys(zip.files);
     const clean = (n: string) => n.replace(/^\.?\//, '');
@@ -286,7 +285,7 @@ async function parsePackage(file: File): Promise<ParsedPackage> {
     throw new Error('Pacote inválido: não encontrei manifest.json (na raiz para 1 addon, ou em pastas <id>/manifest.json para vários).');
   }
 
-  throw new Error('Formato não suportado. Use .json (manifest com script inline) ou .runoraaddon/.anki2addon/.zip (pacote).');
+  throw new Error('Formato não suportado. Use .json (manifest com script inline) ou .runoraaddon/.zip (pacote).');
 }
 
 export async function importAddonFile(file: File, overwrite = false): Promise<ImportAddonResult> {

@@ -13,8 +13,6 @@
  *     runora-sync-meta.json    SyncMeta: uploadedAt, deviceId, counts…
  *     runora-sync.lock.json    cross-device lock so two devices never
  *                              overwrite each other's sync (TTL 10 min)
- *   (legacy pre-rebrand names anki2-sync.* are still read as a fallback and
- *   deleted after a successful upload, so no orphaned files remain)
  * - Conflict (cloud-sync style): if the remote backup is newer than our last sync
  *   AND this device has local changes since its last sync, the caller is asked
  *   "download the last backup or keep this device?". Keeping = upload and
@@ -29,10 +27,6 @@ import pkg from '../../package.json';
 import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
 import { ExportImportService } from './exportImport';
-import { migrateLegacyLocalStorage, migrateLegacyIDB } from './legacyMigration';
-
-// Rebrand migration (anki2_* → runora_*): copy legacy keys, remove the old ones.
-migrateLegacyLocalStorage();
 
 const LS = {
   CLIENT_ID: 'runora_gdrive_client_id',
@@ -62,13 +56,6 @@ export const DRIVE_FILES = {
   LOCK: 'runora-sync.lock.json',
 } as const;
 
-/** Pre-rebrand Drive file names — read as fallback, deleted after a successful upload. */
-const LEGACY_DRIVE_FILES = {
-  COLPKG: 'anki2-sync.colpkg',
-  META: 'anki2-sync-meta.json',
-  LOCK: 'anki2-sync.lock.json',
-} as const;
-
 /** Lock time-to-live: a crashed sync stops blocking others after this. */
 const LOCK_TTL_MS = 10 * 60 * 1000;
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file openid email';
@@ -81,7 +68,7 @@ export interface DriveToken {
 }
 
 export interface SyncMeta {
-  app: string; // 'runora' on new backups; legacy backups say 'anki2-fsrs'
+  app: 'runora';
   version: 1;
   uploadedAt: number;
   deviceId: string;
@@ -131,25 +118,21 @@ export class LockBusyError extends Error {
 /* ── Local backup store (IndexedDB) — safety net before replacing data ───── */
 
 const BACKUP_DB = 'runora_sync_backups';
-const LEGACY_BACKUP_DB = 'anki2_sync_backups'; // pre-rebrand name — migrated & deleted on first use
 const BACKUP_STORE = 'backups';
 let backupDbPromise: Promise<IDBDatabase> | null = null;
 
 function openBackupDb(): Promise<IDBDatabase> {
   if (!backupDbPromise) {
-    backupDbPromise = (async () => {
-      await migrateLegacyIDB(LEGACY_BACKUP_DB, BACKUP_DB);
-      return new Promise<IDBDatabase>((resolve, reject) => {
-        const req = indexedDB.open(BACKUP_DB, 1);
-        req.onupgradeneeded = () => {
-          if (!req.result.objectStoreNames.contains(BACKUP_STORE)) {
-            req.result.createObjectStore(BACKUP_STORE);
-          }
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    })();
+    backupDbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(BACKUP_DB, 1);
+      req.onupgradeneeded = () => {
+        if (!req.result.objectStoreNames.contains(BACKUP_STORE)) {
+          req.result.createObjectStore(BACKUP_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
   }
   return backupDbPromise;
 }
@@ -284,32 +267,6 @@ async function findFile(token: string, name: string): Promise<DriveFileInfo | nu
   return data.files?.[0] ?? null;
 }
 
-/** Find a sync artifact by its new name, falling back to the legacy pre-rebrand name. */
-async function findFileAny(
-  token: string,
-  name: string,
-  legacyName?: string
-): Promise<DriveFileInfo | null> {
-  return (await findFile(token, name)) ?? (legacyName ? await findFile(token, legacyName) : null);
-}
-
-/** Best-effort delete of a file by name (used to clean up legacy pre-rebrand artifacts). */
-async function deleteFileByName(token: string, name: string): Promise<void> {
-  try {
-    const f = await findFile(token, name);
-    if (f) await api(token, `/drive/v3/files/${f.id}`, { method: 'DELETE' });
-  } catch {
-    /* best-effort cleanup */
-  }
-}
-
-/** After a successful upload with the new names, delete any legacy anki2-sync.* files. */
-async function cleanupLegacyDriveFiles(token: string): Promise<void> {
-  await deleteFileByName(token, LEGACY_DRIVE_FILES.COLPKG);
-  await deleteFileByName(token, LEGACY_DRIVE_FILES.META);
-  await deleteFileByName(token, LEGACY_DRIVE_FILES.LOCK);
-}
-
 async function downloadFile(token: string, id: string): Promise<Blob> {
   return (await api(token, `/drive/v3/files/${id}?alt=media`)).blob();
 }
@@ -377,7 +334,7 @@ async function uploadMultipart(
 /* ── Cross-device lock ───────────────────────────────────────────────────── */
 
 async function acquireLock(token: string): Promise<void> {
-  const lockFile = await findFileAny(token, DRIVE_FILES.LOCK, LEGACY_DRIVE_FILES.LOCK);
+  const lockFile = await findFile(token, DRIVE_FILES.LOCK);
   if (lockFile) {
     try {
       const info = JSON.parse(await (await downloadFile(token, lockFile.id)).text()) as LockInfo;
@@ -404,7 +361,7 @@ async function acquireLock(token: string): Promise<void> {
 
 async function releaseLock(token: string): Promise<void> {
   try {
-    const lockFile = await findFileAny(token, DRIVE_FILES.LOCK, LEGACY_DRIVE_FILES.LOCK);
+    const lockFile = await findFile(token, DRIVE_FILES.LOCK);
     if (lockFile) {
       await api(token, `/drive/v3/files/${lockFile.id}`, { method: 'DELETE' });
     }
@@ -567,9 +524,9 @@ export class DriveSyncService {
   /** Info about the backup currently in Drive (null when none). */
   public static async getRemoteInfo(): Promise<{ meta: SyncMeta; size: number } | null> {
     const token = await this.ensureToken();
-    const metaFile = await findFileAny(token, DRIVE_FILES.META, LEGACY_DRIVE_FILES.META);
+    const metaFile = await findFile(token, DRIVE_FILES.META);
     if (!metaFile) return null;
-    const pkgFile = await findFileAny(token, DRIVE_FILES.COLPKG, LEGACY_DRIVE_FILES.COLPKG);
+    const pkgFile = await findFile(token, DRIVE_FILES.COLPKG);
     const meta = JSON.parse(await (await downloadFile(token, metaFile.id)).text()) as SyncMeta;
     return { meta, size: Number(pkgFile?.size || 0) };
   }
@@ -609,7 +566,7 @@ export class DriveSyncService {
       progress('Verificando trava de sincronização no Drive…');
       await acquireLock(token);
       try {
-        const metaFile = await findFileAny(token, DRIVE_FILES.META, LEGACY_DRIVE_FILES.META);
+        const metaFile = await findFile(token, DRIVE_FILES.META);
         const remoteMeta = metaFile
           ? (JSON.parse(await (await downloadFile(token, metaFile.id)).text()) as SyncMeta)
           : null;
@@ -673,9 +630,6 @@ export class DriveSyncService {
     };
 
     progress(`Enviando backup (${formatBytes(blob.size)}) para o Google Drive…`);
-    // Update-in-place only when the NEW-named file exists; a legacy-named file
-    // is left alone here and deleted by cleanupLegacyDriveFiles below (updating
-    // its content would keep the old name).
     const existing = await findFile(token, DRIVE_FILES.COLPKG);
     await uploadResumable(token, DRIVE_FILES.COLPKG, blob, existing?.id);
 
@@ -686,10 +640,6 @@ export class DriveSyncService {
       new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }),
       metaExisting?.id
     );
-
-    // New names are in place — delete any legacy anki2-sync.* files so nothing
-    // orphaned remains in Drive.
-    await cleanupLegacyDriveFiles(token);
 
     this.setLastSync({ at: Date.now(), remoteUploadedAt: meta.uploadedAt });
     return {
@@ -705,7 +655,7 @@ export class DriveSyncService {
     remoteMeta: SyncMeta,
     progress: (m: string) => void
   ): Promise<SyncResult> {
-    const pkg = await findFileAny(token, DRIVE_FILES.COLPKG, LEGACY_DRIVE_FILES.COLPKG);
+    const pkg = await findFile(token, DRIVE_FILES.COLPKG);
     if (!pkg) {
       throw new Error('Há metadados no Drive, mas o arquivo de backup (.colpkg) não foi encontrado.');
     }

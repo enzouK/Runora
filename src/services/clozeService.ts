@@ -46,7 +46,7 @@ export class ClozeService {
       const ord = parseInt(ordStr, 10);
       if (ord === activeIndex) {
         const hintText = hint ? hint.trim() : '...';
-        return `<span class="anki-cloze-front-placeholder">[${hintText}]</span>`;
+        return `<span class="runora-cloze-front-placeholder">[${hintText}]</span>`;
       } else {
         // Other clozes show normal answer
         return answer;
@@ -63,7 +63,7 @@ export class ClozeService {
     return text.replace(regex, (_match, ordStr, answer) => {
       const ord = parseInt(ordStr, 10);
       if (ord === activeIndex) {
-        return `<span class="anki-cloze-back-revealed">${answer}</span>`;
+        return `<span class="runora-cloze-back-revealed">${answer}</span>`;
       } else {
         return answer;
       }
@@ -168,7 +168,7 @@ export class ClozeService {
         val = fields['Hint'] || fields['hint'] || fields['Dica'] || fields['dica'] || '';
       }
       if (!val || !val.trim()) return '';
-      return `<details class="anki-hint-details group my-2.5 inline-block text-left select-none rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-900 dark:text-amber-200 transition-all">
+      return `<details class="runora-hint-details group my-2.5 inline-block text-left select-none rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-900 dark:text-amber-200 transition-all">
         <summary class="cursor-pointer font-semibold text-xs py-2 px-3.5 flex items-center gap-1.5 text-amber-700 dark:text-amber-400 hover:opacity-90 outline-none list-none [&::-webkit-details-marker]:hidden">
           <span>💡</span>
           <span>Show Hint</span>
@@ -184,7 +184,7 @@ export class ClozeService {
       const val = fields[trimmedName] || '';
       if (!val) return '';
       const label = trimmedName.toLowerCase() === 'hint' ? 'Show Hint' : `Show Hint: ${trimmedName}`;
-      return `<details class="anki-hint-details group my-2.5 inline-block text-left select-none rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-900 dark:text-amber-200 transition-all">
+      return `<details class="runora-hint-details group my-2.5 inline-block text-left select-none rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-900 dark:text-amber-200 transition-all">
         <summary class="cursor-pointer font-semibold text-xs py-2 px-3.5 flex items-center gap-1.5 text-amber-700 dark:text-amber-400 hover:opacity-90 outline-none list-none [&::-webkit-details-marker]:hidden">
           <span>💡</span>
           <span>${label}</span>

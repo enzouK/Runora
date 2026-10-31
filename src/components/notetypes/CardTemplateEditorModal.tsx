@@ -493,7 +493,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                 {/* User CSS injection */}
                 <style dangerouslySetInnerHTML={{ __html: cssCode }} />
 
-                <div className="anki-rendered-preview leading-relaxed">
+                <div className="runora-rendered-preview leading-relaxed">
                   <CardContentRenderer
                     html={previewMode === 'front' ? renderedFront : renderedBack}
                     isPreview={true}

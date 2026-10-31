@@ -6,8 +6,6 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Primary name is runoraDesktop; ankiDesktop stays as a legacy alias so
-// already-installed addons/scripts keep working.
 const bridge = {
   isDesktop: true,
   /** Opens the native Save As dialog. Returns { canceled:true } or { path }. */
@@ -29,4 +27,3 @@ const bridge = {
 };
 
 contextBridge.exposeInMainWorld('runoraDesktop', bridge);
-contextBridge.exposeInMainWorld('ankiDesktop', bridge); // legacy alias

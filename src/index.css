@@ -80,7 +80,7 @@
 }
 
 /* Cloze Deletion Styling (FSRS / Runora) */
-.anki-cloze-front-placeholder {
+.runora-cloze-front-placeholder {
   color: #007aff;
   font-weight: 700;
   background-color: rgba(0, 122, 255, 0.1);
@@ -90,7 +90,7 @@
   display: inline-block;
 }
 
-.anki-cloze-back-revealed {
+.runora-cloze-back-revealed {
   color: #007aff;
   font-weight: 700;
   background-color: rgba(0, 122, 255, 0.12);

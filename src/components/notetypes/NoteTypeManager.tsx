@@ -155,13 +155,13 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
             name: 'Padrão',
             ord: 0,
             qfmt: isCloze
-              ? '<div class="anki-cloze-prompt">{{cloze:Texto}}</div>'
-              : `<div class="anki-front-content">{{${cleanedFields[0]?.name || 'Frente'}}}</div>${
+              ? '<div class="runora-cloze-prompt">{{cloze:Texto}}</div>'
+              : `<div class="runora-front-content">{{${cleanedFields[0]?.name || 'Frente'}}}</div>${
                   hintsEnabled ? '\n{{hint}}' : ''
                 }`,
             afmt: isCloze
-              ? '<div class="anki-cloze-prompt">{{cloze:Texto}}</div><hr/><div class="anki-extra">{{Extra}}</div>'
-              : `{{FrontSide}}<hr/><div class="anki-back-content">{{${cleanedFields[1]?.name || 'Verso'}}}</div>`,
+              ? '<div class="runora-cloze-prompt">{{cloze:Texto}}</div><hr/><div class="runora-extra">{{Extra}}</div>'
+              : `{{FrontSide}}<hr/><div class="runora-back-content">{{${cleanedFields[1]?.name || 'Verso'}}}</div>`,
           },
         ],
         css: '',

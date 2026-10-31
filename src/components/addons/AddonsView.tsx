@@ -232,7 +232,7 @@ export const AddonsView: React.FC = () => {
       <input
         ref={importFileRef}
         type="file"
-        accept=".json,.runoraaddon,.anki2addon,.zip"
+        accept=".json,.runoraaddon,.zip"
         className="hidden"
         onChange={(event) => void handleImportFile(event)}
       />

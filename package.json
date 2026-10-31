@@ -19,7 +19,7 @@
   },
   "main": "electron/main.cjs",
   "build": {
-    "appId": "com.enzouk.anki2fsrs",
+    "appId": "com.runora.app",
     "productName": "Runora",
     "directories": {
       "output": "release"

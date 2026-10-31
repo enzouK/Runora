@@ -824,7 +824,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         {/* Card Content Area (Frente quando !isAnswerRevealed, Verso quando isAnswerRevealed) */}
         <div className="flex-1">
           {!isAnswerRevealed ? (
-            <div className="anki-front-wrapper prose prose-zinc dark:prose-invert max-w-none text-zinc-900 dark:text-zinc-100 font-sans leading-relaxed">
+            <div className="runora-front-wrapper prose prose-zinc dark:prose-invert max-w-none text-zinc-900 dark:text-zinc-100 font-sans leading-relaxed">
               <CardContentRenderer
                 key={`front-${currentCard.id}`}
                 html={frontHtml}
@@ -835,7 +835,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
               />
             </div>
           ) : (
-            <div className="anki-back-wrapper prose prose-zinc dark:prose-invert max-w-none text-zinc-900 dark:text-zinc-100 font-sans leading-relaxed ios-fade-in">
+            <div className="runora-back-wrapper prose prose-zinc dark:prose-invert max-w-none text-zinc-900 dark:text-zinc-100 font-sans leading-relaxed ios-fade-in">
               <CardContentRenderer
                 key={`back-${currentCard.id}`}
                 html={backHtml}

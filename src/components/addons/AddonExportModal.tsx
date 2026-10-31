@@ -80,8 +80,7 @@ export const AddonExportModal: React.FC<AddonExportModalProps> = ({ addons, onCl
     setBusy(true);
     setError(null);
     try {
-      const w = window as unknown as { runoraDesktop?: DesktopBridge; ankiDesktop?: DesktopBridge };
-      const desktop = w.runoraDesktop ?? w.ankiDesktop;
+      const desktop = (window as unknown as { runoraDesktop?: DesktopBridge }).runoraDesktop;
 
       // Ask WHERE to save FIRST (the web directory picker needs the click's
       // user activation, so it must run before any await-heavy work).

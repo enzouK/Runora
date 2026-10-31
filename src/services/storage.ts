@@ -2,11 +2,6 @@ import { Card, DailyLimits, Deck, DeckCounts, DisplayOrderConfig, FSRSParameters
 import { ClozeService } from './clozeService';
 import { INITIAL_CARDS, INITIAL_DECKS, INITIAL_NOTE_TYPES, INITIAL_NOTES } from './sampleData';
 import { DEFAULT_FSRS_PARAMETERS } from '../fsrs/constants';
-import { migrateLegacyLocalStorage } from './legacyMigration';
-
-// Rebrand migration (anki2_* → runora_*): copy legacy keys to the new names and
-// remove the old ones, so no orphaned data is left behind. Idempotent.
-migrateLegacyLocalStorage();
 
 const STORAGE_KEYS = {
   DECKS: 'runora_decks',

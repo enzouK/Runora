@@ -7,10 +7,7 @@
  * Tauri/Capacitor WebViews, so imported media carries over when packaging.
  */
 
-import { migrateLegacyIDB } from './legacyMigration';
-
 const DB_NAME = 'runora_media';
-const LEGACY_DB_NAME = 'anki2_media'; // pre-rebrand name — migrated & deleted on first run
 const STORE = 'media';
 const DB_VERSION = 1;
 
@@ -21,21 +18,16 @@ export class MediaStore {
 
   private static open(): Promise<IDBDatabase> {
     if (!this.dbPromise) {
-      this.dbPromise = (async () => {
-        // Copy the legacy anki2_media DB into runora_media, then DELETE the
-        // legacy DB so no orphaned media data is left behind.
-        await migrateLegacyIDB(LEGACY_DB_NAME, DB_NAME);
-        return new Promise<IDBDatabase>((resolve, reject) => {
-          const req = indexedDB.open(DB_NAME, DB_VERSION);
-          req.onupgradeneeded = () => {
-            if (!req.result.objectStoreNames.contains(STORE)) {
-              req.result.createObjectStore(STORE);
-            }
-          };
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => reject(req.error);
-        });
-      })();
+      this.dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+          if (!req.result.objectStoreNames.contains(STORE)) {
+            req.result.createObjectStore(STORE);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
     }
     return this.dbPromise;
   }

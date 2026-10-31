@@ -1,4 +1,4 @@
-package com.anki2.fsrs;
+package com.runora.fsrs;
 
 import com.getcapacitor.BridgeActivity;
 

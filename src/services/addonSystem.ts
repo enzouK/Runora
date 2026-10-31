@@ -300,12 +300,8 @@ export class AddonSystem {
       try {
         // No CSP is set (dev, packaged Electron and Capacitor WebView all allow
         // dynamic code), so new Function is available on every channel.
-        // Both names are passed so legacy addons (Anki2Addons.xxx) keep working
-        const run = new Function('RunoraAddons', 'Anki2Addons', `'use strict';\n${entry.data}`) as (
-          api: unknown,
-          legacyApi: unknown
-        ) => void;
-        run(AddonSystem, AddonSystem);
+        const run = new Function('RunoraAddons', `'use strict';\n${entry.data}`) as (api: unknown) => void;
+        run(AddonSystem);
       } finally {
         this.currentOwner = null;
       }
@@ -365,12 +361,9 @@ export class AddonSystem {
   }
 }
 
-// Expose on window for runtime JavaScript addons. RunoraAddons is the primary
-// name; Anki2Addons stays as a legacy alias so already-installed addons keep working.
+// Expose on window for runtime JavaScript addons
 if (typeof window !== 'undefined') {
-  const w = window as unknown as { RunoraAddons?: typeof AddonSystem; Anki2Addons?: typeof AddonSystem };
-  w.RunoraAddons = AddonSystem;
-  w.Anki2Addons = AddonSystem;
+  (window as unknown as { RunoraAddons: typeof AddonSystem }).RunoraAddons = AddonSystem;
   // Create the Addons folder at startup and load installed addons.
   void AddonSystem.init();
 }

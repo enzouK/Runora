@@ -10,9 +10,7 @@ import { MediaStore } from './mediaStore';
 
 export interface RunoraCollectionExport {
   version: string;
-  /** New exports set runora_compatible; legacy pre-rebrand exports set anki2_compatible — both accepted on import. */
-  runora_compatible?: boolean;
-  anki2_compatible?: boolean;
+  runora_compatible: boolean;
   exportedAt: number;
   fsrsParameters: FSRSParameters;
   decks: Deck[];
@@ -206,8 +204,7 @@ export class ExportImportService {
 
       // Read ZIP (.colpkg / .apkg)
       const zip = await JSZip.loadAsync(file);
-      // New name first; the legacy pre-rebrand name is still accepted on import.
-      const collectionFile = zip.file('collection.runora.json') ?? zip.file('collection.anki20.json');
+      const collectionFile = zip.file('collection.runora.json');
 
       if (collectionFile) {
         const text = await collectionFile.async('text');

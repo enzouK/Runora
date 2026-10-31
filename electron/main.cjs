@@ -21,27 +21,6 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || '';
 // so Addons lands in %APPDATA%\Runora\Addons in both cases.
 app.setName('Runora');
 
-// One-time data migration on rename (Anki 2.0 FSRS → Runora): when the new
-// userData folder does not exist yet but the old one does, copy everything
-// over (IndexedDB, Local Storage, Addons, …). The storage identifiers inside
-// (localStorage "anki2_*", IndexedDB "anki2_media") are migrated to the new
-// "runora_*" names by src/services/legacyMigration.ts on first run, which
-// copies the data and then deletes the legacy keys/DBs.
-const OLD_USER_DATA_DIR = path.join(app.getPath('appData'), 'Anki 2.0 FSRS');
-const NEW_USER_DATA_DIR = app.getPath('userData');
-try {
-  if (
-    NEW_USER_DATA_DIR !== OLD_USER_DATA_DIR &&
-    !fs.existsSync(NEW_USER_DATA_DIR) &&
-    fs.existsSync(OLD_USER_DATA_DIR)
-  ) {
-    fs.cpSync(OLD_USER_DATA_DIR, NEW_USER_DATA_DIR, { recursive: true });
-    console.log('[migrate] copied old data folder to:', NEW_USER_DATA_DIR);
-  }
-} catch (err) {
-  console.error('[migrate] failed to copy old data folder:', err);
-}
-
 /** Fixed-candidate ports: localStorage is scoped by origin, so the port
  * must stay stable between runs or user data would "vanish". */
 const DIST_PORTS = [39102, 39103, 39104, 39105];

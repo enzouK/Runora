@@ -35,7 +35,7 @@ export interface AddonFs {
 }
 
 const ADDONS_DIR = 'Addons';
-const WEB_FS_KEY = 'runora_addons_fs_v1'; // legacy key anki2_addons_fs_v1 is migrated & removed on startup
+const WEB_FS_KEY = 'runora_addons_fs_v1';
 
 /** Normalizes a path relative to the Addons root and blocks traversal. */
 export function normalizeRel(relPath: string): string {
@@ -75,8 +75,7 @@ interface DesktopAddonsBridge {
 }
 
 function desktopFs(): AddonFs {
-  const w = window as unknown as { runoraDesktop?: DesktopAddonsBridge; ankiDesktop?: DesktopAddonsBridge };
-  const bridge = w.runoraDesktop ?? w.ankiDesktop; // ankiDesktop = legacy alias
+  const bridge = (window as unknown as { runoraDesktop?: DesktopAddonsBridge }).runoraDesktop;
   if (!bridge?.isDesktop) throw new Error('Desktop bridge unavailable');
   return {
     ensureAddonsDir: async () => {
@@ -296,8 +295,8 @@ let cached: AddonFs | null = null;
 
 export async function getAddonFs(): Promise<AddonFs> {
   if (cached) return cached;
-  const w = window as unknown as { runoraDesktop?: { isDesktop?: boolean }; ankiDesktop?: { isDesktop?: boolean }; Capacitor?: { isNativePlatform?: () => boolean } };
-  if (w.runoraDesktop?.isDesktop || w.ankiDesktop?.isDesktop) cached = desktopFs();
+  const w = window as unknown as { runoraDesktop?: { isDesktop?: boolean }; Capacitor?: { isNativePlatform?: () => boolean } };
+  if (w.runoraDesktop?.isDesktop) cached = desktopFs();
   else if (Capacitor.isNativePlatform()) cached = capacitorFs();
   else cached = webFs();
   return cached;

@@ -20,19 +20,6 @@ const LOCAL_COPY_DIR = path.join(
   'runora-electron'
 );
 
-// One-time cleanup of the pre-rebrand provisioning folder (anki2-fsrs-electron),
-// so no orphaned copy of the binary is left behind.
-const LEGACY_COPY_DIR = path.join(
-  process.env.LOCALAPPDATA || path.join(require('os').homedir(), 'AppData', 'Local'),
-  'Programs',
-  'anki2-fsrs-electron'
-);
-try {
-  if (fs.existsSync(LEGACY_COPY_DIR)) fs.rmSync(LEGACY_COPY_DIR, { recursive: true, force: true });
-} catch {
-  /* best-effort cleanup */
-}
-
 function isHostileLocation(dir) {
   // Downloads/Temp/Desktop: security suites on some Windows machines block
   // unsigned executables launched from user-writable folders — every

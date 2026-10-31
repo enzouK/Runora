@@ -149,8 +149,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
     setBusy(true);
     setError(null);
     try {
-      const w = window as unknown as { runoraDesktop?: DesktopBridge; ankiDesktop?: DesktopBridge };
-      const desktop = w.runoraDesktop ?? w.ankiDesktop;
+      const desktop = (window as unknown as { runoraDesktop?: DesktopBridge }).runoraDesktop;
       const opts = {
         deckIds: Array.from(checked),
         includeScheduling,
