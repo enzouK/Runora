@@ -17,6 +17,10 @@ const path = require('path');
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || '';
 
+// Keep dev and packaged builds on the same userData folder (productName),
+// so Addons lands in %APPDATA%\Anki 2.0 FSRS\Addons in both cases.
+app.setName('Anki 2.0 FSRS');
+
 /** Fixed-candidate ports: localStorage is scoped by origin, so the port
  * must stay stable between runs or user data would "vanish". */
 const DIST_PORTS = [39102, 39103, 39104, 39105];
@@ -98,7 +102,101 @@ ipcMain.handle('desktop:write-file', async (_e, filePath, bytes) => {
   }
 });
 
+/* ── Addons folder bridge (rooted at userData/Addons) ─────────────────── */
+
+function addonsRoot() {
+  return path.join(app.getPath('userData'), 'Addons');
+}
+
+function safeAddonsPath(rel) {
+  const root = addonsRoot();
+  const clean = path.normalize(String(rel || '')).replace(/^(\.\.([/\\]|$))+/, '');
+  const resolved = path.resolve(root, clean);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    throw new Error('Invalid addons path');
+  }
+  return resolved;
+}
+
+ipcMain.handle('desktop:addons-root', async () => {
+  try {
+    await fs.promises.mkdir(addonsRoot(), { recursive: true });
+    return { ok: true, root: addonsRoot() };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+ipcMain.handle('desktop:addons-ensure', async () => {
+  try {
+    await fs.promises.mkdir(addonsRoot(), { recursive: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+ipcMain.handle('desktop:addons-list', async () => {
+  try {
+    const root = addonsRoot();
+    await fs.promises.mkdir(root, { recursive: true });
+    const entries = await fs.promises.readdir(root, { withFileTypes: true });
+    return { ok: true, dirs: entries.filter((e) => e.isDirectory()).map((e) => e.name).sort() };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+ipcMain.handle('desktop:addons-exists', async (_e, rel) => {
+  try {
+    await fs.promises.access(safeAddonsPath(rel));
+    return { ok: true, exists: true };
+  } catch {
+    return { ok: true, exists: false };
+  }
+});
+
+ipcMain.handle('desktop:addons-read', async (_e, rel, encoding) => {
+  try {
+    const p = safeAddonsPath(rel);
+    const buf = await fs.promises.readFile(p);
+    const enc = encoding === 'base64' ? 'base64' : 'utf8';
+    return { ok: true, found: true, encoding: enc, data: buf.toString(enc) };
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return { ok: true, found: false };
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+ipcMain.handle('desktop:addons-write', async (_e, rel, encoding, data) => {
+  try {
+    const p = safeAddonsPath(rel);
+    await fs.promises.mkdir(path.dirname(p), { recursive: true });
+    const buf = encoding === 'base64' ? Buffer.from(String(data), 'base64') : Buffer.from(String(data), 'utf8');
+    await fs.promises.writeFile(p, buf);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+ipcMain.handle('desktop:addons-remove', async (_e, rel) => {
+  try {
+    const p = safeAddonsPath(rel);
+    await fs.promises.rm(p, { recursive: true, force: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
 app.whenReady().then(() => {
+  // Create the Addons folder at startup so users can also drop addon folders
+  // there manually, without using the Import button first.
+  fs.promises
+    .mkdir(addonsRoot(), { recursive: true })
+    .then(() => console.log('[addons] folder ready:', addonsRoot()))
+    .catch((err) => console.error('[addons] failed to create folder:', err));
   createWindow();
   app.on('activate', () => {
     // macOS: re-open a window when clicking the dock icon with no windows.

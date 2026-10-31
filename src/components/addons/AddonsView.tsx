@@ -1,6 +1,7 @@
 import React from 'react';
 import { Download, Puzzle, Upload } from 'lucide-react';
 import { AddonSystem } from '../../services/addonSystem';
+import { importAddonFile } from '../../services/addonStorage';
 import { IOSSwitch } from '../common/IOSSwitch';
 
 /**
@@ -9,7 +10,22 @@ import { IOSSwitch } from '../common/IOSSwitch';
  */
 export const AddonsView: React.FC = () => {
   const [addons, setAddons] = React.useState(() => AddonSystem.getAddons());
+  const [importMsg, setImportMsg] = React.useState<string | null>(null);
+  const [importing, setImporting] = React.useState(false);
+  const [addonsRootPath, setAddonsRootPath] = React.useState<string | null>(null);
   const importFileRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    AddonSystem.init().then((root) => {
+      if (!alive) return;
+      setAddonsRootPath(root);
+      setAddons(AddonSystem.getAddons());
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const handleToggle = (id: string) => {
     AddonSystem.toggleAddon(id);
@@ -20,12 +36,34 @@ export const AddonsView: React.FC = () => {
     importFileRef.current?.click();
   };
 
-  const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     // permite selecionar o mesmo arquivo de novo na próxima vez
     event.target.value = '';
     if (!file) return;
-    // TODO: ler/validar/instalar o addon selecionado (file.name)
+
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      let result = await importAddonFile(file, false);
+      if (!result.ok && result.code === 'exists') {
+        if (window.confirm(result.message)) {
+          result = await importAddonFile(file, true);
+        } else {
+          setImportMsg('Importação cancelada.');
+          return;
+        }
+      }
+      if (result.ok) {
+        await AddonSystem.refresh();
+        setAddons(AddonSystem.getAddons());
+      }
+      setImportMsg(result.message);
+    } catch (err) {
+      setImportMsg(`Erro ao importar: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setImporting(false);
+    }
   };
 
   const handleExport = () => {
@@ -92,8 +130,9 @@ export const AddonsView: React.FC = () => {
         <button
           type="button"
           onClick={handleImport}
+          disabled={importing}
           title="Importar Addon"
-          className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-all active:scale-[0.98]"
+          className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-all active:scale-[0.98] disabled:opacity-60"
         >
           <Download className="w-4 h-4 text-ios-blue" />
           <span>Importar</span>
@@ -113,10 +152,20 @@ export const AddonsView: React.FC = () => {
       <input
         ref={importFileRef}
         type="file"
-        accept=".json,.js,.anki2addon,.zip"
+        accept=".json,.anki2addon,.zip"
         className="hidden"
-        onChange={handleImportFile}
+        onChange={(event) => void handleImportFile(event)}
       />
+
+      {importMsg && (
+        <p className="px-1 text-[12px] text-zinc-500 dark:text-zinc-400">{importMsg}</p>
+      )}
+
+      {addonsRootPath && (
+        <p className="px-1 text-[11px] font-mono text-zinc-400 dark:text-zinc-500 break-all">
+          Pasta: {addonsRootPath}
+        </p>
+      )}
     </div>
   );
 };
