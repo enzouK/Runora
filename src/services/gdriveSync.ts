@@ -57,6 +57,9 @@ export const DRIVE_FILES = {
   LOCK: 'runora-sync.lock.json',
 } as const;
 
+/** All sync files live inside this folder at the root of the user's Drive. */
+export const DRIVE_FOLDER = 'Runora';
+
 /** Lock time-to-live: a crashed sync stops blocking others after this. */
 const LOCK_TTL_MS = 10 * 60 * 1000;
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file openid email';
@@ -258,11 +261,54 @@ interface DriveFileInfo {
   size?: string;
 }
 
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+let folderIdCache: string | null = null;
+
+/** Find or create the "Runora" folder in the user's Drive; returns its id. */
+async function ensureFolder(token: string): Promise<string> {
+  if (folderIdCache) return folderIdCache;
+  const q = encodeURIComponent(
+    `name = '${DRIVE_FOLDER}' and mimeType = '${FOLDER_MIME}' and trashed = false`
+  );
+  const res = await api(token, `/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=1&spaces=drive`);
+  const found = (await res.json()) as { files?: Array<{ id: string }> };
+  if (found.files?.[0]?.id) {
+    folderIdCache = found.files[0].id;
+  } else {
+    const create = await api(token, '/drive/v3/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+      body: JSON.stringify({ name: DRIVE_FOLDER, mimeType: FOLDER_MIME }),
+    });
+    const created = (await create.json()) as { id?: string };
+    if (!created.id) throw new Error('Drive: não foi possível criar a pasta "Runora".');
+    folderIdCache = created.id;
+  }
+  await migrateRootFiles(token, folderIdCache);
+  return folderIdCache;
+}
+
+/** One-time migration: move sync files sitting in the Drive root into the Runora folder. */
+async function migrateRootFiles(token: string, folderId: string): Promise<void> {
+  for (const name of Object.values(DRIVE_FILES)) {
+    const q = encodeURIComponent(`name = '${name}' and trashed = false and 'root' in parents`);
+    const res = await api(token, `/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=5&spaces=drive`);
+    const files = ((await res.json()) as { files?: Array<{ id: string }> }).files ?? [];
+    for (const f of files) {
+      await api(token, `/drive/v3/files/${f.id}?addParents=${folderId}&removeParents=root`, {
+        method: 'PATCH',
+      });
+    }
+  }
+}
+
 async function findFile(token: string, name: string): Promise<DriveFileInfo | null> {
-  const q = encodeURIComponent(`name = '${name}' and trashed = false`);
+  const folderId = await ensureFolder(token);
+  const q = encodeURIComponent(`name = '${name}' and trashed = false and '${folderId}' in parents`);
   const res = await api(
     token,
-    `/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,size)&pageSize=10&spaces=drive,appDataFolder`
+    `/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,size)&pageSize=10&spaces=drive`
   );
   const data = (await res.json()) as { files?: DriveFileInfo[] };
   return data.files?.[0] ?? null;
@@ -290,7 +336,7 @@ async function uploadResumable(
       'X-Upload-Content-Type': blob.type || 'application/octet-stream',
       'X-Upload-Content-Length': String(blob.size),
     },
-    body: JSON.stringify(existingId ? {} : { name }),
+    body: JSON.stringify(existingId ? {} : { name, parents: [await ensureFolder(token)] }),
   });
   if (!initRes.ok) {
     throw new Error(`Drive: falha ao iniciar upload (${initRes.status})`);
@@ -321,7 +367,9 @@ async function uploadMultipart(
   existingId?: string
 ): Promise<string> {
   const fd = new FormData();
-  fd.append('metadata', new Blob([JSON.stringify({ name })], { type: 'application/json' }));
+  const metadata: Record<string, unknown> = { name };
+  if (!existingId) metadata.parents = [await ensureFolder(token)];
+  fd.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   fd.append('media', blob);
   const path = existingId
     ? `/upload/drive/v3/files/${existingId}?uploadType=multipart`
