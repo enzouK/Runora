@@ -25,22 +25,7 @@ export type AddonHookCallback = (context: Record<string, unknown>) => unknown;
 
 export class AddonSystem {
   private static hooks: Map<AddonHookType, AddonHookCallback[]> = new Map();
-  private static registeredAddons: AddonManifest[] = [
-    {
-      id: 'addon-night-glow',
-      name: 'Dynamic iOS Ambient Glow',
-      version: '1.0.0',
-      description: 'Adds a soft ambient glass illumination behind cards during review.',
-      enabled: true,
-    },
-    {
-      id: 'addon-audio-speed',
-      name: 'Voice Comparison Enhancer',
-      version: '1.1.0',
-      description: 'Enables quick playback speed adjustment (0.8x, 1.0x, 1.2x) on review back.',
-      enabled: true,
-    },
-  ];
+  private static registeredAddons: AddonManifest[] = [];
 
   /**
    * Register a hook callback

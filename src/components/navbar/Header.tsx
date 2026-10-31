@@ -1,7 +1,7 @@
 import React from 'react';
-import { Layers, Library, Search, Settings } from 'lucide-react';
+import { Layers, Library, Puzzle, Search, Settings } from 'lucide-react';
 
-export type MainNavTab = 'decks' | 'browser' | 'notetypes';
+export type MainNavTab = 'decks' | 'browser' | 'notetypes' | 'addons';
 
 interface HeaderProps {
   activeTab: MainNavTab;
@@ -47,6 +47,7 @@ const TABS: { id: MainNavTab; label: string; icon: React.ReactNode }[] = [
   { id: 'decks', label: 'Decks', icon: <Library className="w-3.5 h-3.5" /> },
   { id: 'browser', label: 'Painel', icon: <Search className="w-3.5 h-3.5" /> },
   { id: 'notetypes', label: 'Note Types', icon: <Layers className="w-3.5 h-3.5" /> },
+  { id: 'addons', label: 'Addons', icon: <Puzzle className="w-3.5 h-3.5" /> },
 ];
 
 export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSettings }) => {

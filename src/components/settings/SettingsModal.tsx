@@ -3,7 +3,6 @@ import {
   X,
   Clock,
   RotateCcw,
-  Puzzle,
   Check,
   AlertCircle,
 } from 'lucide-react';
@@ -11,9 +10,7 @@ import { FSRSParameters } from '../../types/anki';
 import { StorageService } from '../../services/storage';
 import { ExportImportService } from '../../services/exportImport';
 import { DEFAULT_FSRS_PARAMETERS } from '../../fsrs/constants';
-import { AddonSystem } from '../../services/addonSystem';
 import { ConfirmationModal } from '../common/ConfirmationModal';
-import { IOSSwitch } from '../common/IOSSwitch';
 import { IOSSelect } from '../common/IOSSelect';
 import { COLOR_THEMES, COLOR_THEME_NAMES, DEFAULT_COLOR_THEME } from '../../themes';
 import { Sun, Moon, Monitor, Palette } from 'lucide-react';
@@ -29,10 +26,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onRefresh,
 }) => {
-  const [activeTab, setActiveTab] = useState<'fsrs' | 'addons'>('fsrs');
+  const [activeTab, setActiveTab] = useState<'fsrs'>('fsrs');
   const [params, setParams] = useState<FSRSParameters>(() => StorageService.getFSRSSettings());
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [addons, setAddons] = useState(() => AddonSystem.getAddons());
   const [confirmResetFSRS, setConfirmResetFSRS] = useState(false);
   const [confirmResetData, setConfirmResetData] = useState(false);
   const [rolloverHour, setRolloverHour] = useState<number>(() => StorageService.getRolloverHour());
@@ -90,14 +86,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose();
   };
 
-  const handleToggleAddon = (id: string) => {
-    AddonSystem.toggleAddon(id);
-    setAddons(AddonSystem.getAddons());
-  };
-
-  const TABS: { id: 'fsrs' | 'addons'; label: string }[] = [
+  const TABS: { id: 'fsrs'; label: string }[] = [
     { id: 'fsrs', label: 'Geral' },
-    { id: 'addons', label: 'Addons JS' },
   ];
 
   return (
@@ -281,44 +271,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Resetar Coleção (apaga todos os dados)</span>
                 </button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'addons' && (
-            <div className="space-y-4">
-              <div className="p-4 rounded-[16px] bg-purple-500/10 text-[13px] text-purple-900 dark:text-purple-200">
-                <span className="font-bold flex items-center gap-1.5 mb-1 text-purple-600 dark:text-purple-300">
-                  <Puzzle className="w-4 h-4" />
-                  Sistema de Addons em JavaScript
-                </span>
-                Arquitetura preparada para plugins em JS multiplataforma (Windows 11 e Android). O sistema expõe ganchos como <code>beforeCardRender</code> e <code>afterReviewSubmit</code>.
-              </div>
-
-              <div className="space-y-2">
-                {addons.map((addon) => (
-                  <div
-                    key={addon.id}
-                    className="p-3.5 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between gap-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[13px] font-bold text-zinc-900 dark:text-zinc-100">
-                          {addon.name}
-                        </span>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/[0.05] dark:bg-white/[0.1] text-zinc-500 dark:text-zinc-400">
-                          v{addon.version}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{addon.description}</p>
-                    </div>
-
-                    <IOSSwitch
-                      checked={addon.enabled}
-                      onChange={() => handleToggleAddon(addon.id)}
-                    />
-                  </div>
-                ))}
               </div>
             </div>
           )}

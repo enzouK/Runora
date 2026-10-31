@@ -11,6 +11,7 @@ import { StudyView } from './components/study/StudyView';
 import { CardEditorModal } from './components/cards/CardEditorModal';
 import { CardBrowser } from './components/cards/CardBrowser';
 import { NoteTypeManager } from './components/notetypes/NoteTypeManager';
+import { AddonsView } from './components/addons/AddonsView';
 import { SettingsModal } from './components/settings/SettingsModal';
 
 export default function App() {
@@ -254,6 +255,8 @@ export default function App() {
             <NoteTypeManager onRefresh={refreshAll} />
           </div>
         )}
+
+        {activeTab === 'addons' && <AddonsView />}
       </main>
 
       {/* Card & Note Editor Modal */}
