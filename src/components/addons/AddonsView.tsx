@@ -44,8 +44,7 @@ export const AddonsView: React.FC = () => {
               Nenhum addon instalado
             </p>
             <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
-              Os addons aparecerão aqui quando instalados — a instalação será a próxima etapa do
-              sistema.
+              Os addons aparecerão aqui quando instalados.
             </p>
           </div>
         ) : (
