@@ -12,8 +12,10 @@
  * referenciando essas variáveis — assim todo o app acompanha a paleta.
  *
  * Light: :root:not(.dark)[data-color-theme="X"]   Dark: .dark[data-color-theme="X"]
- * O tema padrão "opencode" não tem blocos: mantém a paleta iOS de index.css.
- * Temas somente-dark não têm bloco light (modo claro = paleta iOS padrão).
+ * O tema padrão "opencode" é HÍBRIDO: superfícies/texto/bordas da paleta
+ * oficial (light = fundo #fff/cards #fafafa/bordas #b8b8b8; dark =
+ * #0a0a0a/#141414/#3c3c3c) + acentos iOS mantidos (blue #007aff, green
+ * #34c759, orange #ff9500, red #ff3b30). Os 33 temas completam a lista.
  * ============================================================ */
 
 /* ---- aura ---- */
@@ -727,7 +729,53 @@
   --color-ios-border-active-dark: #61afef;
 }
 
-/* ---- opencode (padrão): sem sobrescritas — usa a paleta iOS de index.css ---- */
+/* ---- opencode ---- */
+:root:not(.dark)[data-color-theme="opencode"] {
+  --color-ios-bg: #ffffff;
+  --color-ios-card: #fafafa;
+  --color-ios-sep: #d4d4d4;
+  --color-ios-blue: #3b7dd8;
+  --color-ios-green: #3d9a57;
+  --color-ios-orange: #d68c27;
+  --color-ios-red: #d1383d;
+  --color-ios-text: #1a1a1a;
+  --color-ios-text-muted: #8a8a8a;
+  --color-ios-element: #f5f5f5;
+  --color-ios-border: #b8b8b8;
+  --color-ios-accent: #d68c27;
+  --color-ios-secondary: #7b5bb6;
+  --color-ios-info: #318795;
+  --color-ios-border-active: #a0a0a0;
+  /* híbrido: superfícies/texto/bordas do OpenCode + acentos iOS; borda translúcida (adapta ao fundo, fica menos "seca") */
+  --color-ios-blue: #007aff;
+  --color-ios-green: #34c759;
+  --color-ios-orange: #ff9500;
+  --color-ios-red: #ff3b30;
+  --color-ios-border: rgba(0, 0, 0, 0.12);
+}
+.dark[data-color-theme="opencode"] {
+  --color-ios-bg-dark: #0a0a0a;
+  --color-ios-card-dark: #141414;
+  --color-ios-sep: #3c3c3c;
+  --color-ios-blue: #fab283;
+  --color-ios-green: #7fd88f;
+  --color-ios-orange: #f5a742;
+  --color-ios-red: #e06c75;
+  --color-ios-text-dark: #eeeeee;
+  --color-ios-text-muted-dark: #808080;
+  --color-ios-element-dark: #1e1e1e;
+  --color-ios-border-dark: #484848;
+  --color-ios-accent-dark: #9d7cd8;
+  --color-ios-secondary-dark: #5c9cf5;
+  --color-ios-info-dark: #56b6c2;
+  --color-ios-border-active-dark: #606060;
+  /* híbrido: superfícies/texto/bordas do OpenCode + acentos iOS; borda translúcida */
+  --color-ios-blue: #007aff;
+  --color-ios-green: #34c759;
+  --color-ios-orange: #ff9500;
+  --color-ios-red: #ff3b30;
+  --color-ios-border-dark: rgba(255, 255, 255, 0.12);
+}
 
 /* ---- orng ---- */
 :root:not(.dark)[data-color-theme="orng"] {
@@ -1130,8 +1178,14 @@
   .bg-black\/\[0\.12\],
   .bg-black\/\[0\.04\],
   .bg-black\/\[0\.1\],
+  .bg-black\/50,
+  .bg-black\/40,
   .bg-zinc-100,
   .bg-zinc-200,
+  .bg-black\/5,
+  .bg-black\/30,
+  .bg-black\/80,
+  .bg-black\/60,
   .bg-zinc-50,
   .bg-white\/95,
   .bg-black\/\[0\.15\],
@@ -1147,6 +1201,7 @@
   .hover\:bg-black\/\[0\.08\]:hover,
   .hover\:bg-zinc-100:hover,
   .hover\:bg-zinc-200:hover,
+  .hover\:bg-black\/90:hover,
   .hover\:bg-black\/\[0\.05\]:hover,
   .hover\:bg-black\/\[0\.04\]:hover {
     background-color: var(--color-ios-element);
@@ -1154,6 +1209,7 @@
   .border-black\/\[0\.04\],
   .border-black\/\[0\.06\],
   .border-zinc-300,
+  .border-black\/10,
   .border-zinc-200,
   .border-zinc-100,
   .border-zinc-200\/80,
@@ -1195,24 +1251,44 @@
   .dark\:bg-zinc-900 {
     background-color: var(--color-ios-card-dark);
   }
+  .dark\:bg-white\/\[0\.12\],
+  .dark\:bg-white\/\[0\.05\],
+  .dark\:bg-white\/\[0\.09\],
+  .dark\:bg-white\/\[0\.2\],
+  .dark\:bg-white\/\[0\.1\],
+  .dark\:bg-white\/\[0\.07\],
   .dark\:bg-zinc-700,
   .dark\:bg-zinc-800,
-  .dark\:focus\:bg-zinc-800 {
+  .dark\:focus\:bg-zinc-800,
+  .dark\:bg-white\/\[0\.08\],
+  .dark\:bg-white\/\[0\.06\] {
     background-color: var(--color-ios-element-dark);
   }
-  .dark\:hover\:bg-white:hover,
+  .dark\:hover\:bg-white\/\[0\.18\]:hover,
+  .dark\:hover\:bg-white\/\[0\.05\]:hover,
+  .dark\:hover\:bg-white\/\[0\.3\]:hover,
+  .dark\:hover\:bg-white\/\[0\.15\]:hover,
+  .dark\:hover\:bg-white\/\[0\.1\]:hover,
+  .dark\:hover\:bg-white\/\[0\.12\]:hover,
   .dark\:hover\:bg-zinc-800:hover,
-  .dark\:hover\:bg-zinc-700:hover {
+  .dark\:hover\:bg-zinc-700:hover,
+  .dark\:hover\:bg-white\/\[0\.14\]:hover,
+  .dark\:hover\:bg-white\/\[0\.08\]:hover {
     background-color: var(--color-ios-element-dark);
   }
-  .dark\:border-white,
+  .dark\:border-white\/\[0\.06\],
+  .dark\:border-white\/\[0\.1\],
   .dark\:border-zinc-600,
   .dark\:border-white\/10,
   .dark\:border-zinc-800,
   .dark\:border-zinc-700,
   .dark\:border-zinc-700\/50,
   .dark\:border-zinc-700\/60,
-  .dark\:border-zinc-700\/80 {
+  .dark\:border-white\/\[0\.07\],
+  .dark\:border-white\/\[0\.08\],
+  .dark\:border-zinc-700\/80,
+  .dark\:border-white\/\[0\.15\],
+  .dark\:border-white\/\[0\.12\] {
     border-color: var(--color-ios-border-dark);
   }
   .dark\:hover\:border-zinc-600:hover {

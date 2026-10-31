@@ -21,9 +21,9 @@
   --color-ios-text-dark: #f4f4f5; /* zinc-100 */
   --color-ios-text-muted: #71717a; /* zinc-500 */
   --color-ios-text-muted-dark: #a1a1aa; /* zinc-400 */
-  --color-ios-element: #f4f4f5; /* zinc-100-ish hover surface */
+  --color-ios-element: #e5e5ea; /* iOS systemGray5 — visível sobre o fundo #f2f2f7 e sutil sobre cards brancos */
   --color-ios-element-dark: #27272a; /* zinc-800-ish hover surface */
-  --color-ios-border: rgba(0, 0, 0, 0.06);
+  --color-ios-border: #e4e4e7; /* zinc-200 hairline */
   --color-ios-border-dark: rgba(255, 255, 255, 0.08);
   --color-ios-accent: #007aff;
   --color-ios-accent-dark: #007aff;
