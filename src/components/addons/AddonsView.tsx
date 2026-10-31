@@ -3,6 +3,7 @@ import { Download, Puzzle, Settings, ShieldAlert, Trash2, Upload } from 'lucide-
 import { AddonSystem } from '../../services/addonSystem';
 import type { AddonManifest } from '../../services/addonSystem';
 import { importAddonFile, removeAddon } from '../../services/addonStorage';
+import { ConfirmModal } from '../common/ConfirmModal';
 import { IOSSwitch } from '../common/IOSSwitch';
 import { AddonConfigModal } from './AddonConfigModal';
 import { AddonExportModal } from './AddonExportModal';
@@ -18,6 +19,8 @@ export const AddonsView: React.FC = () => {
   const [addonsRootPath, setAddonsRootPath] = React.useState<string | null>(null);
   const [configAddon, setConfigAddon] = React.useState<AddonManifest | null>(null);
   const [exportOpen, setExportOpen] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; label: string } | null>(null);
+  const [overwriteTarget, setOverwriteTarget] = React.useState<{ file: File; message: string } | null>(null);
   const importFileRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -41,10 +44,15 @@ export const AddonsView: React.FC = () => {
     setConfigAddon(addons.find((a) => a.id === id) || null);
   };
 
-  const handleDeleteAddon = async (id: string) => {
+  const handleDeleteAddon = (id: string) => {
     const addon = addons.find((a) => a.id === id);
-    const label = addon?.name || id;
-    if (!window.confirm(`Excluir o addon "${label}"? Isso remove a pasta dele de Addons.`)) return;
+    setDeleteTarget({ id, label: addon?.name || id });
+  };
+
+  const confirmDeleteAddon = async () => {
+    if (!deleteTarget) return;
+    const { id, label } = deleteTarget;
+    setDeleteTarget(null);
     try {
       await removeAddon(id);
       await AddonSystem.refresh();
@@ -70,13 +78,29 @@ export const AddonsView: React.FC = () => {
     try {
       let result = await importAddonFile(file, false);
       if (!result.ok && result.code === 'exists') {
-        if (window.confirm(result.message)) {
-          result = await importAddonFile(file, true);
-        } else {
-          setImportMsg('Importação cancelada.');
-          return;
-        }
+        // Adiar a decisão: o modal estilizado confirma a sobrescrita
+        setOverwriteTarget({ file, message: result.message });
+        return;
       }
+      if (result.ok) {
+        await AddonSystem.refresh();
+        setAddons(AddonSystem.getAddons());
+      }
+      setImportMsg(result.message);
+    } catch (err) {
+      setImportMsg(`Erro ao importar: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const confirmOverwrite = async () => {
+    const target = overwriteTarget;
+    setOverwriteTarget(null);
+    if (!target) return;
+    setImporting(true);
+    try {
+      const result = await importAddonFile(target.file, true);
       if (result.ok) {
         await AddonSystem.refresh();
         setAddons(AddonSystem.getAddons());
@@ -162,7 +186,7 @@ export const AddonsView: React.FC = () => {
                 <button
                   type="button"
                   title={`Excluir ${addon.name}`}
-                  onClick={() => void handleDeleteAddon(addon.id)}
+                  onClick={() => handleDeleteAddon(addon.id)}
                   className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:bg-ios-red/10 hover:text-ios-red transition-colors active:scale-90"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -238,6 +262,33 @@ export const AddonsView: React.FC = () => {
           onExported={(message) => setImportMsg(message)}
         />
       )}
+
+      {/* Confirmação estilizada de exclusão de addon */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title={`Excluir "${deleteTarget?.label ?? ''}"?`}
+        message="Isso remove a pasta do addon da pasta Addons. Essa ação não pode ser desfeita."
+        confirmText="Excluir"
+        cancelText="Cancelar"
+        confirmVariant="danger"
+        onConfirm={() => void confirmDeleteAddon()}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Confirmação estilizada de sobrescrita ao importar addon existente */}
+      <ConfirmModal
+        isOpen={!!overwriteTarget}
+        title="Addon já instalado"
+        message={overwriteTarget?.message ?? ''}
+        confirmText="Substituir"
+        cancelText="Cancelar"
+        confirmVariant="danger"
+        onConfirm={() => void confirmOverwrite()}
+        onCancel={() => {
+          setOverwriteTarget(null);
+          setImportMsg('Importação cancelada.');
+        }}
+      />
     </div>
   );
 };
