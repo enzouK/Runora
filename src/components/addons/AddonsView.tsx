@@ -1,5 +1,5 @@
 import React from 'react';
-import { Puzzle, Sparkles } from 'lucide-react';
+import { Puzzle } from 'lucide-react';
 import { AddonSystem } from '../../services/addonSystem';
 import { IOSSwitch } from '../common/IOSSwitch';
 
@@ -23,9 +23,6 @@ export const AddonsView: React.FC = () => {
           <h2 className="text-[32px] leading-none font-bold tracking-tight text-zinc-900 dark:text-white">
             Addons
           </h2>
-          <p className="text-[15px] text-zinc-500 dark:text-zinc-400 mt-1.5">
-            Plugins em JavaScript para estender o app.
-          </p>
         </div>
 
         <button
@@ -36,17 +33,6 @@ export const AddonsView: React.FC = () => {
         >
           <Puzzle className="w-[18px] h-[18px]" strokeWidth={2.5} />
         </button>
-      </div>
-
-      {/* System description */}
-      <div className="p-4 rounded-[16px] bg-purple-500/10 text-[13px] text-purple-900 dark:text-purple-200">
-        <span className="font-bold flex items-center gap-1.5 mb-1 text-purple-600 dark:text-purple-300">
-          <Sparkles className="w-4 h-4" />
-          Sistema de Addons em JavaScript
-        </span>
-        Arquitetura preparada para plugins em JS multiplataforma (Windows 11 e Android). O sistema
-        expõe ganchos como <code>beforeCardRender</code> e <code>afterReviewSubmit</code> via{' '}
-        <code>window.Anki2Addons</code>.
       </div>
 
       {/* Addon list (iOS inset grouped) */}
