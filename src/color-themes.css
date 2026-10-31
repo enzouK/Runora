@@ -1196,37 +1196,24 @@
     background-color: var(--color-ios-card);
   }
   .bg-black\/\[0\.06\],
-  .bg-zinc-900,
   .bg-black\/\[0\.03\],
   .bg-black\/\[0\.08\],
   .bg-black\/\[0\.05\],
-  .bg-black\/\[0\.12\],
   .bg-black\/\[0\.04\],
   .bg-black\/\[0\.1\],
-  .bg-black\/50,
-  .bg-black\/40,
   .bg-zinc-100,
   .bg-zinc-200,
-  .bg-black\/5,
-  .bg-black\/30,
-  .bg-black\/80,
-  .bg-black\/60,
   .bg-zinc-50,
-  .bg-white\/95,
   .bg-black\/\[0\.15\],
-  .bg-black\/\[0\.07\],
-  .bg-white\/90,
-  .bg-white\/20 {
+  .bg-black\/\[0\.07\] {
     background-color: var(--color-ios-element);
   }
   .hover\:bg-black\/\[0\.1\]:hover,
   .hover\:bg-black\/\[0\.03\]:hover,
-  .hover\:bg-black\/\[0\.2\]:hover,
   .hover\:bg-black\/\[0\.06\]:hover,
   .hover\:bg-black\/\[0\.08\]:hover,
   .hover\:bg-zinc-100:hover,
   .hover\:bg-zinc-200:hover,
-  .hover\:bg-black\/90:hover,
   .hover\:bg-black\/\[0\.05\]:hover,
   .hover\:bg-black\/\[0\.04\]:hover {
     background-color: var(--color-ios-element);
@@ -1279,19 +1266,18 @@
   .dark\:bg-white\/\[0\.12\],
   .dark\:bg-white\/\[0\.05\],
   .dark\:bg-white\/\[0\.09\],
-  .dark\:bg-white\/\[0\.2\],
   .dark\:bg-white\/\[0\.1\],
   .dark\:bg-white\/\[0\.07\],
   .dark\:bg-zinc-700,
   .dark\:bg-zinc-800,
   .dark\:focus\:bg-zinc-800,
+  .dark\:bg-white\/\[0\.2\],
   .dark\:bg-white\/\[0\.08\],
   .dark\:bg-white\/\[0\.06\] {
     background-color: var(--color-ios-element-dark);
   }
   .dark\:hover\:bg-white\/\[0\.18\]:hover,
   .dark\:hover\:bg-white\/\[0\.05\]:hover,
-  .dark\:hover\:bg-white\/\[0\.3\]:hover,
   .dark\:hover\:bg-white\/\[0\.15\]:hover,
   .dark\:hover\:bg-white\/\[0\.1\]:hover,
   .dark\:hover\:bg-white\/\[0\.12\]:hover,

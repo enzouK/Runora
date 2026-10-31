@@ -544,7 +544,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="w-5 h-5 rounded-full bg-black/[0.12] dark:bg-white/[0.2] flex items-center justify-center text-white hover:bg-black/[0.2] dark:hover:bg-white/[0.3] transition-colors shrink-0"
+              className="w-5 h-5 rounded-full bg-[rgba(0,0,0,0.12)] dark:bg-[rgba(255,255,255,0.2)] flex items-center justify-center text-white hover:bg-[rgba(0,0,0,0.2)] dark:hover:bg-[rgba(255,255,255,0.3)] transition-colors shrink-0"
               title="Limpar busca"
             >
               <X className="w-3 h-3" strokeWidth={3} />

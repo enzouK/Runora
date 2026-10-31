@@ -82,7 +82,7 @@ export const RatingButtons: React.FC<RatingButtonsProps> = ({
               </span>
 
               {/* Keyboard hint badge */}
-              <span className="hidden sm:inline-flex mt-1.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold opacity-60 bg-black/[0.06] dark:bg-white/[0.12]">
+              <span className="hidden sm:inline-flex mt-1.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold opacity-60 bg-[rgba(0,0,0,0.06)] dark:bg-[rgba(255,255,255,0.12)]">
                 {b.keyNum}
               </span>
             </button>
