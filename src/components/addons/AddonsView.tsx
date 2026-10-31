@@ -9,6 +9,7 @@ import { IOSSwitch } from '../common/IOSSwitch';
  */
 export const AddonsView: React.FC = () => {
   const [addons, setAddons] = React.useState(() => AddonSystem.getAddons());
+  const importFileRef = React.useRef<HTMLInputElement>(null);
 
   const handleToggle = (id: string) => {
     AddonSystem.toggleAddon(id);
@@ -16,7 +17,15 @@ export const AddonsView: React.FC = () => {
   };
 
   const handleImport = () => {
-    // TODO: abrir fluxo de importação de addons (arquivo/URL)
+    importFileRef.current?.click();
+  };
+
+  const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // permite selecionar o mesmo arquivo de novo na próxima vez
+    event.target.value = '';
+    if (!file) return;
+    // TODO: ler/validar/instalar o addon selecionado (file.name)
   };
 
   const handleExport = () => {
@@ -83,7 +92,7 @@ export const AddonsView: React.FC = () => {
         <button
           type="button"
           onClick={handleImport}
-          title="Importar Addons (em breve)"
+          title="Importar Addon"
           className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.04] dark:border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-all active:scale-[0.98]"
         >
           <Download className="w-4 h-4 text-ios-blue" />
@@ -99,6 +108,15 @@ export const AddonsView: React.FC = () => {
           <span>Exportar</span>
         </button>
       </div>
+
+      {/* Seletor de arquivo escondido usado pelo botão Importar */}
+      <input
+        ref={importFileRef}
+        type="file"
+        accept=".json,.js,.anki2addon,.zip"
+        className="hidden"
+        onChange={handleImportFile}
+      />
     </div>
   );
 };
