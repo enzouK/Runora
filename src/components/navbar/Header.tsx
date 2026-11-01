@@ -1,5 +1,11 @@
 import React from 'react';
 import { Layers, Library, Puzzle, RefreshCw, Search, Settings } from 'lucide-react';
+import runoraIcon from '../../assets/runora-icon.png';
+import runoraText from '../../assets/runora-text.png';
+// Recolored (deep purple) variants for light mode — the originals are made for
+// dark backgrounds and are nearly invisible on the light theme.
+import runoraIconLight from '../../assets/runora-icon-light.png';
+import runoraTextLight from '../../assets/runora-text-light.png';
 
 export type MainNavTab = 'decks' | 'browser' | 'notetypes' | 'addons';
 
@@ -14,38 +20,6 @@ interface HeaderProps {
   syncRunning: boolean;
 }
 
-/** Custom flashcard-stack logo (two overlapping cards, iOS-gradient) */
-const FlashcardLogo: React.FC = () => (
-  <svg
-    viewBox="0 0 40 40"
-    className="w-9 h-9 drop-shadow-[0_2px_6px_rgba(0,122,255,0.35)]"
-    aria-hidden="true"
-  >
-    <defs>
-      <linearGradient id="runora-logo-grad" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="#4aa8ff" />
-        <stop offset="100%" stopColor="#0064d2" />
-      </linearGradient>
-    </defs>
-    {/* Back card, slightly tilted */}
-    <rect
-      x="8"
-      y="4"
-      width="24"
-      height="18"
-      rx="5.5"
-      fill="url(#runora-logo-grad)"
-      opacity="0.45"
-      transform="rotate(-7 20 13)"
-    />
-    {/* Front card */}
-    <rect x="7" y="13" width="26" height="22" rx="6" fill="url(#runora-logo-grad)" />
-    {/* Content hint lines */}
-    <rect x="12" y="19" width="16" height="3.2" rx="1.6" fill="#ffffff" opacity="0.95" />
-    <rect x="12" y="25" width="10" height="3.2" rx="1.6" fill="#ffffff" opacity="0.55" />
-  </svg>
-);
-
 const TABS: { id: MainNavTab; label: string; icon: React.ReactNode }[] = [
   { id: 'decks', label: 'Decks', icon: <Library className="w-3.5 h-3.5" /> },
   { id: 'browser', label: 'Painel', icon: <Search className="w-3.5 h-3.5" /> },
@@ -56,19 +30,45 @@ const TABS: { id: MainNavTab; label: string; icon: React.ReactNode }[] = [
 export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSettings, onSync, syncRunning }) => {
   return (
     <header className="sticky top-0 z-40 w-full bg-ios-bg/85 dark:bg-ios-bg-dark/80 backdrop-blur-xl border-b border-black/[0.07] dark:border-white/[0.08]">
-      <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
-        {/* Brand */}
-        <div className="flex items-center gap-2.5 select-none">
-          <FlashcardLogo />
-          <div className="flex flex-col items-center leading-none">
-            <span className="font-bold text-[19px] tracking-tight text-zinc-900 dark:text-white leading-none">
-              Run
-            </span>
-            <span className="mt-[2px] bg-gradient-to-br from-[#4aa8ff] to-[#0064d2] bg-clip-text text-transparent font-extrabold text-[16px] tracking-tight leading-none">
-              ora
-            </span>
-          </div>
-        </div>
+      <div className="max-w-4xl mx-auto px-4 h-16 flex items-center">
+        {/* Brand — flex-1 wrapper centers it exactly in the space between the
+            left edge and the start of the Decks control; clicking it (either
+            the icon or the text) navigates back to the home page (Decks). */}
+        <button
+          type="button"
+          onClick={() => onTabChange('decks')}
+          aria-label="Runora — voltar para a página inicial (Decks)"
+          title="Voltar para a página inicial"
+          className="flex-1 flex items-center justify-center gap-2 select-none min-w-0 cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
+        >
+          {/* Original (dark-optimized) and light-mode variant, swapped by theme */}
+          <img
+            src={runoraIcon}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            className="w-11 h-11 object-contain shrink-0 dark:block hidden"
+          />
+          <img
+            src={runoraIconLight}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            className="w-11 h-11 object-contain shrink-0 dark:hidden"
+          />
+          <img
+            src={runoraText}
+            alt="Runora"
+            draggable={false}
+            className="h-10 w-auto object-contain dark:block hidden"
+          />
+          <img
+            src={runoraTextLight}
+            alt="Runora"
+            draggable={false}
+            className="h-10 w-auto object-contain dark:hidden"
+          />
+        </button>
 
         {/* iOS Segmented Control + Sync action button (right next to Addons) */}
         <div className="flex items-center gap-1.5">
@@ -102,7 +102,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSe
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={onOpenSettings}
