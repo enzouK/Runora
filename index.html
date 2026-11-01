@@ -12,9 +12,42 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" sizes="128x128" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+    <style>
+      /* ── Splash screen (pure HTML/CSS, removed by main.tsx after mount) ── */
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        background: radial-gradient(120% 90% at 50% 38%, #241436 0%, #0c0121 62%);
+        transition: opacity 0.35s ease;
+      }
+      #splash.done { opacity: 0; pointer-events: none; }
+      #splash img { user-select: none; -webkit-user-drag: none; }
+      #splash .splash-icon {
+        width: 104px;
+        height: 104px;
+        animation: splash-pulse 1.6s ease-in-out infinite;
+      }
+      #splash .splash-text { width: 196px; }
+      @keyframes splash-pulse {
+        0%, 100% { transform: scale(1); filter: drop-shadow(0 6px 24px rgba(139, 92, 246, 0.35)); }
+        50% { transform: scale(1.06); filter: drop-shadow(0 10px 34px rgba(167, 139, 250, 0.55)); }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="splash" aria-hidden="true">
+      <img class="splash-icon" src="/splash-icon.png" alt="" draggable="false" />
+      <img class="splash-text" src="/splash-text.png" alt="Runora" draggable="false" />
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

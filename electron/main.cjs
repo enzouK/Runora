@@ -32,7 +32,8 @@ function createWindow() {
     minWidth: 420,
     minHeight: 640,
     title: 'Runora — FSRS Flashcards',
-    backgroundColor: '#00000000',
+    icon: path.join(__dirname, '..', 'build', 'icon.ico'),
+    backgroundColor: '#0C0121',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

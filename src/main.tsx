@@ -23,3 +23,15 @@ if (StorageService.getTheme() === 'system') {
 }
 
 createRoot(document.getElementById('root')!).render(<App />);
+
+// Fade out the static splash screen declared in index.html once React has
+// mounted on top of it (double rAF guarantees the first commit painted).
+const splash = document.getElementById('splash');
+if (splash) {
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      splash.classList.add('done');
+      splash.addEventListener('transitionend', () => splash.remove(), { once: true });
+    })
+  );
+}

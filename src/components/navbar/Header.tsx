@@ -47,26 +47,26 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSe
             alt=""
             aria-hidden="true"
             draggable={false}
-            className="w-11 h-11 object-contain shrink-0 dark:block hidden"
+            className="w-9 h-9 sm:w-11 sm:h-11 object-contain shrink-0 dark:block hidden"
           />
           <img
             src={runoraIconLight}
             alt=""
             aria-hidden="true"
             draggable={false}
-            className="w-11 h-11 object-contain shrink-0 dark:hidden"
+            className="w-9 h-9 sm:w-11 sm:h-11 object-contain shrink-0 dark:hidden"
           />
           <img
             src={runoraText}
             alt="Runora"
             draggable={false}
-            className="h-10 w-auto object-contain dark:block hidden"
+            className="h-8 sm:h-10 w-auto object-contain dark:block hidden"
           />
           <img
             src={runoraTextLight}
             alt="Runora"
             draggable={false}
-            className="h-10 w-auto object-contain dark:hidden"
+            className="h-8 sm:h-10 w-auto object-contain dark:hidden"
           />
         </button>
 
