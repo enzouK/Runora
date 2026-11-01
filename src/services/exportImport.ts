@@ -397,6 +397,32 @@ export class ExportImportService {
         'SELECT id, nid, did, ord, type, queue, ivl, due FROM cards'
       );
 
+      // Bring in ONLY the decks that actually hold cards, plus the ancestor
+      // fragments their hierarchy needs ("A::B" requires an "A" deck): every
+      // Anki collection ships its structural "Default" deck in the database
+      // even when empty, and importing it would create a confusing empty
+      // "Default" deck in Runora — Anki's own importer skips it the same way.
+      const ankiDeckIdOf = new Map(
+        decks.map((d) => [d.id, Number(d.id.slice('deck-apkg-'.length))] as const)
+      );
+      const deckNameByAnkiId = new Map(
+        decks.map((d) => [ankiDeckIdOf.get(d.id)!, d.name] as const)
+      );
+      const usedAnkiDeckIds = new Set(cardRows.map((r) => Number(r[2])));
+      const ancestorNames = new Set<string>();
+      for (const used of usedAnkiDeckIds) {
+        const name = deckNameByAnkiId.get(used);
+        if (!name) continue;
+        const parts = name.split('::');
+        for (let i = 1; i < parts.length; i++) ancestorNames.add(parts.slice(0, i).join('::'));
+      }
+      const keptDecks = decks.filter(
+        (d) => usedAnkiDeckIds.has(ankiDeckIdOf.get(d.id)!) || ancestorNames.has(d.name)
+      );
+      deckIdByAnkiId.clear();
+      for (const d of keptDecks) deckIdByAnkiId.set(ankiDeckIdOf.get(d.id)!, d.id);
+      decks.splice(0, decks.length, ...keptDecks);
+
       // Map noteId → deckId from first card (imported notes don't belong to decks directly)
       const deckIdByNoteId = new Map<number, number>();
       for (const [, nid, did] of cardRows) {
