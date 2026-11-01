@@ -1,11 +1,8 @@
 import React from 'react';
 import { Layers, Library, Puzzle, RefreshCw, Search, Settings } from 'lucide-react';
-import runoraIcon from '../../assets/runora-icon.png';
-import runoraText from '../../assets/runora-text.png';
-// Recolored (deep purple) variants for light mode — the originals are made for
-// dark backgrounds and are nearly invisible on the light theme.
-import runoraIconLight from '../../assets/runora-icon-light.png';
-import runoraTextLight from '../../assets/runora-text-light.png';
+import runoraTextLight from '../../assets/runora-text-allblack.png';
+import runoraTextDark from '../../assets/runora-text-allwhite.png';
+import runoraIconWhite from '../../assets/runora-icon-white.png';
 
 export type MainNavTab = 'decks' | 'browser' | 'notetypes' | 'addons';
 
@@ -32,8 +29,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSe
     <header className="sticky top-0 z-40 w-full bg-ios-bg/85 dark:bg-ios-bg-dark/80 backdrop-blur-xl border-b border-black/[0.07] dark:border-white/[0.08]">
       <div className="max-w-4xl mx-auto px-4 h-16 flex items-center">
         {/* Brand — flex-1 wrapper centers it exactly in the space between the
-            left edge and the start of the Decks control; clicking it (either
-            the icon or the text) navigates back to the home page (Decks). */}
+            left edge and the start of the Decks control; clicking it (the text)
+            navigates back to the home page (Decks). */}
         <button
           type="button"
           onClick={() => onTabChange('decks')}
@@ -41,32 +38,24 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSe
           title="Voltar para a página inicial"
           className="flex-1 flex items-center justify-center gap-2 select-none min-w-0 cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
         >
-          {/* Original (dark-optimized) and light-mode variant, swapped by theme */}
           <img
-            src={runoraIcon}
+            src={runoraIconWhite}
             alt=""
             aria-hidden="true"
             draggable={false}
-            className="w-9 h-9 sm:w-11 sm:h-11 object-contain shrink-0 dark:block hidden"
-          />
-          <img
-            src={runoraIconLight}
-            alt=""
-            aria-hidden="true"
-            draggable={false}
-            className="w-9 h-9 sm:w-11 sm:h-11 object-contain shrink-0 dark:hidden"
-          />
-          <img
-            src={runoraText}
-            alt="Runora"
-            draggable={false}
-            className="h-8 sm:h-10 w-auto object-contain dark:block hidden"
+            className="w-12 h-12 sm:w-14 sm:h-14 object-contain shrink-0"
           />
           <img
             src={runoraTextLight}
             alt="Runora"
             draggable={false}
-            className="h-8 sm:h-10 w-auto object-contain dark:hidden"
+            className="h-12 sm:h-14 w-auto object-contain dark:hidden"
+          />
+          <img
+            src={runoraTextDark}
+            alt="Runora"
+            draggable={false}
+            className="h-12 sm:h-14 w-auto object-contain hidden dark:block"
           />
         </button>
 
