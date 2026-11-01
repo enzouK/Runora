@@ -27,7 +27,7 @@ const TABS: { id: MainNavTab; label: string; icon: React.ReactNode }[] = [
 export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSettings, onSync, syncRunning }) => {
   return (
     <header className="sticky top-0 z-40 w-full bg-ios-bg/85 dark:bg-ios-bg-dark/80 backdrop-blur-xl border-b border-black/[0.07] dark:border-white/[0.08]">
-      <div className="max-w-4xl mx-auto px-4 h-16 flex items-center">
+      <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
         {/* Brand — flex-1 wrapper centers it exactly in the space between the
             left edge and the start of the Decks control; clicking it (the text)
             navigates back to the home page (Decks). */}
@@ -36,31 +36,31 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSe
           onClick={() => onTabChange('decks')}
           aria-label="Runora — voltar para a página inicial (Decks)"
           title="Voltar para a página inicial"
-          className="flex-1 flex items-center justify-center gap-2 select-none min-w-0 cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
+          className="flex-1 flex items-center justify-center gap-2 select-none min-w-0 overflow-hidden cursor-pointer transition-opacity hover:opacity-80 active:opacity-60"
         >
           <img
             src={runoraIconWhite}
             alt=""
             aria-hidden="true"
             draggable={false}
-            className="w-12 h-12 sm:w-14 sm:h-14 object-contain shrink-0"
+            className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 object-contain shrink-0"
           />
           <img
             src={runoraTextLight}
             alt="Runora"
             draggable={false}
-            className="h-12 sm:h-14 w-auto object-contain dark:hidden"
+            className="h-8 sm:h-10 md:h-12 w-auto object-contain dark:hidden truncate max-w-[60vw] sm:max-w-[70vw] md:max-w-none"
           />
           <img
             src={runoraTextDark}
             alt="Runora"
             draggable={false}
-            className="h-12 sm:h-14 w-auto object-contain hidden dark:block"
+            className="h-8 sm:h-10 md:h-12 w-auto object-contain hidden dark:block truncate max-w-[60vw] sm:max-w-[70vw] md:max-w-none"
           />
         </button>
 
         {/* iOS Segmented Control + Sync action button (right next to Addons) */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <div className="flex items-center rounded-[10px] bg-black/[0.06] dark:bg-white/[0.08] p-[2px]">
             {TABS.map((tab) => (
               <button
@@ -91,7 +91,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSe
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="flex items-center justify-end gap-1.5 shrink-0">
           <button
             type="button"
             onClick={onOpenSettings}
