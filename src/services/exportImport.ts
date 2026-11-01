@@ -432,17 +432,24 @@ export class ExportImportService {
         const ankiQueue = Number(queue); // -1 suspended, -2 buried, -3 manually buried
         const ivlDays = Number(ivl);
         const state = ankiType === 2 ? 2 : ankiType === 0 ? 0 : ankiType === 3 ? 3 : 1;
-        // Convert the due: for review cards it's days since collection creation
-        const dueMs = state === 2
-          ? (colCrt + Number(due) * 86400) * 1000
-          : timestamp; // new/learning → available now
+        // Convert Anki's `due`, whose meaning depends on the queue:
+        //  - queue 0 (new): just the position/order → available now
+        //  - queue 1/4 (intraday (re)learning): unix timestamp in SECONDS
+        //  - queue 2/3 (review / day-learn): days since collection creation (crt)
+        const dueMs =
+          ankiQueue === 1 || ankiQueue === 4
+            ? Number(due) * 1000
+            : state === 0
+              ? timestamp
+              : (colCrt + Number(due) * 86400) * 1000;
         return {
           id: `card-apkg-${id}`,
           noteId: `note-apkg-${nid}`,
           deckId: deckIdByAnkiId.get(Number(did)) || decks[0]?.id || 'deck-default',
           templateOrd: isClozeOrd(ord),
           due: dueMs,
-          suspended: ankiQueue === -1 || ankiQueue === -3,
+          // queue -1 suspended, -2/-3 buried — all excluded from due counts, like Anki
+          suspended: ankiQueue < 0,
           fsrs: {
             stability: Math.max(0.1, ivlDays > 0 ? ivlDays : 0.4),
             difficulty: 5,
@@ -469,18 +476,26 @@ export class ExportImportService {
       // ── Media ──
       const mediaCount = await this.importZipMedia(zip);
 
-      // Write into storage (merging with existing types/decks/notes/cards)
-      const existingTypes = StorageService.getNoteTypes();
-      const existingTypeIds = new Set(existingTypes.map((t) => t.id));
-      StorageService.saveNoteTypes([
-        ...existingTypes,
-        ...noteTypes.filter((t) => !existingTypeIds.has(t.id)),
-      ]);
+      // Write into storage, UPSERTING by id: re-importing a package (e.g. the same
+      // deck once without and once with scheduling info) must REPLACE the previous
+      // notes/cards with the same ids, not append duplicates — Anki merges by note
+      // GUID the same way, so the second import updates the existing cards in place.
+      const upsertById = <T extends { id: string }>(existing: T[], incoming: T[]): T[] => {
+        const incomingIds = new Set(incoming.map((x) => x.id));
+        return [...existing.filter((x) => !incomingIds.has(x.id)), ...incoming];
+      };
+      StorageService.saveNoteTypes(upsertById(StorageService.getNoteTypes(), noteTypes));
+      // Decks: incoming wins on name/desc, but keep the local preset/limits linkage
       const existingDecks = StorageService.getDecks();
-      const existingDeckIds = new Set(existingDecks.map((d) => d.id));
-      StorageService.saveDecks([...existingDecks, ...decks.filter((d) => !existingDeckIds.has(d.id))]);
-      StorageService.saveNotes([...StorageService.getNotes(), ...notes]);
-      StorageService.saveCards([...StorageService.getCards(), ...cards]);
+      const importedDecks = decks.map((d) => {
+        const prev = existingDecks.find((x) => x.id === d.id);
+        return prev
+          ? { ...d, presetId: prev.presetId, dailyLimitsOverride: prev.dailyLimitsOverride }
+          : d;
+      });
+      StorageService.saveDecks(upsertById(existingDecks, importedDecks));
+      StorageService.saveNotes(upsertById(StorageService.getNotes(), notes));
+      StorageService.saveCards(upsertById(StorageService.getCards(), cards));
 
       return {
         success: true,

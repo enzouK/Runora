@@ -115,13 +115,17 @@ export const StudyView: React.FC<StudyViewProps> = ({
     };
     const isOfDeck = (c: Card): boolean => matchingDeckIds.has(c.deckId);
 
-    // (Re)learning cards due later today are intraday and are never hidden;
-    // due on a later day = interday learning → consumes the review limit first (Runora)
+    // (Re)learning cards due later today are intraday and are never hidden.
+    // Learn-ahead limit (20 min, Runora default): a learning card due within
+    // 20 min is already shown, so it never "disappears" from the queue after
+    // being rated. Overdue learning from previous days = interday learning →
+    // consumes the review limit first (Runora).
+    const LEARN_AHEAD_MS = 20 * 60 * 1000;
     const intraLearning = allCards.filter(
       (c) =>
         isOfDeck(c) &&
         (c.fsrs.state === 1 || c.fsrs.state === 3) &&
-        c.due <= now &&
+        c.due <= now + LEARN_AHEAD_MS &&
         dayOf(c.due) === today
     );
     const interLearning = allCards.filter(
@@ -129,7 +133,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         isOfDeck(c) &&
         (c.fsrs.state === 1 || c.fsrs.state === 3) &&
         c.due <= now &&
-        dayOf(c.due) > today
+        dayOf(c.due) !== today
     );
     const reviewDue = allCards.filter(
       (c) => isOfDeck(c) && c.fsrs.state === 2 && c.due <= now

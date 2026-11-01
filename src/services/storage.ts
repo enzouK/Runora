@@ -67,6 +67,16 @@ export class StorageService {
   }
 
   /**
+   * Dedup by id, keeping the LAST occurrence (the most recent import wins).
+   * Heals profiles where an older build appended duplicate cards/notes/decks
+   * on re-import instead of upserting them.
+   */
+  private static dedupById<T extends { id: string }>(items: T[]): T[] {
+    if (items.length < 2) return items;
+    return [...new Map(items.map((x) => [x.id, x])).values()];
+  }
+
+  /**
    * Merge missing default items ONLY when the seed version increases.
    * Items the user previously deleted (tombstoned) are never re-added.
    */
@@ -136,7 +146,7 @@ export class StorageService {
       return INITIAL_DECKS;
     }
     try {
-      const parsed: Deck[] = JSON.parse(raw);
+      const parsed: Deck[] = this.dedupById(JSON.parse(raw));
       const { items, changed } = this.mergeDefaultsOnSeedBump(parsed, INITIAL_DECKS, 'decks');
       if (changed) {
         this.saveDecks(items);
@@ -161,7 +171,7 @@ export class StorageService {
       return INITIAL_NOTE_TYPES;
     }
     try {
-      const parsed: NoteType[] = JSON.parse(raw);
+      const parsed: NoteType[] = this.dedupById(JSON.parse(raw));
       // Update template for nt-language-voice if missing voice tags
       const langType = parsed.find((nt) => nt.id === 'nt-language-voice');
       if (langType && langType.templates[0] && !langType.templates[0].qfmt.includes('voice:record')) {
@@ -197,7 +207,7 @@ export class StorageService {
       return INITIAL_NOTES;
     }
     try {
-      const parsed: Note[] = JSON.parse(raw);
+      const parsed: Note[] = this.dedupById(JSON.parse(raw));
       const { items, changed } = this.mergeDefaultsOnSeedBump(parsed, INITIAL_NOTES, 'notes');
       if (changed) {
         this.saveNotes(items);
@@ -222,7 +232,7 @@ export class StorageService {
       return INITIAL_CARDS;
     }
     try {
-      const parsed: Card[] = JSON.parse(raw);
+      const parsed: Card[] = this.dedupById(JSON.parse(raw));
       const { items, changed } = this.mergeDefaultsOnSeedBump(parsed, INITIAL_CARDS, 'cards');
       if (changed) {
         this.saveCards(items);
@@ -1129,6 +1139,11 @@ export class StorageService {
 
     const cards = this.getCards().filter((c) => matchingDeckIds.has(c.deckId) && !c.suspended);
 
+    // "Today" follows the app's rollover hour: same-day learning cards (due now
+    // or later today, e.g. +10 min after answering Good) must still show in the
+    // learning count — otherwise a rated card would vanish from the deck list.
+    const dayEnd = this.todayStart(now) + 86400000;
+
     let newCount = 0;
     let learningCount = 0;
     let reviewCount = 0;
@@ -1137,8 +1152,11 @@ export class StorageService {
       if (card.fsrs.state === 0) {
         newCount++;
       } else if (card.fsrs.state === 1 || card.fsrs.state === 3) {
-        if (card.due <= now) {
+        if (card.due <= dayEnd) {
           learningCount++;
+        } else {
+          // Interday learning (due on a later day) counts as review, like Runora
+          reviewCount++;
         }
       } else if (card.fsrs.state === 2) {
         if (card.due <= now) {
