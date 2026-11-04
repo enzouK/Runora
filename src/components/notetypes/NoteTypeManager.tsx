@@ -16,6 +16,7 @@ import { StorageService } from '../../services/storage';
 import { CardTemplateEditorModal } from './CardTemplateEditorModal';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSwitch } from '../common/IOSSwitch';
+import { useBodyScrollLock } from '../common/useBodyScrollLock';
 
 export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const [noteTypes, setNoteTypes] = useState<NoteType[]>(() => StorageService.getNoteTypes());
@@ -24,6 +25,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
   const [templateEditingNoteType, setTemplateEditingNoteType] = useState<NoteType | null>(null);
   const [noteTypeToDelete, setNoteTypeToDelete] = useState<NoteType | null>(null);
   const [showMinNoteTypeWarning, setShowMinNoteTypeWarning] = useState(false);
+  useBodyScrollLock(isModalOpen);
 
   const notes = useMemo(() => StorageService.getNotes(), [onRefresh]);
 

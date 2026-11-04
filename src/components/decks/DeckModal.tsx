@@ -40,6 +40,7 @@ import { StorageService } from '../../services/storage';
 import { AddonSystem } from '../../services/addonSystem';
 import { IOSSelect } from '../common/IOSSelect';
 import { HelpPanel, HelpTopic } from '../common/HelpPanel';
+import { useBodyScrollLock } from '../common/useBodyScrollLock';
 
 type HelpSectionId =
   | 'name'
@@ -630,6 +631,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const [helpSection, setHelpSection] = useState<HelpSectionId | null>(null);
   const [newCardsPerDay, setNewCardsPerDay] = useState('20');
   const [maxReviewsPerDay, setMaxReviewsPerDay] = useState('200');
+  useBodyScrollLock(isOpen);
   // Scheduler options — always show the REAL effective values (no 'Padrão' pseudo-option)
   const [learningSteps, setLearningSteps] = useState('1m 10m');
   const [insertionOrder, setInsertionOrder] = useState<InsertionOrder>('sequential');

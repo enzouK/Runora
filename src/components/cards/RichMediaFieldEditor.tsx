@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { AudioService } from '../../services/audioService';
 import { MediaStore } from '../../services/mediaStore';
+import { useBodyScrollLock } from '../common/useBodyScrollLock';
 
 export interface FieldSegment {
   id: string;
@@ -481,6 +482,8 @@ const FieldImagePreview: React.FC<{
   onRemove: () => void;
 }> = ({ url, onRemove }) => {
   const [showModal, setShowModal] = useState(false);
+  // Lightbox is fullscreen-interactive: keep background page/panel static
+  useBodyScrollLock(showModal);
   // Bare filenames from imported .apkg media resolve to blob: URLs here
   const resolvedUrl = useResolvedMediaUrl(url);
   const imgSrc = resolvedUrl || url;

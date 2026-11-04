@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
+import { useBodyScrollLock } from './useBodyScrollLock';
 
 export interface ConfirmationModalProps {
   isOpen: boolean;
@@ -37,13 +38,15 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     };
     if (isOpen) {
       window.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
     }
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
     };
   }, [isOpen, isLoading, onClose]);
+
+  // Body scroll lock (reference-counted): stacked confirm dialogs inside
+  // other modals never restore scrolling while the outer one is still open.
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 
