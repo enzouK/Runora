@@ -218,15 +218,15 @@ function writeICO(file, img, sizes) {
 
 const root = process.argv[2] || process.cwd();
 const dl = process.argv[3] || path.join(require('os').homedir(), 'Downloads');
-const app = decodePNG(fs.readFileSync(path.join(dl, 'runora-app.png')));
+const app = decodePNG(fs.readFileSync(path.join(dl, 'runora-icon-bg.png'))); // exe + Android launcher source
 const icon = decodePNG(fs.readFileSync(path.join(root, 'src/assets/runora-icon.png')));
 const iconLight = decodePNG(fs.readFileSync(path.join(root, 'src/assets/runora-icon-light.png')));
 const text = decodePNG(fs.readFileSync(path.join(root, 'src/assets/runora-text.png')));
 
-// sample background color from a corner pixel of runora-app
+// sample background color from a corner pixel of runora-icon-bg
 const bgSample = [app.rgba[4 * (10 * app.width + 10)], app.rgba[4 * (10 * app.width + 10) + 1], app.rgba[4 * (10 * app.width + 10) + 2]];
 const bgHex = '#' + bgSample.map((v) => v.toString(16).padStart(2, '0')).join('');
-console.log('runora-app corner bg:', bgHex);
+console.log('runora-icon-bg corner bg:', bgHex);
 
 // public web assets
 fs.mkdirSync(path.join(root, 'public'), { recursive: true });
@@ -241,15 +241,43 @@ writeICO(path.join(root, 'build/icon.ico'), roundMask(overBg(app, 256, bgSample)
 // android mipmaps
 const res = path.join(root, 'android/app/src/main/res');
 const dens = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
+
+/** Solid RGBA canvas filled with the brand background color. */
+const solid = (sq) => {
+  const out = Buffer.alloc(sq * sq * 4);
+  for (let i = 0; i < out.length; i += 4) {
+    out[i] = bgSample[0]; out[i + 1] = bgSample[1]; out[i + 2] = bgSample[2]; out[i + 3] = 255;
+  }
+  return { width: sq, height: sq, rgba: out };
+};
+
+/** Composite src (top, RGBA) over base (RGB) fully opaque result. */
+function overBase(base, src) {
+  const out = Buffer.from(base.rgba);
+  if (src.width !== base.width || src.height !== base.height) throw new Error('overBase size mismatch');
+  for (let i = 0; i < out.length; i += 4) {
+    const a = src.rgba[i + 3] / 255;
+    if (a === 0) continue;
+    out[i] = src.rgba[i] * a + out[i] * (1 - a);
+    out[i + 1] = src.rgba[i + 1] * a + out[i + 1] * (1 - a);
+    out[i + 2] = src.rgba[i + 2] * a + out[i + 2] * (1 - a);
+    out[i + 3] = 255;
+  }
+  return { width: base.width, height: base.height, rgba: out };
+}
+
+// composite helper: padded content over its own brand background
+const padOverBg = (img, sq, scale) => overBase(solid(sq), padded(img, sq, scale));
+
 for (const [d, k] of Object.entries(dens)) {
   const dir = path.join(res, `mipmap-${d}`);
   fs.mkdirSync(dir, { recursive: true });
   const sq = Math.round(48 * k);
   fs.writeFileSync(path.join(dir, 'ic_launcher.png'), encodePNG(sq, sq, overBg(app, sq, bgSample).rgba));
   fs.writeFileSync(path.join(dir, 'ic_launcher_round.png'), encodePNG(sq, sq, roundMask(overBg(app, sq, bgSample)).rgba));
-  // adaptive foreground: content scaled into the safe zone on transparent
+  // adaptive foreground: own background fills the canvas, content scaled into the safe zone
   const fg = Math.round(108 * k);
-  fs.writeFileSync(path.join(dir, 'ic_launcher_foreground.png'), encodePNG(fg, fg, padded(app, fg, 0.64).rgba));
+  fs.writeFileSync(path.join(dir, 'ic_launcher_foreground.png'), encodePNG(fg, fg, padOverBg(app, fg, 0.64).rgba));
 }
 console.log('wrote favicon.png, splash-icon.png, splash-text.png, build/icon.ico + android mipmaps');
 
