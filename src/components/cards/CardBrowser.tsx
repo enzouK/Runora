@@ -933,7 +933,11 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                   } ${
                     isCardSelected
                       ? 'bg-ios-blue/[0.07] dark:bg-ios-blue/[0.1]'
-                      : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'
+                      : // hover highlight only in selection mode — in normal mode
+                        // the card stays visually static so the text reads as content
+                        selectionMode
+                        ? 'hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'
+                        : ''
                   }`}
                 >
                   {/* Selection checkbox (selection mode only) */}
@@ -1011,7 +1015,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                                 {primaryTextBlock.name}
                               </span>
                             </div>
-                            <div className="whitespace-pre-line font-semibold text-[15px] leading-relaxed text-zinc-900 dark:text-white line-clamp-6">
+                            <div className="whitespace-pre-line font-semibold text-[15px] leading-relaxed text-zinc-900 dark:text-white line-clamp-6 cursor-text">
                               <RowAudioButton
                                 audioRef={audioRef}
                                 fallbackAudio={mediaAudio}
@@ -1036,7 +1040,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                               <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-600 mb-0.5">
                                 {b.name}
                               </div>
-                              <div className="whitespace-pre-line text-[13px] leading-relaxed text-zinc-400 dark:text-zinc-500 line-clamp-2">
+                              <div className="whitespace-pre-line text-[13px] leading-relaxed text-zinc-400 dark:text-zinc-500 line-clamp-2 cursor-text">
                                 {b.html !== undefined ? (
                                   <span dangerouslySetInnerHTML={{ __html: b.html }} />
                                 ) : (
