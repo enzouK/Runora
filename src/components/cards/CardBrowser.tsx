@@ -138,7 +138,7 @@ const RowAudioButton: React.FC<{
         onToggle(url);
       }}
       title={isPlaying ? 'Pausar áudio' : 'Tocar áudio'}
-      className={`inline-flex items-center justify-center w-6 h-6 rounded-full align-[-4px] mr-1.5 transition-all active:scale-90 shrink-0 ${
+      className={`inline-flex items-center justify-center w-6 h-6 rounded-full align-[-4px] mr-1.5 transition-all active:scale-90 shrink-0 cursor-pointer ${
         isPlaying
           ? 'bg-ios-blue text-white shadow-[0_1px_6px_rgba(0,122,255,0.45)]'
           : 'bg-ios-blue/10 text-ios-blue hover:bg-ios-blue/20'
@@ -233,7 +233,7 @@ const RowAudioPlayer: React.FC<{ audioRef: string | null; fallbackAudio?: string
           togglePlay();
         }}
         title={isPlaying ? 'Pausar áudio' : 'Reproduzir áudio'}
-        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all active:scale-95 ${
+        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all active:scale-95 cursor-pointer ${
           isPlaying
             ? 'bg-ios-blue text-white shadow-[0_1px_6px_rgba(0,122,255,0.45)]'
             : 'bg-ios-blue/15 text-ios-blue hover:bg-ios-blue/25'
@@ -918,8 +918,19 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
               return (
                 <div
                   key={card.id}
-                  onClick={() => (selectionMode ? toggleCardSelection(card.id) : onEditNote(note.id))}
-                  className={`group flex flex-col sm:flex-row sm:items-end justify-between gap-3 px-4 py-4 cursor-pointer select-none transition-colors ${
+                  // Outside selection mode the row is inert: clicking a card never
+                  // opens the editor (only the pencil button does), so the card
+                  // text can be selected/copied freely. In selection mode the row
+                  // still toggles the checkbox.
+                  onClick={() => {
+                    if (selectionMode) toggleCardSelection(card.id);
+                  }}
+                  title={
+                    selectionMode ? undefined : 'Clique no ícone de lápis para editar este card'
+                  }
+                  className={`group flex flex-col sm:flex-row sm:items-end justify-between gap-3 px-4 py-4 transition-colors ${
+                    selectionMode ? 'cursor-pointer select-none' : 'cursor-default select-text'
+                  } ${
                     isCardSelected
                       ? 'bg-ios-blue/[0.07] dark:bg-ios-blue/[0.1]'
                       : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'
@@ -933,7 +944,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                         e.stopPropagation();
                         toggleCardSelection(card.id);
                       }}
-                      className={`w-5 h-5 rounded-[6px] border-2 flex items-center justify-center shrink-0 transition-colors self-center ${
+                      className={`w-5 h-5 rounded-[6px] border-2 flex items-center justify-center shrink-0 transition-colors self-center cursor-pointer ${
                         isCardSelected
                           ? 'bg-ios-blue border-ios-blue text-white'
                           : 'border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 hover:border-ios-blue'
@@ -1081,7 +1092,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                           e.stopPropagation();
                           onEditNote(note.id);
                         }}
-                        className="p-1.5 rounded-full text-zinc-400 hover:text-ios-blue hover:bg-ios-blue/10 transition-colors"
+                        className="p-1.5 rounded-full text-zinc-400 hover:text-ios-blue hover:bg-ios-blue/10 transition-colors cursor-pointer"
                         title="Editar"
                       >
                         <Edit3 className="w-4 h-4" />
@@ -1096,7 +1107,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                             e
                           )
                         }
-                        className="p-1.5 rounded-full text-zinc-400 hover:text-ios-red hover:bg-ios-red/10 transition-colors"
+                        className="p-1.5 rounded-full text-zinc-400 hover:text-ios-red hover:bg-ios-red/10 transition-colors cursor-pointer"
                         title="Excluir"
                       >
                         <Trash2 className="w-4 h-4" />
