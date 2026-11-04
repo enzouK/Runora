@@ -1,6 +1,6 @@
 import React from 'react';
 import { Layers, Library, Puzzle, RefreshCw, Search, Settings } from 'lucide-react';
-import runoraText from '../../assets/runora-text-allblack.png';
+import runoraTextLight from '../../assets/runora-text-allblack.png';
 import runoraTextDark from '../../assets/runora-text-allwhite.png';
 import runoraIconWhite from '../../assets/runora-icon-white.png';
 
@@ -46,7 +46,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSe
             className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 object-contain shrink-0"
           />
           <img
-            src={runoraText}
+            src={runoraTextLight}
             alt="Runora"
             draggable={false}
             className="h-8 sm:h-10 md:h-12 w-auto object-contain dark:hidden truncate max-w-[60vw] sm:max-w-[70vw] md:max-w-none"
