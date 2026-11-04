@@ -19,7 +19,7 @@
   },
   "main": "electron/main.cjs",
   "build": {
-    "appId": "com.runora.app",
+    "appId": "com.runora.fsrs",
     "productName": "Runora",
     "directories": {
       "output": "release"
