@@ -596,22 +596,21 @@ export class StorageService {
     }
   }
 
-  public static setBrowserFieldPref(noteTypeId: string, fieldNames: string[]): void {
+  /**
+   * Replaces the whole CardBrowser field-display preference map.
+   * An empty array is a VALID value: it means "the user deselected every
+   * field" and must NOT fall back to the default (all fields selected).
+   */
+  public static setBrowserFieldPrefs(prefs: Record<string, string[]>): void {
     const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
-    let prefs: Record<string, unknown> = {};
+    let parsed: Record<string, unknown> = {};
     try {
-      prefs = raw ? JSON.parse(raw) : {};
+      parsed = raw ? JSON.parse(raw) : {};
     } catch {
-      prefs = {};
+      parsed = {};
     }
-    const bf = (prefs.browserFields as Record<string, unknown> | undefined) ?? {};
-    if (fieldNames.length === 0) {
-      delete bf[noteTypeId]; // empty selection → back to the default (first two fields)
-    } else {
-      bf[noteTypeId] = fieldNames;
-    }
-    prefs.browserFields = bf;
-    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+    parsed.browserFields = prefs;
+    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(parsed));
   }
 
   /** CardBrowser list ordering modes. */

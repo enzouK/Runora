@@ -470,28 +470,40 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   const toggleFieldPref = (noteTypeId: string, fieldName: string) => {
     const nt = noteTypes.find((n) => n.id === noteTypeId);
     if (!nt) return;
-    const current = fieldPrefs[noteTypeId] ?? sortedFields(nt).slice(0, 2).map((f) => f.name);
-    const next = current.includes(fieldName)
-      ? current.filter((n) => n !== fieldName)
-      : [...current, fieldName];
-    setFieldPrefs((prev) => ({ ...prev, [noteTypeId]: next }));
-    StorageService.setBrowserFieldPref(noteTypeId, next);
+    const all = sortedFields(nt).map((f) => f.name);
+    // Functional update: rapid clicks on different chips can't overwrite
+    // each other (the previous value is always the latest committed state)
+    setFieldPrefs((prev) => {
+      // Without a stored preference every field starts selected
+      const current = prev[noteTypeId] ?? all;
+      const next = current.includes(fieldName)
+        ? current.filter((n) => n !== fieldName)
+        : [...current, fieldName];
+      return { ...prev, [noteTypeId]: next };
+    });
   };
 
   /** Promotes a field to primary: moves it to the front of the selection.
-   *  Works even when no preference exists yet (falls back to first two by ord). */
+   *  Works even when no preference exists yet (all fields are the default). */
   const setPrimaryFieldPref = (noteTypeId: string, fieldName: string) => {
     const nt = noteTypes.find((n) => n.id === noteTypeId);
     if (!nt) return;
-    const next = promoteFieldToPrimary(
-      fieldPrefs[noteTypeId],
-      sortedFields(nt).map((f) => f.name),
-      fieldName
-    );
-    if (!next) return; // already primary (or nothing to change)
-    setFieldPrefs((prev) => ({ ...prev, [noteTypeId]: next }));
-    StorageService.setBrowserFieldPref(noteTypeId, next);
+    setFieldPrefs((prev) => {
+      const next = promoteFieldToPrimary(
+        prev[noteTypeId],
+        sortedFields(nt).map((f) => f.name),
+        fieldName
+      );
+      if (!next) return prev; // already primary (or nothing to change)
+      return { ...prev, [noteTypeId]: next };
+    });
   };
+
+  // Persist the field preferences whenever they change — mirrors the
+  // committed state, so the stored value always matches what is on screen
+  useEffect(() => {
+    StorageService.setBrowserFieldPrefs(fieldPrefs);
+  }, [fieldPrefs]);
 
   // Active multi-select filters (saved deck ids that no longer exist are ignored)
   const activeDeckFilter = useMemo(
@@ -804,7 +816,8 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                 Campos exibidos
               </h3>
               <p className="text-[12px] text-zinc-400 dark:text-zinc-500 mt-0.5">
-                Toque para incluir ou remover campos. A estrela{' '}
+                Todos os campos vêm selecionados por padrão. Toque para incluir ou remover
+                campos. A estrela{' '}
                 <Star className="w-3 h-3 inline text-ios-orange fill-current -mt-0.5" /> define o
                 campo principal — texto ganha destaque; imagem vira destaque centralizado; áudio
                 vira player completo.

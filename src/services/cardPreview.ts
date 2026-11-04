@@ -114,21 +114,22 @@ export function detectFieldModes(
 /**
  * Resolves the display field order for a note type.
  * The user's preference order WINS (first item = primary field); fields that
- * no longer exist on the note type are dropped. Without a preference, the
- * first two fields by ord are used.
+ * no longer exist on the note type are dropped. Without a preference, ALL
+ * fields are displayed — the user can then deselect any of them in the
+ * "Campos" panel.
  */
 export function resolveDisplayFields(fieldNamesByOrd: string[], pref?: string[]): string[] {
-  if (pref && pref.length > 0) {
-    const chosen = pref.filter((n) => fieldNamesByOrd.includes(n));
-    if (chosen.length > 0) return chosen;
+  if (pref !== undefined) {
+    // An explicit preference wins (even an empty one = every field deselected)
+    return pref.filter((n) => fieldNamesByOrd.includes(n));
   }
-  return fieldNamesByOrd.slice(0, 2);
+  return [...fieldNamesByOrd];
 }
 
 /**
  * Promotes a field to primary (front of the selection). Works even when no
- * preference exists yet — the default selection (first two by ord) is used
- * as the starting point, exactly like the chips' fallback.
+ * preference exists yet — the default selection (all fields) is used as the
+ * starting point, exactly like the chips' fallback.
  * Returns the new ordered list, or null when nothing would change
  * (no fields, or the field is already the primary).
  */
@@ -138,9 +139,9 @@ export function promoteFieldToPrimary(
   fieldName: string
 ): string[] | null {
   const current =
-    pref && pref.length > 0
+    pref !== undefined
       ? pref.filter((n) => fieldNamesByOrd.includes(n))
-      : fieldNamesByOrd.slice(0, 2);
+      : [...fieldNamesByOrd];
   if (current.length === 0 || current[0] === fieldName) return null;
   return [fieldName, ...current.filter((n) => n !== fieldName)];
 }
