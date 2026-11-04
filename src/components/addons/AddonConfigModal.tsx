@@ -5,6 +5,7 @@ import type { AddonConfigField, AddonManifest } from '../../services/addonSystem
 import { AddonSystem } from '../../services/addonSystem';
 import { IOSSelect } from '../common/IOSSelect';
 import { IOSSwitch } from '../common/IOSSwitch';
+import { useBodyScrollLock } from '../common/useBodyScrollLock';
 
 interface AddonConfigModalProps {
   /** Addon whose config is being edited (null = closed). */
@@ -37,13 +38,15 @@ export const AddonConfigModal: React.FC<AddonConfigModalProps> = ({ addon, onClo
     };
     if (addon) {
       window.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
     }
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
     };
   }, [addon, saving, onClose]);
+
+  // Body scroll lock (reference-counted): stacked modals never unlock the
+  // body while an outer one is still open.
+  useBodyScrollLock(!!addon);
 
   if (!addon) return null;
 

@@ -17,6 +17,7 @@ import { ClozeService } from '../../services/clozeService';
 import { StorageService } from '../../services/storage';
 import { CardContentRenderer } from '../study/CardContentRenderer';
 import { ConfirmationModal } from '../common/ConfirmationModal';
+import { useBodyScrollLock } from '../common/useBodyScrollLock';
 
 interface CardTemplateEditorModalProps {
   isOpen: boolean;
@@ -31,6 +32,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
   noteType,
   onSaved,
 }) => {
+  useBodyScrollLock(isOpen);
   const [templates, setTemplates] = useState<CardTemplate[]>(() =>
     noteType.templates.length > 0
       ? JSON.parse(JSON.stringify(noteType.templates))

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { CloudDownload, CloudUpload, X } from 'lucide-react';
 import { ConflictChoice } from '../../services/gdriveSync';
 import { SyncConflictState } from './useDriveSync';
+import { useBodyScrollLock } from '../common/useBodyScrollLock';
 
 interface Props {
   conflict: SyncConflictState | null;
@@ -28,6 +29,7 @@ function fmt(ts: number): string {
  * - X / backdrop / Esc → abort, nothing changes.
  */
 export const SyncConflictModal: React.FC<Props> = ({ conflict, onResolve }) => {
+  useBodyScrollLock(!!conflict);
   if (!conflict) return null;
   const { meta } = conflict;
 

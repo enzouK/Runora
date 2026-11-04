@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { useBodyScrollLock } from './useBodyScrollLock';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  useBodyScrollLock(isOpen);
   if (!isOpen) return null;
 
   return (

@@ -16,6 +16,7 @@ import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSelect } from '../common/IOSSelect';
 import { COLOR_THEMES, COLOR_THEME_NAMES, DEFAULT_COLOR_THEME } from '../../themes';
 import { Sun, Moon, Monitor, Palette } from 'lucide-react';
+import { useBodyScrollLock } from '../common/useBodyScrollLock';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onRefresh,
 }) => {
+  useBodyScrollLock(isOpen);
   const [activeTab, setActiveTab] = useState<'fsrs'>('fsrs');
   const [params, setParams] = useState<FSRSParameters>(() => StorageService.getFSRSSettings());
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);

@@ -11,6 +11,7 @@ import { AddonSystem } from '../../services/addonSystem';
 import { AudioService } from '../../services/audioService';
 import { RichMediaFieldEditor } from './RichMediaFieldEditor';
 import { IOSSelect } from '../common/IOSSelect';
+import { useBodyScrollLock } from '../common/useBodyScrollLock';
 
 interface CardEditorModalProps {
   isOpen: boolean;
@@ -33,6 +34,8 @@ export const CardEditorModal: React.FC<CardEditorModalProps> = ({
   const [selectedNoteTypeId, setSelectedNoteTypeId] = useState<string>('');
   const [fields, setFields] = useState<Record<string, string>>({});
   const [tagsInput, setTagsInput] = useState<string>('');
+
+  useBodyScrollLock(isOpen);
 
   useEffect(() => {
     if (!isOpen) return;

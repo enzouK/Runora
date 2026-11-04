@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, X } from 'lucide-react';
+import { useBodyScrollLock } from './useBodyScrollLock';
 
 export interface HelpTopic {
   label: string;
@@ -35,6 +36,7 @@ export const HelpPanel: React.FC<HelpPanelProps> = ({
 }) => {
   const [selected, setSelected] = useState(0);
   const layerRef = useRef<HTMLDivElement | null>(null);
+  useBodyScrollLock(isOpen);
 
   // Reinicia a seleção sempre que a camada abre
   useEffect(() => {

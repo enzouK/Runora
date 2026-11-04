@@ -3,6 +3,7 @@ import { Check, Download, X } from 'lucide-react';
 import type { AddonManifest } from '../../services/addonSystem';
 import { exportAddons } from '../../services/addonStorage';
 import { ExportImportService } from '../../services/exportImport';
+import { useBodyScrollLock } from '../common/useBodyScrollLock';
 
 interface AddonExportModalProps {
   addons: AddonManifest[];
@@ -59,6 +60,8 @@ export const AddonExportModal: React.FC<AddonExportModalProps> = ({ addons, onCl
   const [checked, setChecked] = useState<Set<string>>(() => new Set(addons.map((a) => a.id)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Parent mounts this modal only while it is shown — lock for the mount.
+  useBodyScrollLock(true);
 
   const allIds = useMemo(() => addons.map((a) => a.id), [addons]);
   const allOn = allIds.length > 0 && allIds.every((id) => checked.has(id));

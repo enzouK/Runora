@@ -37,6 +37,7 @@ import {
 } from '../../services/cardPreview';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSelect } from '../common/IOSSelect';
+import { useBodyScrollLock } from '../common/useBodyScrollLock';
 
 interface CardBrowserProps {
   onEditNote: (noteId: string) => void;
@@ -344,6 +345,8 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showTagModal, setShowTagModal] = useState(false);
+  // Bulk-tag modal (portal) must not let wheel/backdrop scroll the page behind
+  useBodyScrollLock(showTagModal);
   const [bulkTagSelection, setBulkTagSelection] = useState<string[]>([]);
   const [newBulkTag, setNewBulkTag] = useState('');
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
