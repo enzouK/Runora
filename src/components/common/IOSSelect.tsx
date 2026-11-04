@@ -56,8 +56,10 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
 
   // Trigger label for multi mode: selected option labels, or the 'all'
   // option label when nothing is selected.
+  // Single mode: the sentinel 'all' option counts as "no selection" so the
+  // trigger pill renders muted just like the empty multi-select.
   let triggerLabel = selected?.label ?? placeholder;
-  let triggerMuted = !selected;
+  let triggerMuted = !selected || selected.value === 'all';
   if (multiple) {
     if (values.length === 0) {
       const allOpt = options.find((o) => o.value === 'all');

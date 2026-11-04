@@ -705,6 +705,38 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
   }
 
+  /** Valid values for the CardBrowser single-select maturity filter. */
+  private static readonly BROWSER_MATURITY_VALUES = ['all', 'young', 'mature'];
+
+  /** CardBrowser maturity filter ('all' | 'young' | 'mature'). 'all' = no restriction. */
+  public static getBrowserMaturityFilter(): string {
+    const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
+    if (!raw) return 'all';
+    try {
+      const prefs = JSON.parse(raw) as { browserMaturityFilter?: unknown };
+      const v = prefs.browserMaturityFilter;
+      return typeof v === 'string' && this.BROWSER_MATURITY_VALUES.includes(v) ? v : 'all';
+    } catch {
+      return 'all';
+    }
+  }
+
+  public static setBrowserMaturityFilter(value: string): void {
+    const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
+    let prefs: Record<string, unknown> = {};
+    try {
+      prefs = raw ? JSON.parse(raw) : {};
+    } catch {
+      prefs = {};
+    }
+    if (this.BROWSER_MATURITY_VALUES.includes(value)) {
+      prefs.browserMaturityFilter = value;
+    } else {
+      delete prefs.browserMaturityFilter; // unknown value → fall back to 'all'
+    }
+    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+  }
+
   /** CardBrowser multi-select tag filter (tag names). Empty list = all. */
   public static getBrowserTagFilter(): string[] {
     const raw = localStorage.getItem(STORAGE_KEYS.PREFS);

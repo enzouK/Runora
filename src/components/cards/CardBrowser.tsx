@@ -17,6 +17,7 @@ import {
 import { Card, Note, NoteType } from '../../types/runora';
 import { StorageService } from '../../services/storage';
 import { FSRS } from '../../fsrs/algorithm';
+import { getCardMaturity, MATURITY_THRESHOLD_DAYS, CardMaturity } from '../../fsrs/maturity';
 import { MediaStore } from '../../services/mediaStore';
 import { ClozeService } from '../../services/clozeService';
 import {
@@ -264,6 +265,54 @@ const RowAudioPlayer: React.FC<{ audioRef: string | null; fallbackAudio?: string
   );
 };
 
+/**
+ * Status × maturity badge colors (iOS pill style, both themes).
+ * Colors follow Anki's convention: blue=new, orange=learning, green=review,
+ * red=relearning; young/mature refine the review state in teal shades.
+ */
+const STATE_BADGE_STYLES: Record<number, { label: string; cls: string }> = {
+  0: { label: 'Novo', cls: 'bg-ios-blue/15 text-ios-blue' },
+  1: { label: 'Aprendizado', cls: 'bg-ios-orange/15 text-ios-orange' },
+  2: { label: 'Revisão', cls: 'bg-ios-green/15 text-ios-green' },
+  3: { label: 'Reaprendizado', cls: 'bg-ios-red/15 text-ios-red' },
+};
+
+/** Status pill for every card (+ derived maturity pill for review cards). */
+const CardStatusBadges: React.FC<{ state: number; maturity: CardMaturity }> = ({
+  state,
+  maturity,
+}) => {
+  const st = STATE_BADGE_STYLES[state];
+  return (
+    <div className="flex items-center gap-1.5 shrink-0">
+      {st && (
+        <span
+          className={`text-[10px] font-semibold px-2 py-[3px] rounded-full whitespace-nowrap ${st.cls}`}
+          title="Estado de agendamento FSRS"
+        >
+          {st.label}
+        </span>
+      )}
+      {maturity === 'young' && (
+        <span
+          className="text-[10px] font-semibold px-2 py-[3px] rounded-full whitespace-nowrap bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+          title={`Revisão com intervalo < ${MATURITY_THRESHOLD_DAYS} dias`}
+        >
+          Jovem
+        </span>
+      )}
+      {maturity === 'mature' && (
+        <span
+          className="text-[10px] font-semibold px-2 py-[3px] rounded-full whitespace-nowrap bg-teal-600/15 text-teal-700 dark:text-teal-300"
+          title={`Revisão com intervalo ≥ ${MATURITY_THRESHOLD_DAYS} dias`}
+        >
+          Madura
+        </span>
+      )}
+    </div>
+  );
+};
+
 export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [deckFilterSelection, setDeckFilterSelection] = useState<string[]>(() =>
@@ -274,6 +323,9 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   );
   const [tagFilterSelection, setTagFilterSelection] = useState<string[]>(() =>
     StorageService.getBrowserTagFilter()
+  );
+  const [maturityFilter, setMaturityFilter] = useState<string>(() =>
+    StorageService.getBrowserMaturityFilter()
   );
   const [cardToDelete, setCardToDelete] = useState<{
     card: Card;
@@ -401,6 +453,9 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
     () => tagFilterSelection.filter((t) => availableTags.includes(t)),
     [tagFilterSelection, availableTags]
   );
+  // Derived maturity phase filter: only 'young'/'mature' restrict anything.
+  const activeMaturityFilter: CardMaturity =
+    maturityFilter === 'young' || maturityFilter === 'mature' ? maturityFilter : null;
 
   // Filtered card items
   const filteredCards = useMemo(() => {
@@ -421,6 +476,13 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
         return false;
       }
 
+      // Maturity phase filter (derived from the scheduled interval; single-
+      // select ANDed with the others — non-review cards are excluded while
+      // active, mirroring Anki's is:young/is:mature)
+      if (activeMaturityFilter && getCardMaturity(card) !== activeMaturityFilter) {
+        return false;
+      }
+
       // Tag filter (multi-select OR; empty = all; matches ANY selected tag)
       if (activeTagFilter.length > 0 && !note.tags.some((t) => activeTagFilter.includes(t))) {
         return false;
@@ -437,7 +499,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
 
       return true;
     });
-  }, [cards, noteMap, searchQuery, activeDeckFilter, activeStatusFilter, activeTagFilter]);
+  }, [cards, noteMap, searchQuery, activeDeckFilter, activeStatusFilter, activeTagFilter, activeMaturityFilter]);
 
   // List ordering (user preference, persisted between sessions)
   const sortedCards = useMemo(
@@ -466,7 +528,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   // Selection resets when the visible set changes (filters/search) — sorting keeps it
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [searchQuery, activeDeckFilter, activeStatusFilter, activeTagFilter]);
+  }, [searchQuery, activeDeckFilter, activeStatusFilter, activeTagFilter, activeMaturityFilter]);
 
   const toggleSelectionMode = () => {
     setSelectionMode((v) => {
@@ -583,6 +645,23 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
             { value: '1', label: 'Aprendizado (Learning)' },
             { value: '2', label: 'Revisão (Review)' },
             { value: '3', label: 'Reaprendizado (Relearning)' },
+          ]}
+        />
+
+        {/* Maturity phase (derived from the scheduled interval; single-select
+            ANDed with the other filters — mirrors Anki's is:young/is:mature) */}
+        <IOSSelect
+          active={!!activeMaturityFilter}
+          value={maturityFilter}
+          onChange={(v) => {
+            setMaturityFilter(v);
+            StorageService.setBrowserMaturityFilter(v);
+          }}
+          placeholder="Maturidade: Todas"
+          options={[
+            { value: 'all', label: 'Maturidade: Todas' },
+            { value: 'young', label: `Jovem (< ${MATURITY_THRESHOLD_DAYS} dias)` },
+            { value: 'mature', label: `Madura (≥ ${MATURITY_THRESHOLD_DAYS} dias)` },
           ]}
         />
 
@@ -959,8 +1038,12 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                     </div>
                   </div>
 
-                  {/* Right: stats + actions */}
+                  {/* Right: status badges + stats + actions */}
                   <div className="flex items-center gap-3 shrink-0">
+                    <CardStatusBadges
+                      state={card.fsrs.state}
+                      maturity={getCardMaturity(card)}
+                    />
                     <div className="flex items-center gap-2.5 text-[12px] font-semibold tabular-nums pr-1">
                       <span
                         className="text-zinc-400 dark:text-zinc-500"
