@@ -56,10 +56,8 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
 
   // Trigger label for multi mode: selected option labels, or the 'all'
   // option label when nothing is selected.
-  // Single mode: the sentinel 'all' option counts as "no selection" so the
-  // trigger pill renders muted just like the empty multi-select.
   let triggerLabel = selected?.label ?? placeholder;
-  let triggerMuted = !selected || selected.value === 'all';
+  let triggerMuted = !selected;
   if (multiple) {
     if (values.length === 0) {
       const allOpt = options.find((o) => o.value === 'all');
@@ -210,17 +208,6 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
                   }`}
                 >
                   <span className="flex items-center gap-2 min-w-0">
-                    {multiple && (
-                      <span
-                        className={`w-4 h-4 rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
-                          isSelected
-                            ? 'bg-blue-600 border-blue-600 text-white'
-                            : 'border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800'
-                        }`}
-                      >
-                        {isSelected && <Check className="w-3 h-3" strokeWidth={3} />}
-                      </span>
-                    )}
                     <span className="min-w-0">
                       <span className="block truncate">{opt.label}</span>
                       {opt.hint && (
@@ -228,7 +215,7 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
                       )}
                     </span>
                   </span>
-                  {!multiple && isSelected && (
+                  {isSelected && (
                     <Check className="w-3.5 h-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
                   )}
                 </button>

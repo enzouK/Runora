@@ -272,9 +272,9 @@ const RowAudioPlayer: React.FC<{ audioRef: string | null; fallbackAudio?: string
  */
 const STATE_BADGE_STYLES: Record<number, { label: string; cls: string }> = {
   0: { label: 'Novo', cls: 'bg-ios-blue/15 text-ios-blue' },
-  1: { label: 'Aprendizado', cls: 'bg-ios-orange/15 text-ios-orange' },
+  1: { label: 'Aprendizagem', cls: 'bg-ios-orange/15 text-ios-orange' },
   2: { label: 'Revisão', cls: 'bg-ios-green/15 text-ios-green' },
-  3: { label: 'Reaprendizado', cls: 'bg-ios-red/15 text-ios-red' },
+  3: { label: 'Reaprendizagem', cls: 'bg-ios-red/15 text-ios-red' },
 };
 
 /** Status pill for every card (+ derived maturity pill for review cards). */
@@ -303,10 +303,10 @@ const CardStatusBadges: React.FC<{ state: number; maturity: CardMaturity }> = ({
       )}
       {maturity === 'mature' && (
         <span
-          className="text-[10px] font-semibold px-2 py-[3px] rounded-full whitespace-nowrap bg-teal-600/15 text-teal-700 dark:text-teal-300"
+          className="text-[10px] font-semibold px-2 py-[3px] rounded-full whitespace-nowrap bg-green-800/15 text-green-800 dark:text-green-500"
           title={`Revisão com intervalo ≥ ${MATURITY_THRESHOLD_DAYS} dias`}
         >
-          Madura
+          Maduro
         </span>
       )}
     </div>
@@ -642,9 +642,9 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
           options={[
             { value: 'all', label: 'Todos os Estados' },
             { value: '0', label: 'Novo (New)' },
-            { value: '1', label: 'Aprendizado (Learning)' },
+            { value: '1', label: 'Aprendizagem (Learning)' },
             { value: '2', label: 'Revisão (Review)' },
-            { value: '3', label: 'Reaprendizado (Relearning)' },
+            { value: '3', label: 'Reaprendizagem (Relearning)' },
           ]}
         />
 
@@ -661,7 +661,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
           options={[
             { value: 'all', label: 'Maturidade: Todas' },
             { value: 'young', label: `Jovem (< ${MATURITY_THRESHOLD_DAYS} dias)` },
-            { value: 'mature', label: `Madura (≥ ${MATURITY_THRESHOLD_DAYS} dias)` },
+            { value: 'mature', label: `Maduro (≥ ${MATURITY_THRESHOLD_DAYS} dias)` },
           ]}
         />
 
