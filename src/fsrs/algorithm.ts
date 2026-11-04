@@ -36,9 +36,21 @@ export class FSRS {
    * Clamped between 1.0 and 10.0 (FSRS-5/6 formula)
    */
   public initDifficulty(rating: FSRSRating): number {
+    return this.clamp(this.rawInitDifficulty(rating), 1.0, 10.0);
+  }
+
+  /**
+   * Raw initial difficulty: D_0(G) = w[4] - exp(w[5] * (G - 1)) + 1
+   *
+   * Deliberately NOT clamped. The upstream `fsrs` crate (6.6.2 — the engine
+   * Anki runs) keeps the raw value and only clamps it where it is actually
+   * stored as a card's difficulty (`model.rs::step`). The mean reversion
+   * target uses the raw value, and the crate's official test vectors only
+   * match when it is left unclamped.
+   */
+  private rawInitDifficulty(rating: FSRSRating): number {
     const w = this.params.w;
-    const d = w[4] - Math.exp(w[5] * (rating - 1)) + 1;
-    return this.clamp(d, 1.0, 10.0);
+    return w[4] - Math.exp(w[5] * (rating - 1)) + 1;
   }
 
   /**
@@ -64,16 +76,35 @@ export class FSRS {
   }
 
   /**
-   * Next difficulty after a review
-   * Delta D = -w[6] * (G - 3)
-   * D' = w[7] * D_0(4) + (1 - w[7]) * (D + Delta D)
-   * FSRS-5+: mean reversion target is D₀(4) (Easy), FSRS-4.5 used D₀(3).
+   * Next difficulty after a review (FSRS-5/6, exact Anki parity).
+   *
+   *   ΔD   = −w[6] · (G − 3)
+   *   D'   = D + ((10 − D) / 9) · ΔD            ← linear damping (FSRS-5/6)
+   *   D''  = w[7] · D_0(4) + (1 − w[7]) · D'     ← mean reversion
+   *   D''' = clamp(D'', 1, 10)
+   *
+   * The linear damping (introduced in FSRS-5) shrinks the difficulty change
+   * as D approaches 10 and grows it as D approaches 1. It is what
+   * `fsrs::next_difficulty` does in the upstream crate (`model.rs`):
+   *
+   *   fn linear_damping(delta_d: f32, old_d: f32) -> f32 {
+   *       (10.0 - old_d) * delta_d / 9.0
+   *   }
+   *
+   * Omitting it made Runora's difficulty drift away from Anki's on every
+   * single review (e.g. D = 9 + "Easy": Anki ≈ 8.65, Runora used to give 5.98).
    */
   public nextDifficulty(currentD: number, rating: FSRSRating): number {
     const w = this.params.w;
+    // The upstream crate clamps the card's difficulty before updating it.
+    const d = this.clamp(currentD, 1.0, 10.0);
     const deltaD = -w[6] * (rating - 3);
-    const d0Easy = this.initDifficulty(4); // FSRS-5+: mean reversion target
-    const nextD = w[7] * d0Easy + (1 - w[7]) * (currentD + deltaD);
+    // Linear damping (FSRS-5/6).
+    const dampedD = d + ((10 - d) / 9) * deltaD;
+    // Mean reversion toward D_0(4) (Easy) — FSRS-5+ uses D_0(4), FSRS-4.5
+    // used D_0(3). The target is the RAW initial difficulty, like the crate.
+    const d0Easy = this.rawInitDifficulty(4);
+    const nextD = w[7] * d0Easy + (1 - w[7]) * dampedD;
     return this.clamp(nextD, 1.0, 10.0);
   }
 
