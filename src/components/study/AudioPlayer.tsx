@@ -290,7 +290,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
         {/* Dropdown Popover */}
         {isSpeedMenuOpen && (
-          <div className="absolute right-0 bottom-full mb-1.5 w-32 py-1 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-150">
+          <div className="absolute right-0 bottom-full mb-1.5 w-32 py-1 rounded-xl bg-ios-card dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-150">
             <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 border-b border-zinc-100 dark:border-zinc-700/50 mb-0.5">
               Velocidade
             </div>

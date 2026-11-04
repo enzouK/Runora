@@ -14,6 +14,8 @@
   --color-ios-card: #ffffff;
   --color-ios-card-dark: #1c1c1e;
   --color-ios-sep: rgba(60, 60, 67, 0.12);
+  --color-ios-card-border: rgba(60, 60, 67, 0.10);
+  --shadow-ios-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.06);
 
   /* ===== Semantic text / surface vars (defaults = current zinc look;
      overridden per color-theme in color-themes.css) ===== */
