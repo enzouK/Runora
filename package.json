@@ -13,6 +13,7 @@
     "app:build": "npm run build && electron-builder --win",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts",
     "android:build": "npm run build && npx cap copy android && npx cap build android",
     "android:open": "npx cap open android",
     "android:run": "npm run build && npx cap copy android && npx cap run android"

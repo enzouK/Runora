@@ -19,6 +19,7 @@ import { Card, Note, NoteType } from '../../types/runora';
 import { StorageService } from '../../services/storage';
 import { FSRS } from '../../fsrs/algorithm';
 import { getCardMaturity, MATURITY_THRESHOLD_DAYS, CardMaturity } from '../../fsrs/maturity';
+import { formatDifficultyPercent, hasDifficulty } from '../../fsrs/difficulty';
 import { MediaStore } from '../../services/mediaStore';
 import { ClozeService } from '../../services/clozeService';
 import {
@@ -1138,10 +1139,14 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                       </span>
                       <span
                         className="text-zinc-400 dark:text-zinc-500"
-                        title="Dificuldade (1 a 10)"
+                        title="Dificuldade (0% a 100% — quanto maior, mais difícil)"
                       >
                         <span className="font-medium">D</span>{' '}
-                        <span className="text-ios-orange">{card.fsrs.difficulty.toFixed(1)}</span>
+                        <span className="text-ios-orange">
+                          {hasDifficulty(card.fsrs.difficulty)
+                            ? formatDifficultyPercent(card.fsrs.difficulty)
+                            : '—'}
+                        </span>
                       </span>
                       <span
                         className="text-zinc-400 dark:text-zinc-500 hidden md:inline"
