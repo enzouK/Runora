@@ -490,15 +490,15 @@ const FieldImagePreview: React.FC<{
 
   return (
     <>
-      <div className="my-2 p-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800/90 border border-emerald-500/30 dark:border-emerald-500/30 shadow-sm flex items-center justify-between gap-3 group">
+      <div className="my-2 p-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800/90 border border-emerald-500/30 dark:border-emerald-500/30 shadow-sm flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div
             onClick={() => setShowModal(true)}
-            className="cursor-pointer relative overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700 w-16 h-16 flex-shrink-0 bg-black/5 flex items-center justify-center hover:opacity-90 transition-opacity"
+            className="group/img cursor-pointer relative overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700 w-16 h-16 flex-shrink-0 bg-black/5 flex items-center justify-center hover:opacity-90 transition-opacity"
             title="Clique para ampliar imagem"
           >
             <img src={imgSrc} alt="Pasted" className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center text-white">
               <Maximize2 className="w-4 h-4" />
             </div>
           </div>

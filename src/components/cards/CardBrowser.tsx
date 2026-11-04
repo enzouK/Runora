@@ -13,6 +13,7 @@ import {
   Pause,
   ListChecks,
   Tags,
+  Maximize2,
 } from 'lucide-react';
 import { Card, Note, NoteType } from '../../types/runora';
 import { StorageService } from '../../services/storage';
@@ -65,13 +66,17 @@ async function resolveMedia(ref: string): Promise<string | null> {
  */
 type RowLayout = 'text' | 'image' | 'audio';
 
-/** Image box: fixed size keeps text alignment stable; featured variant is larger. */
+/** Image box: fixed size keeps text alignment stable; featured variant is larger.
+ *  Clicking the image opens it fullscreen (same lightbox as the Edit Card preview). */
 const RowImage: React.FC<{
   imageRef: string | null;
   fallbackImage?: string;
   featured?: boolean;
 }> = ({ imageRef, fallbackImage, featured = false }) => {
   const [url, setUrl] = useState<string | null>(null);
+  const [showLightbox, setShowLightbox] = useState(false);
+  // Lightbox is fullscreen-interactive: keep the panel behind static
+  useBodyScrollLock(showLightbox);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,19 +95,65 @@ const RowImage: React.FC<{
   if (!imageRef && !fallbackImage) return null;
 
   return (
-    <div
-      className={`rounded-xl border border-black/[0.06] dark:border-white/[0.1] bg-black/[0.03] dark:bg-white/[0.05] flex items-center justify-center overflow-hidden shrink-0 ${
-        featured ? 'w-[280px] h-56' : 'w-44 h-28'
-      }`}
-    >
-      {url && (
-        <img
-          src={url}
-          alt=""
-          className="max-w-full max-h-full w-auto h-auto object-contain"
-        />
-      )}
-    </div>
+    <>
+      <div
+        onClick={(e) => {
+          // Don't let the click bubble to the row (selection mode toggles there)
+          e.stopPropagation();
+          if (url) setShowLightbox(true);
+        }}
+        className={`group/img relative rounded-xl border border-black/[0.06] dark:border-white/[0.1] bg-black/[0.03] dark:bg-white/[0.05] flex items-center justify-center overflow-hidden shrink-0 cursor-pointer ${
+          featured ? 'w-[280px] h-56' : 'w-44 h-28'
+        }`}
+        title="Clique para ampliar imagem"
+      >
+        {url && (
+          <img
+            src={url}
+            alt=""
+            className="max-w-full max-h-full w-auto h-auto object-contain"
+          />
+        )}
+        {/* Hover: darkens the image and shows the enlarge icon */}
+        {url && (
+          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center text-white pointer-events-none">
+            <Maximize2 className="w-5 h-5" />
+          </div>
+        )}
+      </div>
+
+      {/* Lightbox — fullscreen image viewer */}
+      {showLightbox &&
+        createPortal(
+          <div
+            // mousedown (not click): a text-selection drag released over the backdrop must not close
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setShowLightbox(false);
+            }}
+            className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-4xl max-h-[90vh] bg-zinc-900 rounded-2xl p-2 overflow-hidden shadow-2xl flex flex-col items-center"
+            >
+              <button
+                type="button"
+                onClick={() => setShowLightbox(false)}
+                className="absolute top-3 right-3 p-2 rounded-full bg-black/60 text-white hover:bg-black/90 transition-colors z-10 cursor-pointer"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <img
+                src={url ?? ''}
+                alt="Ampliada"
+                className="max-h-[82vh] w-auto object-contain rounded-xl"
+              />
+            </div>
+          </div>,
+          document.body
+        )}
+    </>
   );
 };
 
