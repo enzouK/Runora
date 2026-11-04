@@ -48,6 +48,22 @@
     -moz-osx-font-smoothing: grayscale;
     letter-spacing: -0.011em;
   }
+
+  /* Pointer cursor on every interactive control (buttons, selects, checkboxes,
+     switches, options). Explicit Tailwind cursor utilities still win over this
+     base rule: cursor-text (card text), cursor-default (static rows) and
+     disabled:cursor-not-allowed keep their own behavior. */
+  button:not(:disabled),
+  select:not(:disabled),
+  input[type='checkbox']:not(:disabled),
+  input[type='radio']:not(:disabled),
+  [role='button'],
+  [role='option'],
+  [role='switch'],
+  [role='tab'],
+  summary {
+    cursor: pointer;
+  }
 }
 
 /* Hide the native up/down spinners on number inputs (clean iOS-style fields) */
