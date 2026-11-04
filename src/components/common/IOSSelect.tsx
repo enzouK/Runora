@@ -15,6 +15,9 @@ interface IOSSelectProps {
   maxMenuHeight?: number;
   /** Blue-tinted trigger: signals that this filter has an active selection. */
   active?: boolean;
+  /** Facet name for the closed trigger pill (e.g. "Decks"). Overrides the
+   *  computed trigger label (selection counts / selected option label). */
+  triggerLabel?: string;
   /**
    * Multi-select mode: options render with a checkbox and clicking toggles
    * them WITHOUT closing the menu. Uses `values`/`onValuesChange` instead of
@@ -46,6 +49,7 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
   values = [],
   onValuesChange,
   active = false,
+  triggerLabel: triggerLabelOverride,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; up: boolean } | null>(null);
@@ -70,6 +74,13 @@ export const IOSSelect: React.FC<IOSSelectProps> = ({
       triggerLabel = `${values.length} selecionados`;
       triggerMuted = false;
     }
+  }
+
+  // Facet-name override wins over any computed label (counts/selections) so
+  // the trigger reads as a stable category name, e.g. "Decks".
+  if (triggerLabelOverride) {
+    triggerLabel = triggerLabelOverride;
+    triggerMuted = false;
   }
 
   useEffect(() => {

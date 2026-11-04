@@ -620,27 +620,28 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
         <IOSSelect
           multiple
           active={activeDeckFilter.length > 0}
+          triggerLabel="Decks"
           values={deckFilterSelection}
           onValuesChange={(v) => {
             setDeckFilterSelection(v);
             StorageService.setBrowserDeckFilter(v);
           }}
           options={[
-            { value: 'all', label: 'Todos os Decks' },
+            { value: 'all', label: 'Mostrar todos' },
             ...decks.map((d) => ({ value: d.id, label: d.name })),
           ]}
         />
-
         <IOSSelect
           multiple
           active={activeStatusFilter.length > 0}
+          triggerLabel="Status"
           values={statusFilterSelection}
           onValuesChange={(v) => {
             setStatusFilterSelection(v);
             StorageService.setBrowserStatusFilter(v);
           }}
           options={[
-            { value: 'all', label: 'Todos os Estados' },
+            { value: 'all', label: 'Mostrar todos' },
             { value: '0', label: 'Novo (New)' },
             { value: '1', label: 'Aprendizagem (Learning)' },
             { value: '2', label: 'Revisão (Review)' },
@@ -652,14 +653,14 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
             ANDed with the other filters — mirrors Anki's is:young/is:mature) */}
         <IOSSelect
           active={!!activeMaturityFilter}
+          triggerLabel="Maturidade"
           value={maturityFilter}
           onChange={(v) => {
             setMaturityFilter(v);
             StorageService.setBrowserMaturityFilter(v);
           }}
-          placeholder="Maturidade: Todas"
           options={[
-            { value: 'all', label: 'Maturidade: Todas' },
+            { value: 'all', label: 'Mostrar todos' },
             { value: 'young', label: `Jovem (< ${MATURITY_THRESHOLD_DAYS} dias)` },
             { value: 'mature', label: `Maduro (≥ ${MATURITY_THRESHOLD_DAYS} dias)` },
           ]}
@@ -668,13 +669,14 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
         <IOSSelect
           multiple
           active={activeTagFilter.length > 0}
+          triggerLabel="Tags"
           values={tagFilterSelection}
           onValuesChange={(v) => {
             setTagFilterSelection(v);
             StorageService.setBrowserTagFilter(v);
           }}
           options={[
-            { value: 'all', label: 'Todas as tags' },
+            { value: 'all', label: 'Mostrar todos' },
             ...availableTags.map((t) => ({ value: t, label: `#${t}` })),
           ]}
         />
