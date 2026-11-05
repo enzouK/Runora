@@ -33,8 +33,9 @@ function float32(value: number): number[] {
   return Array.from(new Uint8Array(buf));
 }
 
-function lengthDelimited(fieldNumber: number, payload: number[]): number[] {
-  return [...tag(fieldNumber, 2), ...varint(payload.length), ...payload];
+function lengthDelimited(fieldNumber: number, payload: Uint8Array | number[]): number[] {
+  const data = payload instanceof Uint8Array ? Array.from(payload) : payload;
+  return [...tag(fieldNumber, 2), ...varint(data.length), ...data];
 }
 
 function packedFloats(fieldNumber: number, values: number[]): number[] {
@@ -49,7 +50,8 @@ function varintField(fieldNumber: number, value: number): number[] {
   return [...tag(fieldNumber, 0), ...varint(value)];
 }
 
-const bytes = (...parts: number[][]): Uint8Array => Uint8Array.from(parts.flat());
+const bytes = (...parts: (number[] | number[][])[]): Uint8Array =>
+  Uint8Array.from(parts.flat());
 
 /**
  * The real `deck_config.config` protobuf of the reference Anki export
