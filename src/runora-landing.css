@@ -115,3 +115,38 @@
 [data-color-theme='runora'] ::-webkit-scrollbar-thumb:hover {
   background: rgba(167, 139, 250, 0.55);
 }
+
+/* ---------- 9. Light mode: glass cards with subtle violet glow ---------- */
+:root:not(.dark)[data-color-theme='runora'] .bg-ios-card {
+  box-shadow:
+    var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-shadow), var(--tw-shadow),
+    0 12px 28px -20px rgba(124, 58, 237, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* ---------- 10. Light mode: segmented control active state ---------- */
+:root:not(.dark)[data-color-theme='runora'] .bg-black\/\[0\.06\] {
+  background-color: rgba(124, 58, 237, 0.12);
+  color: #1b1230;
+  box-shadow:
+    inset 0 0 0 1px rgba(124, 58, 237, 0.25),
+    0 4px 14px -8px rgba(124, 58, 237, 0.4);
+}
+
+/* ---------- 11. Light mode: stat cards with glass + violet border ---------- */
+:root:not(.dark)[data-color-theme='runora'] .bg-ios-blue\/10,
+:root:not(.dark)[data-color-theme='runora'] .bg-ios-orange\/10,
+:root:not(.dark)[data-color-theme='runora'] .bg-ios-green\/10 {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+:root:not(.dark)[data-color-theme='runora'] .border-ios-blue\/\[0\.12\],
+:root:not(.dark)[data-color-theme='runora'] .border-ios-orange\/\[0\.12\],
+:root:not(.dark)[data-color-theme='runora'] .border-ios-green\/\[0\.12\] {
+  border-color: rgba(124, 58, 237, 0.18);
+}
+
+/* ---------- 12. Light mode: native app halo (top ellipse) ---------- */
+:root:not(.dark)[data-color-theme='runora'] .bg-\[radial-gradient\(ellipse_55\%_50\%_at_50\%_-12\%\,rgba\(64\,156\,255\,0\.14\)\,transparent\)\] {
+  background-image: radial-gradient(ellipse 55% 50% at 50% -12%, rgba(167, 139, 250, 0.18), transparent);
+}
