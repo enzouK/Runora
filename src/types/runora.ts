@@ -9,8 +9,22 @@ export type CardState = 0 | 1 | 2 | 3;  // 0: New, 1: Learning, 2: Review, 3: Re
 export interface FSRSParameters {
   requestRetention: number;    // Desired retention rate (e.g., 0.90)
   maximumInterval: number;     // Maximum interval in days (e.g., 36500)
-  w: number[];                 // 19 parameters w[0]..w[18]
+  w: number[];                 // 19 parameters w[0]..w[18] (FSRS-5) or 21 w[0]..w[20] (FSRS-6)
   enableFuzz: boolean;         // Slight interval randomization to avoid card bunching
+}
+
+/**
+ * The FSRS options that can be scoped to a preset and overridden per deck.
+ *
+ * `w` holds the FSRS weights — the same array Anki stores as `fsrs_params_6`
+ * (21 values, with the trainable decay in `w[20]`). It is optional: when a
+ * scope leaves it out, the deck inherits the weights from the layer above
+ * (deck override → preset → global settings).
+ */
+export interface FSRSScope {
+  requestRetention: number;    // Desired retention rate (e.g., 0.90)
+  maximumInterval: number;     // Maximum interval in days (e.g., 36500)
+  w?: number[];                // FSRS weights — 19 (FSRS-5) or 21 (FSRS-6)
 }
 
 export interface FSRSCardData {
@@ -154,10 +168,7 @@ export interface Deck {
   presetId?: string;             // Options preset this deck follows (see Preset)
   // Runora-style "This deck" scopes: when set, they take priority over the preset
   dailyLimitsOverride?: { newCardsPerDay: number; maxReviewsPerDay: number }; // Daily Limits scoped to "This deck"
-  fsrsOverride?: {                          // FSRS scoped to "This deck"
-    requestRetention: number;
-    maximumInterval: number;
-  };
+  fsrsOverride?: FSRSScope;                // FSRS scoped to "This deck"
   fsrsParams?: Partial<FSRSParameters>; // Custom deck-specific FSRS overrides if any
   dailyLimits?: DailyLimits;     // Runora-style daily limits (legacy mirror of the preset)
   schedulerConfig?: SchedulerConfig; // Runora-style New Cards / Lapses options
@@ -188,10 +199,7 @@ export interface Preset {
   };
   displayOrder: DisplayOrderConfig;
   audioConfig: AudioConfig;
-  fsrsParams: {
-    requestRetention: number;     // Runora "desired retention"
-    maximumInterval: number;      // Runora "max. days per interval"
-  };
+  fsrsParams: FSRSScope;         // Runora "desired retention" + max. days per interval (+ optional FSRS weights)
   createdAt: number;
   updatedAt: number;
 }

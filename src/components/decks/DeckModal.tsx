@@ -38,6 +38,12 @@ import {
 } from '../../types/runora';
 import { StorageService } from '../../services/storage';
 import { AddonSystem } from '../../services/addonSystem';
+import { DEFAULT_FSRS_WEIGHTS, FSRS_6_WEIGHT_COUNT } from '../../fsrs/constants';
+import {
+  FSRS_WEIGHT_LABELS,
+  inheritedWeights,
+  parseFsrsWeights,
+} from '../../fsrs/weights';
 import { IOSSelect } from '../common/IOSSelect';
 import { HelpPanel, HelpTopic } from '../common/HelpPanel';
 import { useBodyScrollLock } from '../common/useBodyScrollLock';
@@ -628,6 +634,10 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const [description, setDescription] = useState('');
   const [targetRetention, setTargetRetention] = useState(0.90);
   const [maxInterval, setMaxInterval] = useState('36500');
+  // FSRS weights (w[0]..w[20]) — `null` means "inherit from the layer above".
+  const [fsrsWeights, setFsrsWeights] = useState<number[] | null>(null);
+  const [weightsOpen, setWeightsOpen] = useState(false);
+  const [weightsPaste, setWeightsPaste] = useState('');
   const [helpSection, setHelpSection] = useState<HelpSectionId | null>(null);
   const [newCardsPerDay, setNewCardsPerDay] = useState('20');
   const [maxReviewsPerDay, setMaxReviewsPerDay] = useState('200');
@@ -660,6 +670,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
   const applyPreset = (p: Preset) => {
     setTargetRetention(p.fsrsParams.requestRetention);
     setMaxInterval(String(p.fsrsParams.maximumInterval));
+    setFsrsWeights(p.fsrsParams.w ?? null);
     setNewCardsPerDay(String(p.dailyLimits.newCardsPerDay));
     setMaxReviewsPerDay(String(p.dailyLimits.maxReviewsPerDay));
     setLearningSteps(p.schedulerConfig.learningSteps);
@@ -707,10 +718,12 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       setFsrsScope('deck');
       setTargetRetention(deckObj.fsrsOverride.requestRetention);
       setMaxInterval(String(deckObj.fsrsOverride.maximumInterval));
+      setFsrsWeights(deckObj.fsrsOverride.w ?? null);
     } else {
       setFsrsScope('preset');
       setTargetRetention(base.fsrsParams.requestRetention);
       setMaxInterval(String(base.fsrsParams.maximumInterval));
+      setFsrsWeights(base.fsrsParams.w ?? null);
     }
   };
 
@@ -752,6 +765,8 @@ export const DeckModal: React.FC<DeckModalProps> = ({
           Number.isFinite(parsedMaxInterval) && parsedMaxInterval > 0
             ? parsedMaxInterval
             : StorageService.getFSRSSettings().maximumInterval,
+        // `undefined` = inherit the weights from the global settings.
+        w: fsrsWeights ?? undefined,
       },
       updatedAt: Date.now(),
     };
@@ -854,6 +869,7 @@ export const DeckModal: React.FC<DeckModalProps> = ({
       setFsrsScope('deck');
       setTargetRetention(deckObj.fsrsOverride.requestRetention);
       setMaxInterval(String(deckObj.fsrsOverride.maximumInterval));
+      setFsrsWeights(deckObj.fsrsOverride.w ?? null);
     } else {
       setFsrsScope('preset');
     }
@@ -915,6 +931,8 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                 Number.isFinite(parsedMaxIntervalForDeck) && parsedMaxIntervalForDeck > 0
                   ? parsedMaxIntervalForDeck
                   : StorageService.getFSRSSettings().maximumInterval,
+              // `undefined` = inherit the weights from the preset/global.
+              w: fsrsWeights ?? undefined,
             }
           : undefined,
     };
@@ -1170,7 +1188,19 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                     if (cur) {
                       setTargetRetention(cur.fsrsParams.requestRetention);
                       setMaxInterval(String(cur.fsrsParams.maximumInterval));
+                      setFsrsWeights(cur.fsrsParams.w ?? null);
                     }
+                  } else {
+                    // "Este deck" shows the deck's own weights, or the preset's
+                    // when the deck has no override of its own.
+                    const decksNow = StorageService.getDecks();
+                    const deckNow = editDeck
+                      ? decksNow.find((d) => d.id === editDeck.id)
+                      : undefined;
+                    const presetNow = presetList.find((p) => p.id === presetId);
+                    setFsrsWeights(
+                      deckNow?.fsrsOverride?.w ?? presetNow?.fsrsParams.w ?? null
+                    );
                   }
                 }}
               />
@@ -1204,6 +1234,130 @@ export const DeckModal: React.FC<DeckModalProps> = ({
                   <span>70% (Menos revisões)</span>
                   <span>98% (Alta retenção)</span>
                 </div>
+              </div>
+
+              {/* ── Pesos FSRS (w[0]..w[20]) — igual ao Anki ── */}
+              <div className="px-3.5 py-3 border-t border-black/[0.04] dark:border-white/[0.06]">
+                <button
+                  type="button"
+                  onClick={() => setWeightsOpen((v) => !v)}
+                  className="w-full flex items-center justify-between gap-2 text-left"
+                >
+                  <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                    Pesos do FSRS
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-[10px] font-medium text-zinc-400">
+                      {fsrsWeights
+                        ? `${fsrsWeights.length} valores (FSRS-${fsrsWeights.length === FSRS_6_WEIGHT_COUNT ? '6' : '5'})`
+                        : 'Herdar'}
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 text-zinc-400 transition-transform ${weightsOpen ? 'rotate-180' : ''}`}
+                    />
+                  </span>
+                </button>
+
+                {weightsOpen && (
+                  <div className="mt-3">
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-2.5 leading-relaxed">
+                      Os pesos matemáticos do agendador. Sem valor próprio, o deck usa os pesos
+                      globais do app. O decay (w[20]) controla a curva de esquecimento.
+                    </p>
+
+                    {fsrsWeights ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-1.5 mb-2.5">
+                          {fsrsWeights.map((value, i) => (
+                            <label
+                              key={i}
+                              className="flex items-center gap-1.5 rounded-lg bg-black/[0.03] dark:bg-white/[0.05] px-2 py-1"
+                            >
+                              <span
+                                className="text-[10px] font-mono text-zinc-400 w-4 shrink-0"
+                                title={FSRS_WEIGHT_LABELS[i]}
+                              >
+                                w{i}
+                              </span>
+                              <input
+                                type="number"
+                                step="0.0001"
+                                value={value}
+                                onChange={(e) => {
+                                  const n = Number(e.target.value);
+                                  if (!Number.isFinite(n)) return;
+                                  setFsrsWeights((prev) =>
+                                    prev ? prev.map((v, j) => (j === i ? n : v)) : prev
+                                  );
+                                }}
+                                className="no-spinner w-full min-w-0 bg-transparent text-[11px] font-mono text-zinc-800 dark:text-zinc-200 focus:outline-none"
+                              />
+                            </label>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setFsrsWeights([...DEFAULT_FSRS_WEIGHTS])}
+                            className="px-2.5 py-1.5 rounded-lg bg-black/[0.05] dark:bg-white/[0.08] text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.08] dark:hover:bg-white/[0.12] transition-colors"
+                          >
+                            Restaurar padrão
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFsrsWeights(null)}
+                            className="px-2.5 py-1.5 rounded-lg bg-black/[0.05] dark:bg-white/[0.08] text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.08] dark:hover:bg-white/[0.12] transition-colors"
+                          >
+                            Herdar do preset
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFsrsWeights(inheritedWeights(StorageService.getFSRSSettings().w))}
+                            className="px-2.5 py-1.5 rounded-lg bg-black/[0.05] dark:bg-white/[0.08] text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.08] dark:hover:bg-white/[0.12] transition-colors"
+                          >
+                            Copiar globais
+                          </button>
+                        </div>
+
+                        {/* Importar pesos (do otimizador FSRS ou do Anki) */}
+                        <div className="mt-2.5">
+                          <textarea
+                            rows={2}
+                            value={weightsPaste}
+                            onChange={(e) => setWeightsPaste(e.target.value)}
+                            placeholder="Cole aqui os pesos (19 ou 21 valores separados por espaço ou vírgula)"
+                            className="w-full px-2.5 py-2 rounded-lg bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.05] dark:border-white/[0.08] text-[11px] font-mono text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const parsed = parseFsrsWeights(weightsPaste);
+                              if (parsed) {
+                                setFsrsWeights(parsed);
+                                setWeightsPaste('');
+                              }
+                            }}
+                            disabled={!weightsPaste.trim()}
+                            className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-ios-blue text-white text-[11px] font-semibold disabled:opacity-40 transition-opacity"
+                          >
+                            Importar pesos
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFsrsWeights(inheritedWeights(StorageService.getFSRSSettings().w))
+                        }
+                        className="px-2.5 py-1.5 rounded-lg bg-black/[0.05] dark:bg-white/[0.08] text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.08] dark:hover:bg-white/[0.12] transition-colors"
+                      >
+                        Personalizar pesos
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

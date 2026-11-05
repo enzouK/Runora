@@ -6,12 +6,15 @@ import {
   Check,
   AlertCircle,
   Cloud,
+  ChevronDown,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { FSRSParameters } from '../../types/runora';
 import { StorageService } from '../../services/storage';
 import { DriveSyncService } from '../../services/gdriveSync';
 import { ExportImportService } from '../../services/exportImport';
-import { DEFAULT_FSRS_PARAMETERS } from '../../fsrs/constants';
+import { DEFAULT_FSRS_PARAMETERS, FSRS_6_WEIGHT_COUNT } from '../../fsrs/constants';
+import { FSRS_WEIGHT_LABELS, parseFsrsWeights } from '../../fsrs/weights';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSelect } from '../common/IOSSelect';
 import { COLOR_THEMES, COLOR_THEME_NAMES, DEFAULT_COLOR_THEME } from '../../themes';
@@ -36,6 +39,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [confirmResetFSRS, setConfirmResetFSRS] = useState(false);
   const [confirmResetData, setConfirmResetData] = useState(false);
   const [rolloverHour, setRolloverHour] = useState<number>(() => StorageService.getRolloverHour());
+  const [weightsOpen, setWeightsOpen] = useState(false);
+  const [weightsPaste, setWeightsPaste] = useState('');
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => StorageService.getTheme());
   const [colorTheme, setColorTheme] = useState<string>(() => StorageService.getColorTheme());
   // Google Drive sync
@@ -236,6 +241,106 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
                   Ex.: com 4, revisar às 2:30 ainda conta para o dia anterior (padrão do Runora).
                 </p>
+              </div>
+
+              {/* Global FSRS weights — the fallback every preset/deck inherits from */}
+              <div className="px-3.5 py-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06]">
+                <button
+                  type="button"
+                  onClick={() => setWeightsOpen((v) => !v)}
+                  className="w-full flex items-center justify-between gap-2 text-left"
+                >
+                  <span className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-4 h-4 text-ios-blue shrink-0" />
+                    <span className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
+                      Pesos globais do FSRS
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-[11px] font-medium text-zinc-400">
+                      {params.w.length} valores (FSRS-{params.w.length === FSRS_6_WEIGHT_COUNT ? '6' : '5'})
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 text-zinc-400 transition-transform ${weightsOpen ? 'rotate-180' : ''}`}
+                    />
+                  </span>
+                </button>
+
+                {weightsOpen && (
+                  <div className="mt-3">
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-2.5 leading-relaxed">
+                      Os pesos matemáticos do agendador. Presets e decks podem sobrescrevê-los
+                      nas próprias opções de deck. O decay (w[20]) controla a curva de
+                      esquecimento.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-1.5 mb-2.5">
+                      {params.w.map((value, i) => (
+                        <label
+                          key={i}
+                          className="flex items-center gap-1.5 rounded-lg bg-black/[0.03] dark:bg-white/[0.05] px-2 py-1"
+                        >
+                          <span
+                            className="text-[10px] font-mono text-zinc-400 w-4 shrink-0"
+                            title={FSRS_WEIGHT_LABELS[i]}
+                          >
+                            w{i}
+                          </span>
+                          <input
+                            type="number"
+                            step="0.0001"
+                            value={value}
+                            onChange={(e) => {
+                              const n = Number(e.target.value);
+                              if (!Number.isFinite(n)) return;
+                              setParams((p) => ({
+                                ...p,
+                                w: p.w.map((v, j) => (j === i ? n : v)),
+                              }));
+                            }}
+                            className="no-spinner w-full min-w-0 bg-transparent text-[11px] font-mono text-zinc-800 dark:text-zinc-200 focus:outline-none"
+                          />
+                        </label>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setParams((p) => ({ ...p, w: [...DEFAULT_FSRS_PARAMETERS.w] }))
+                        }
+                        className="px-2.5 py-1.5 rounded-lg bg-black/[0.05] dark:bg-white/[0.08] text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.08] dark:hover:bg-white/[0.12] transition-colors"
+                      >
+                        Restaurar padrão
+                      </button>
+                    </div>
+
+                    <div className="mt-2.5">
+                      <textarea
+                        rows={2}
+                        value={weightsPaste}
+                        onChange={(e) => setWeightsPaste(e.target.value)}
+                        placeholder="Cole aqui os pesos (19 ou 21 valores separados por espaço ou vírgula)"
+                        className="w-full px-2.5 py-2 rounded-lg bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.05] dark:border-white/[0.08] text-[11px] font-mono text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const parsed = parseFsrsWeights(weightsPaste);
+                          if (parsed) {
+                            setParams((p) => ({ ...p, w: parsed }));
+                            setWeightsPaste('');
+                          }
+                        }}
+                        disabled={!weightsPaste.trim()}
+                        className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-ios-blue text-white text-[11px] font-semibold disabled:opacity-40 transition-opacity"
+                      >
+                        Importar pesos
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Theme selector */}
@@ -450,7 +555,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         onClose={() => setConfirmResetFSRS(false)}
         onConfirm={executeResetFSRS}
         title="Restaurar Parâmetros FSRS?"
-        description="Esta ação redefinirá os 19 pesos matemáticos e a retenção desejada para as configurações oficiais padrão do FSRS v4.5."
+        description="Esta ação redefinirá os 21 pesos matemáticos (FSRS-6) e a retenção desejada para as configurações oficiais padrão."
         confirmText="Restaurar FSRS"
         cancelText="Cancelar"
         variant="warning"

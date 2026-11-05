@@ -27,3 +27,31 @@ export const FACTOR = 19 / 81; // FSRS retrievability constant: (100/81)^(-0.5) 
 
 /** FSRS stability floor (rslib S_MIN). */
 export const STABILITY_MIN = 0.01;
+
+/** Number of weights in an FSRS-5 parameter set (w[0]..w[18]). */
+export const FSRS_5_WEIGHT_COUNT = 19;
+
+/** Number of weights in an FSRS-6 parameter set (w[0]..w[20]). */
+export const FSRS_6_WEIGHT_COUNT = 21;
+
+/**
+ * Smallest weight array we accept as a valid FSRS parameter set.
+ * Anki's `DeckConfig::fsrs_params()` falls back from FSRS-6 to FSRS-5 to
+ * FSRS-4; we only support FSRS-5 and FSRS-6.
+ */
+export const FSRS_WEIGHT_COUNT_MIN = FSRS_5_WEIGHT_COUNT;
+
+/**
+ * The decay exponent used by FSRS-5, where it is a fixed constant.
+ * FSRS-6 learns it as w[20] instead.
+ */
+export const FSRS_5_DECAY = 0.5;
+
+/** The decay exponent of a weight array — w[20] for FSRS-6, 0.5 for FSRS-5. */
+export function fsrsDecay(w: number[]): number {
+  if (w.length >= FSRS_6_WEIGHT_COUNT) {
+    const w20 = w[20];
+    return typeof w20 === 'number' && Number.isFinite(w20) && w20 > 0 ? w20 : DEFAULT_FSRS_WEIGHTS[20];
+  }
+  return FSRS_5_DECAY;
+}

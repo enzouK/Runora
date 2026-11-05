@@ -41,16 +41,13 @@ export const StudyView: React.FC<StudyViewProps> = ({
   const [editNoteId, setEditNoteId] = useState<string | null>(null);
   const [noteRefreshTick, setNoteRefreshTick] = useState(0);
 
-  // Initialize FSRS engine with deck-specific or global settings
-  const fsrsEngine = useMemo(() => {
-    const globalParams = StorageService.getFSRSSettings();
-    // FSRS: preset sheet first, then "This deck" overrides (retention + max interval)
-    return new FSRS({
-      ...globalParams,
-      ...StorageService.getDeckPreset(deck.id).fsrsParams,
-      ...(deck.fsrsOverride || {}),
-    });
-  }, [deck]);
+  // Initialize FSRS engine with deck-specific or global settings.
+  // The scopes resolve global → preset → "This deck", exactly like Anki's
+  // deck options, and include the FSRS weights (and with them the decay).
+  const fsrsEngine = useMemo(
+    () => new FSRS(StorageService.getEffectiveFSRSParams(deck.id)),
+    [deck]
+  );
 
   // Runora-style scheduler config (learning steps, insertion order, lapses)
   const schedulerConfig = useMemo(

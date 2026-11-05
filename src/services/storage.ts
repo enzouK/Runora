@@ -1,7 +1,8 @@
-import { Card, DailyLimits, Deck, DeckCounts, DisplayOrderConfig, FSRSParameters, InsertionOrder, LeechAction, MixOrder, NewGatherOrder, NewSortOrder, Note, NoteType, Preset, ReviewSortOrder, RevlogEntry } from '../types/runora';
+import { Card, DailyLimits, Deck, DeckCounts, DisplayOrderConfig, FSRSParameters, FSRSScope, InsertionOrder, LeechAction, MixOrder, NewGatherOrder, NewSortOrder, Note, NoteType, Preset, ReviewSortOrder, RevlogEntry } from '../types/runora';
 import { ClozeService } from './clozeService';
 import { INITIAL_CARDS, INITIAL_DECKS, INITIAL_NOTE_TYPES, INITIAL_NOTES } from './sampleData';
-import { DEFAULT_FSRS_PARAMETERS } from '../fsrs/constants';
+import { DEFAULT_FSRS_PARAMETERS, FSRS_WEIGHT_COUNT_MIN } from '../fsrs/constants';
+import { isValidWeights } from '../fsrs/weights';
 
 const STORAGE_KEYS = {
   DECKS: 'runora_decks',
@@ -269,12 +270,13 @@ export class StorageService {
     if (!raw) return DEFAULT_FSRS_PARAMETERS;
     try {
       const saved = JSON.parse(raw);
-      // Upgrade to FSRS-6: 19-length saved weights (FSRS-5) → FSRS-6 (21 weights)
-      const w = saved.w;
-      if (Array.isArray(w) && w.length === 19) {
-        return { ...DEFAULT_FSRS_PARAMETERS, ...saved, w: DEFAULT_FSRS_PARAMETERS.w };
-      }
-      return { ...DEFAULT_FSRS_PARAMETERS, ...saved };
+      const merged = { ...DEFAULT_FSRS_PARAMETERS, ...saved };
+      // A weight array of 19 values is a legitimate FSRS-5 parameter set
+      // (Anki stores those as `fsrs_params_5`), so it is kept as-is — the
+      // engine switches to the fixed FSRS-5 decay on its own. Only a broken
+      // array falls back to the official defaults.
+      if (!isValidWeights(merged.w)) merged.w = [...DEFAULT_FSRS_PARAMETERS.w];
+      return merged;
     } catch {
       return DEFAULT_FSRS_PARAMETERS;
     }
@@ -1041,6 +1043,7 @@ export class StorageService {
         requestRetention:
           deck.fsrsParams?.requestRetention ?? DEFAULT_FSRS_PARAMETERS.requestRetention,
         maximumInterval: deck.fsrsParams?.maximumInterval ?? DEFAULT_FSRS_PARAMETERS.maximumInterval,
+        w: deck.fsrsParams?.w,
       },
       createdAt: now,
       updatedAt: now,
@@ -1088,6 +1091,64 @@ export class StorageService {
         return `${min}m`;
       })
       .join(' ');
+  }
+
+  // ---- FSRS scopes (global → preset → deck) ----
+
+  /**
+   * The FSRS parameters that actually apply to a deck.
+   *
+   * Three layers, resolved in the same order Anki resolves them:
+   *
+   *   1. global  — `getFSRSSettings()` (the app-wide FSRS sheet)
+   *   2. preset  — the "Deck Options" sheet the deck follows
+   *   3. deck    — the deck's own "This deck" overrides
+   *
+   * The FSRS weights (`w`) are only replaced by a layer that actually
+   * defines them, so a preset that only customises the retention keeps
+   * inheriting the global weights — and with them the trainable decay (w[20]).
+   */
+  public static getEffectiveFSRSParams(deckId: string): FSRSParameters {
+    return this.resolveFSRSParams(
+      this.getDeckPreset(deckId).fsrsParams,
+      this.getDeckFSRSOverride(deckId)
+    );
+  }
+
+  /** The deck's own "This deck" FSRS overrides, if it has any. */
+  public static getDeckFSRSOverride(deckId: string): FSRSScope | null {
+    const deck = this.getDecks().find((d) => d.id === deckId);
+    return deck?.fsrsOverride ?? null;
+  }
+
+  /**
+   * Merges the FSRS scopes on top of the global settings.
+   *
+   * Exposed as a pure-ish helper so the resolution can be unit tested and
+   * reused by the exporters/importers without touching the storage.
+   */
+  public static resolveFSRSParams(
+    presetScope?: Partial<FSRSScope> | null,
+    deckScope?: Partial<FSRSScope> | null
+  ): FSRSParameters {
+    const params: FSRSParameters = { ...this.getFSRSSettings() };
+    for (const scope of [presetScope, deckScope]) {
+      if (!scope) continue;
+      if (typeof scope.requestRetention === 'number' && Number.isFinite(scope.requestRetention)) {
+        params.requestRetention = scope.requestRetention;
+      }
+      if (
+        typeof scope.maximumInterval === 'number' &&
+        Number.isFinite(scope.maximumInterval) &&
+        scope.maximumInterval > 0
+      ) {
+        params.maximumInterval = scope.maximumInterval;
+      }
+      if (Array.isArray(scope.w) && scope.w.length >= FSRS_WEIGHT_COUNT_MIN) {
+        params.w = [...scope.w];
+      }
+    }
+    return params;
   }
 
   /** Resolved scheduler config for a deck: read straight from its preset. */

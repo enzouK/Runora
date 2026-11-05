@@ -6,7 +6,7 @@
  */
 
 import { CardState, FSRSCardData, FSRSParameters, FSRSPrediction, FSRSRating } from '../types/runora';
-import { DEFAULT_FSRS_PARAMETERS, FACTOR, STABILITY_MIN } from './constants';
+import { DEFAULT_FSRS_PARAMETERS, FACTOR, FSRS_6_WEIGHT_COUNT, STABILITY_MIN, fsrsDecay } from './constants';
 
 export class FSRS {
   private params: FSRSParameters;
@@ -59,20 +59,29 @@ export class FSRS {
    */
   /** FSRS-6: factor for the trainable decay: factor = 0.9^(-1/w20) - 1 */
   private forgettingFactor(): number {
-    const w20 = this.params.w[20] ?? 0.1542;
-    return Math.pow(0.9, -1 / w20) - 1;
+    return Math.pow(0.9, -1 / this.decay()) - 1;
+  }
+
+  /**
+   * The decay exponent of the current parameter set.
+   *
+   * FSRS-6 learns it as `w[20]`; FSRS-5 (19 weights) uses the fixed value
+   * 0.5 — which is exactly what `0.9^(-1/0.5) - 1 = 19/81` reproduces, so
+   * the same formulas cover both versions.
+   */
+  public decay(): number {
+    return fsrsDecay(this.params.w);
   }
 
   /**
    * Retrievability (FSRS-6): R(t, S) = (1 + factor · t/S)^(−w20)
-   * The decay exponent w20 = w[20] is trainable; FSRS-4.5 used fixed −0.5.
+   * The decay exponent w20 = w[20] is trainable; FSRS-4.5/5 used fixed −0.5.
    */
   public retrievability(elapsedDays: number, stability: number): number {
     if (stability <= 0) return 0;
     if (elapsedDays <= 0) return 1.0;
     const factor = this.forgettingFactor();
-    const w20 = this.params.w[20] ?? 0.1542;
-    return Math.pow(1 + factor * (elapsedDays / stability), -w20);
+    return Math.pow(1 + factor * (elapsedDays / stability), -this.decay());
   }
 
   /**
@@ -159,8 +168,10 @@ export class FSRS {
    */
   public nextShortTermStability(s: number, rating: FSRSRating): number {
     const w = this.params.w;
-    const growth = Math.exp(w[17] * (rating - 3 + w[18])) * Math.pow(s, -w[19]);
-    return Math.max(STABILITY_MIN, Number((s * growth).toFixed(4)));
+    const growth = Math.exp(w[17] * (rating - 3 + w[18]));
+    // The S^(−w19) term only exists in FSRS-6 (21 weights); FSRS-5 omits it.
+    const sTerm = w.length >= FSRS_6_WEIGHT_COUNT ? Math.pow(s, -w[19]) : 1;
+    return Math.max(STABILITY_MIN, Number((s * growth * sTerm).toFixed(4)));
   }
 
   /**
@@ -174,8 +185,7 @@ export class FSRS {
   public nextInterval(stability: number): number {
     const reqR = this.params.requestRetention;
     const factor = this.forgettingFactor();
-    const w20 = this.params.w[20] ?? 0.1542;
-    const interval = (stability / factor) * (Math.pow(reqR, -1 / w20) - 1);
+    const interval = (stability / factor) * (Math.pow(reqR, -1 / this.decay()) - 1);
     const rounded = Math.round(interval);
     return this.clamp(rounded < 1 ? 1 : rounded, 1, this.params.maximumInterval);
   }
