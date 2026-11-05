@@ -21,6 +21,7 @@ import initSqlJs from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { Card, Deck, Note, NoteType, Preset } from '../types/runora';
 import { StorageService } from './storage';
+import { fsrsFieldsForWeights } from './ankiDeckConfig';
 import { MediaStore } from './mediaStore';
 import { ExportImportService, type CollectionExportOptions } from './exportImport';
 
@@ -174,7 +175,13 @@ type DeckConfigJson = {
   new: { bury: boolean; delays: number[]; initialFactor: number; perDay: number; order: number; separate: boolean; ints: number[] };
   rev: { bury: boolean; ease4: number; fuzz: number; ivlFct: number; maxIvl: number; minSpace: number; perDay: number };
   lapse: { delays: number[]; leechAction: number; leechFails: number; minInt: number; mult: number };
+  /**
+   * FSRS options, using the very same field names Anki's legacy schema-11
+   * `DeckConfSchema11` uses (it is serialized with `rename_all = "camelCase"`).
+   */
+  desiredRetention?: number;
   fsrsParams5?: number[];
+  fsrsParams6?: number[];
 };
 
 export class AnkiApkgExportService {
@@ -305,6 +312,8 @@ export class AnkiApkgExportService {
           perDay: 200,
         },
         lapse: { delays: [10], leechAction: 0, leechFails: 8, minInt: 1, mult: 0 },
+        // The global FSRS sheet becomes Anki's default options group.
+        ...fsrsFieldsForWeights(fsrsParams.w, fsrsParams.requestRetention),
       },
     };
     // preset id → dconf number (only when includePresets is on)
@@ -312,6 +321,8 @@ export class AnkiApkgExportService {
     if (subset.presets) {
       for (const p of subset.presets) {
         const id = dconfIds.forString(`dconf:${p.id}`);
+        // A preset's own weights win; otherwise it inherits the global ones.
+        const weights = p.fsrsParams.w ?? fsrsParams.w;
         dconf[String(id)] = {
           id,
           name: p.name,
@@ -348,9 +359,8 @@ export class AnkiApkgExportService {
             minInt: 1,
             mult: 0,
           },
-          // Best-effort FSRS weights for modern Anki (safely ignored by
-          // importers that don't understand them).
-          fsrsParams5: fsrsParams.w,
+          // FSRS options, in the exact fields Anki reads back.
+          ...fsrsFieldsForWeights(weights, p.fsrsParams.requestRetention),
         };
         presetConfNumeric.set(p.id, id);
       }
@@ -366,15 +376,36 @@ export class AnkiApkgExportService {
         ...this.mkLegacyDeck(did, d.name, modSec),
         desc: d.description || '',
       };
-      if (d.dailyLimitsOverride) {
-        // per-deck overrides get their own config group cloned from the preset
-        const baseKey = d.presetId && presetConfNumeric.has(d.presetId) ? String(presetConfNumeric.get(d.presetId)) : '1';
+      // A deck with its own overrides gets a dedicated options group, cloned
+      // from its preset — exactly how Anki models a deck that departs from
+      // the group it otherwise follows.
+      const hasOverrides = !!d.dailyLimitsOverride || !!d.fsrsOverride;
+      if (hasOverrides) {
+        const baseKey =
+          d.presetId && presetConfNumeric.has(d.presetId)
+            ? String(presetConfNumeric.get(d.presetId))
+            : '1';
         const clone = JSON.parse(JSON.stringify(dconf[baseKey])) as DeckConfigJson;
         const id = dconfIds.forString(`dconf-deck:${d.id}`);
         clone.id = id;
         clone.name = `${d.name} (ajustes)`;
-        clone.new.perDay = d.dailyLimitsOverride.newCardsPerDay;
-        clone.rev.perDay = d.dailyLimitsOverride.maxReviewsPerDay;
+        if (d.dailyLimitsOverride) {
+          clone.new.perDay = d.dailyLimitsOverride.newCardsPerDay;
+          clone.rev.perDay = d.dailyLimitsOverride.maxReviewsPerDay;
+        }
+        if (d.fsrsOverride) {
+          clone.maxIvl = d.fsrsOverride.maximumInterval;
+          clone.rev.maxIvl = d.fsrsOverride.maximumInterval;
+          // The deck's own weights win; otherwise the preset's; otherwise the
+          // global ones — the same resolution the app applies when studying.
+          const presetWeights = d.presetId
+            ? subset.presets?.find((p) => p.id === d.presetId)?.fsrsParams.w
+            : undefined;
+          const weights = d.fsrsOverride.w ?? presetWeights ?? fsrsParams.w;
+          delete clone.fsrsParams5;
+          delete clone.fsrsParams6;
+          Object.assign(clone, fsrsFieldsForWeights(weights, d.fsrsOverride.requestRetention));
+        }
         dconf[String(id)] = clone;
         stub.conf = id;
       } else {
