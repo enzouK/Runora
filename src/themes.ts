@@ -36,7 +36,7 @@ export interface ColorTheme {
 export const COLOR_THEMES = opencodeThemes as unknown as Record<string, ColorTheme>;
 
 /** Nome padrão quando nenhum tema de cor está selecionado */
-export const DEFAULT_COLOR_THEME = 'opencode';
+export const DEFAULT_COLOR_THEME = 'runora';
 
 /** Lista ordenada de nomes de temas para o seletor */
 export const COLOR_THEME_NAMES = Object.keys(COLOR_THEMES).sort((a, b) =>

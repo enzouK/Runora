@@ -946,6 +946,58 @@
   --color-ios-border-active-dark: #9ccfd8;
 }
 
+/* ---- runora ---- */
+/* Identidade visual da landing page (site/index.html): fundo #07001f,
+   violeta #a78bfa, rosa #f472b6, texto #f4f2ff, cards translúcidos. */
+:root:not(.dark)[data-color-theme="runora"] {
+  --color-ios-bg: #f6f3ff;
+  --color-ios-card: #ffffff;
+  --color-ios-sep: #ece9fb;
+  --color-ios-blue: #7c3aed;
+  --color-ios-green: #059669;
+  --color-ios-orange: #d97706;
+  --color-ios-red: #e11d48;
+  --color-ios-text: #1b1230;
+  --color-ios-text-muted: #6b6383;
+  --color-ios-element: #ece7fd;
+  --color-ios-border: rgba(124, 58, 237, 0.14);
+  --color-ios-accent: #7c3aed;
+  --color-ios-secondary: #db2777;
+  --color-ios-info: #7c3aed;
+  --color-ios-border-active: #7c3aed;
+}
+
+.dark[data-color-theme="runora"] {
+  --color-ios-bg-dark: #07010f;
+  --color-ios-card-dark: rgba(255, 255, 255, 0.04);
+  --color-ios-sep: rgba(255, 255, 255, 0.08);
+  --color-ios-blue: #a78bfa;
+  --color-ios-green: #34d399;
+  --color-ios-orange: #fbbf24;
+  --color-ios-red: #fb7185;
+  --color-ios-text-dark: #f4f2ff;
+  --color-ios-text-muted-dark: #a9a3c9;
+  --color-ios-element-dark: rgba(255, 255, 255, 0.07);
+  --color-ios-border-dark: rgba(255, 255, 255, 0.08);
+  --color-ios-accent-dark: #7c3aed;
+  --color-ios-secondary-dark: #f472b6;
+  --color-ios-info-dark: #a78bfa;
+  --color-ios-border-active-dark: #a78bfa;
+}
+
+/* ---- runora: acabamentos da landing (gradiente + glow nos botões de ação) ---- */
+[data-color-theme='runora'] .bg-ios-blue.rounded-full,
+.dark[data-color-theme='runora'] .dark\:bg-ios-blue.rounded-full {
+  background-image: linear-gradient(120deg, #7c3aed 0%, #a855f7 55%, #c026d3 100%);
+  background-color: transparent;
+  box-shadow: 0 10px 30px -12px rgba(168, 85, 247, 0.8);
+}
+
+[data-color-theme='runora'] .bg-ios-blue.rounded-full:hover,
+.dark[data-color-theme='runora'] .dark\:bg-ios-blue.rounded-full:hover {
+  filter: brightness(1.08);
+}
+
 /* ---- solarized ---- */
 :root:not(.dark)[data-color-theme="solarized"] {
   --color-ios-bg: #fdf6e3;
