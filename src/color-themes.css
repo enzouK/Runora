@@ -985,19 +985,6 @@
   --color-ios-border-active-dark: #a78bfa;
 }
 
-/* ---- runora: acabamentos da landing (gradiente + glow nos botões de ação) ---- */
-[data-color-theme='runora'] .bg-ios-blue.rounded-full,
-.dark[data-color-theme='runora'] .dark\:bg-ios-blue.rounded-full {
-  background-image: linear-gradient(120deg, #7c3aed 0%, #a855f7 55%, #c026d3 100%);
-  background-color: transparent;
-  box-shadow: 0 10px 30px -12px rgba(168, 85, 247, 0.8);
-}
-
-[data-color-theme='runora'] .bg-ios-blue.rounded-full:hover,
-.dark[data-color-theme='runora'] .dark\:bg-ios-blue.rounded-full:hover {
-  filter: brightness(1.08);
-}
-
 /* ---- solarized ---- */
 :root:not(.dark)[data-color-theme="solarized"] {
   --color-ios-bg: #fdf6e3;

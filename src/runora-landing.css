@@ -1,0 +1,117 @@
+/* ============================================================
+ * Runora — camada visual da landing page (branch de teste)
+ *
+ * Este arquivo replica o repertório visual de site/index.html:
+ * fundo em camadas (violeta + lilás/rosa), header de vidro com blur,
+ * cards translúcidos com halo violeta, botões com gradiente + glow,
+ * título em gradiente e scrollbar violeta.
+ *
+ * Tudo é escopado em [data-color-theme="runora"]:
+ *   - nenhuma outra paleta do app é afetada;
+ *   - trocar a paleta em Configurações devolve o visual original;
+ *   - nenhuma lógica/JS é alterada — só CSS.
+ *
+ * Importado DEPOIS de color-themes.css para vencer regras de mesma
+ * especificidade (a ordem do arquivo decide).
+ * ============================================================ */
+
+/* ---------- 1. Fundo em camadas: violeta no topo + rosa no canto ---------- */
+.dark[data-color-theme='runora'] .min-h-screen {
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, #2a1150 0%, rgba(7, 1, 15, 0) 60%),
+    radial-gradient(90% 60% at 100% 10%, rgba(244, 114, 182, 0.14) 0%, rgba(7, 1, 15, 0) 55%),
+    radial-gradient(80% 60% at 0% 0%, rgba(124, 58, 237, 0.16) 0%, rgba(7, 1, 15, 0) 60%);
+  /* o brilho fica preso à altura da tela: em páginas longas ele não estica */
+  background-size: 100% 100vh;
+  background-repeat: no-repeat;
+}
+
+:root:not(.dark)[data-color-theme='runora'] .min-h-screen {
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, rgba(167, 139, 250, 0.3) 0%, rgba(246, 243, 255, 0) 60%),
+    radial-gradient(90% 60% at 100% 10%, rgba(244, 114, 182, 0.16) 0%, rgba(246, 243, 255, 0) 55%),
+    radial-gradient(80% 60% at 0% 0%, rgba(124, 58, 237, 0.12) 0%, rgba(246, 243, 255, 0) 60%);
+  background-size: 100% 100vh;
+  background-repeat: no-repeat;
+}
+
+/* o halo nativo do app (elipse azul fixa no topo) assume o tom violeta */
+.dark[data-color-theme='runora'] .dark\:bg-\[radial-gradient\(ellipse_55\%_50\%_at_50\%_-12\%\,rgba\(64\,156\,255\,0\.14\)\,transparent\)\] {
+  background-image: radial-gradient(ellipse 55% 50% at 50% -12%, rgba(167, 139, 250, 0.2), transparent);
+}
+
+/* ---------- 2. Header de vidro (sticky + blur + translúcido) ---------- */
+.dark[data-color-theme='runora'] header {
+  background-color: rgba(7, 1, 15, 0.72);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+:root:not(.dark)[data-color-theme='runora'] header {
+  background-color: rgba(246, 243, 255, 0.78);
+  border-bottom-color: rgba(124, 58, 237, 0.12);
+}
+
+/* ---------- 3. Cards de vidro com halo violeta ---------- */
+.dark[data-color-theme='runora'] .dark\:bg-ios-card-dark {
+  box-shadow:
+    var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-shadow), var(--tw-shadow),
+    0 18px 40px -28px rgba(168, 85, 247, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ---------- 4. Título com gradiente violeta -> rosa ---------- */
+.dark[data-color-theme='runora'] h1,
+:root:not(.dark)[data-color-theme='runora'] h1 {
+  background-image: linear-gradient(100deg, #a78bfa 0%, #f472b6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+:root:not(.dark)[data-color-theme='runora'] h1 {
+  background-image: linear-gradient(100deg, #7c3aed 0%, #db2777 100%);
+}
+
+/* ---------- 5. Botões de ação: gradiente + glow (landing .btn-primary) ---------- */
+[data-color-theme='runora'] .bg-ios-blue.rounded-full,
+.dark[data-color-theme='runora'] .dark\:bg-ios-blue.rounded-full {
+  background-image: linear-gradient(120deg, #7c3aed 0%, #a855f7 55%, #c026d3 100%);
+  background-color: transparent;
+  box-shadow: 0 10px 30px -12px rgba(168, 85, 247, 0.8);
+}
+
+[data-color-theme='runora'] .bg-ios-blue.rounded-full:hover,
+.dark[data-color-theme='runora'] .dark\:bg-ios-blue.rounded-full:hover {
+  filter: brightness(1.08);
+}
+
+/* ---------- 6. Segmentado ativo em vidro violeta ---------- */
+.dark[data-color-theme='runora'] .dark\:bg-\[\#636366\] {
+  background-color: rgba(167, 139, 250, 0.16);
+  color: #f4f2ff;
+  box-shadow:
+    inset 0 0 0 1px rgba(167, 139, 250, 0.3),
+    0 6px 18px -10px rgba(168, 85, 247, 0.7);
+}
+
+/* ---------- 7. Cards de estatística: vidro, mantendo a cor no ícone ---------- */
+.dark[data-color-theme='runora'] .dark\:bg-ios-blue\/\[0\.16\],
+.dark[data-color-theme='runora'] .dark\:bg-ios-orange\/\[0\.16\],
+.dark[data-color-theme='runora'] .dark\:bg-ios-green\/\[0\.16\] {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.dark[data-color-theme='runora'] .dark\:border-ios-blue\/20,
+.dark[data-color-theme='runora'] .dark\:border-ios-orange\/20,
+.dark[data-color-theme='runora'] .dark\:border-ios-green\/20 {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- 8. Scrollbar violeta ---------- */
+[data-color-theme='runora'] ::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.35);
+}
+
+[data-color-theme='runora'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(167, 139, 250, 0.55);
+}
