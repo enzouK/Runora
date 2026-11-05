@@ -19,3 +19,12 @@ release/
 
 # Chaves SSH privadas (nunca versionar)
 keys/
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+*.pem
+*.ppk
+*.key
+*.jks
+*.keystore
