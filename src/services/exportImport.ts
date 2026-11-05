@@ -7,6 +7,7 @@ import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { Card, Deck, FSRSParameters, Note, NoteType, Preset, RevlogEntry } from '../types/runora';
 import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
+import { collectRevlogDifficulties, deriveImportedFsrsState } from './ankiFsrsState';
 
 export interface RunoraCollectionExport {
   version: string;
@@ -394,8 +395,25 @@ export class ExportImportService {
       const noteRows = this.queryAll(db, 'SELECT id, mid, flds, tags FROM notes');
       const cardRows = this.queryAll(
         db,
-        'SELECT id, nid, did, ord, type, queue, ivl, due FROM cards'
+        'SELECT id, nid, did, ord, type, queue, ivl, due, reps, lapses, data FROM cards'
       );
+
+      // ── FSRS state kept by Anki ──
+      // Schema 18 stores the FSRS state of every card in the JSON blob of
+      // `cards.data` (`d` = difficulty, `s` = stability, `lrt` = last review).
+      // Older collections have no such state, but the difficulty still lives in
+      // the revlog, encoded as the *shifted* difficulty (factor 100..1100) —
+      // the same encoding Anki itself uses to rebuild it
+      // (rslib/src/scheduler/fsrs/memory_state.rs).
+      let revlogDifficultyByCard = new Map<number, number>();
+      try {
+        revlogDifficultyByCard = collectRevlogDifficulties(
+          this.queryAll(db, 'SELECT cid, factor FROM revlog ORDER BY id')
+        );
+      } catch {
+        // No revlog table (trimmed/very old collection): cards.data is the
+        // only source of truth.
+      }
 
       // Bring in ONLY the decks that actually hold cards, plus the ancestor
       // fragments their hierarchy needs ("A::B" requires an "A" deck): every
@@ -452,45 +470,50 @@ export class ExportImportService {
         };
       });
 
-      // ── Cards: map queue/type → FSRS state, ivl → initial stability ──
-      const cards: Card[] = cardRows.map(([id, nid, did, ord, type, queue, ivl, due]) => {
-        const ankiType = Number(type); // 0 new, 1 learning, 2 review, 3 relearning
-        const ankiQueue = Number(queue); // -1 suspended, -2 buried, -3 manually buried
-        const ivlDays = Number(ivl);
-        const state = ankiType === 2 ? 2 : ankiType === 0 ? 0 : ankiType === 3 ? 3 : 1;
-        // Convert Anki's `due`, whose meaning depends on the queue:
-        //  - queue 0 (new): just the position/order → available now
-        //  - queue 1/4 (intraday (re)learning): unix timestamp in SECONDS
-        //  - queue 2/3 (review / day-learn): days since collection creation (crt)
-        const dueMs =
-          ankiQueue === 1 || ankiQueue === 4
-            ? Number(due) * 1000
-            : state === 0
-              ? timestamp
-              : (colCrt + Number(due) * 86400) * 1000;
-        return {
-          id: `card-apkg-${id}`,
-          noteId: `note-apkg-${nid}`,
-          deckId: deckIdByAnkiId.get(Number(did)) || decks[0]?.id || 'deck-default',
-          templateOrd: isClozeOrd(ord),
-          due: dueMs,
-          // queue -1 suspended, -2/-3 buried — all excluded from due counts, like Anki
-          suspended: ankiQueue < 0,
-          fsrs: {
-            stability: Math.max(0.1, ivlDays > 0 ? ivlDays : 0.4),
-            difficulty: 5,
-            elapsedDays: ivlDays > 0 ? ivlDays : 0,
-            scheduledDays: Math.max(1, ivlDays),
-            reps: 0,
-            lapses: 0,
-            state,
-            // Estimate last review so retrievability/intervals behave sanely
-            lastReview: state === 2 && ivlDays > 0 ? dueMs - ivlDays * 86400000 : null,
-          },
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        } satisfies Card;
-      });
+      // ── Cards: map queue/type → FSRS state, and Anki's FSRS state → ours ──
+      const cards: Card[] = cardRows.map(
+        ([id, nid, did, ord, type, queue, ivl, due, reps, lapses, dataRaw]) => {
+          const ankiType = Number(type); // 0 new, 1 learning, 2 review, 3 relearning
+          const ankiQueue = Number(queue); // -1 suspended, -2 buried, -3 manually buried
+          const ivlDays = Number(ivl);
+          const state = ankiType === 2 ? 2 : ankiType === 0 ? 0 : ankiType === 3 ? 3 : 1;
+          // Convert Anki's `due`, whose meaning depends on the queue:
+          //  - queue 0 (new): just the position/order → available now
+          //  - queue 1/4 (intraday (re)learning): unix timestamp in SECONDS
+          //  - queue 2/3 (review / day-learn): days since collection creation (crt)
+          const dueMs =
+            ankiQueue === 1 || ankiQueue === 4
+              ? Number(due) * 1000
+              : state === 0
+                ? timestamp
+                : (colCrt + Number(due) * 86400) * 1000;
+
+          // ── FSRS state imported from Anki ──
+          const fsrs = deriveImportedFsrsState({
+            ankiType,
+            ivlDays,
+            dueMs,
+            reps: Number(reps) || 0,
+            lapses: Number(lapses) || 0,
+            data: dataRaw,
+            revlogDifficulty: revlogDifficultyByCard.get(Number(id)),
+            now: timestamp,
+          });
+
+          return {
+            id: `card-apkg-${id}`,
+            noteId: `note-apkg-${nid}`,
+            deckId: deckIdByAnkiId.get(Number(did)) || decks[0]?.id || 'deck-default',
+            templateOrd: isClozeOrd(ord),
+            due: dueMs,
+            // queue -1 suspended, -2/-3 buried — all excluded from due counts, like Anki
+            suspended: ankiQueue < 0,
+            fsrs,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          } satisfies Card;
+        }
+      );
 
       function isClozeOrd(ord: unknown): number {
         const n = Number(ord);
