@@ -2,9 +2,9 @@
  * DriveSyncService — sync with Google Drive, no paid hosting required.
  *
  * How it works (sync on the user's own free Drive, no paid hosting):
- * - The app ships a built-in OAuth "Web application" Client ID (like
- *   reader.ttsu.app); the user just clicks "Conectar conta Google". A custom
- *   Client ID can be pasted in Settings to override it.
+ * - The app ships a built-in OAuth "Web application" Client ID, created by the
+ *   Runora project on Google Cloud; the user just clicks "Conectar conta
+ *   Google". A custom Client ID can be pasted in Settings to override it.
  *   Login uses Google's GIS token client (no client secret in the app).
  * - Sync artifacts in Drive (created with the drive.file scope, invisible in
  *   the Drive web UI):
@@ -38,11 +38,11 @@ const LS = {
 };
 
 /**
- * Built-in OAuth Client ID (Google Cloud project owned by the app developer),
- * so users can just click "Conectar conta Google" and link their own account —
- * the same model reader.ttsu.app uses. A custom Client ID can still be set in
- * Settings to override this (advanced). When creating the project, enable the
- * Google Drive API and register these Authorized JavaScript origins:
+ * Built-in OAuth Client ID — the Google Cloud project of Runora, created by the
+ * app developer, so users can just click "Conectar conta Google" and link their
+ * own account. A custom Client ID can still be set in Settings to override this
+ * (advanced). When creating the project, enable the Google Drive API and
+ * register these Authorized JavaScript origins:
  *   http://localhost:3000                                          (vite dev)
  *   http://127.0.0.1:39102 … 39105, http://127.0.0.1:39110 … 39119 (Electron .exe local server)
  *   https://localhost                                              (Capacitor Android WebView)

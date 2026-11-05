@@ -94,11 +94,10 @@ git(['rm', '-r', '-f', '.'], WORKTREE);
 fs.rmSync(path.join(WORKTREE, 'app'), { recursive: true, force: true });
 git(['clean', '-fdx'], WORKTREE);
 
-// Landing + legal pages + their assets.
-copyInto(path.join(SITE, 'index.html'), path.join(WORKTREE, 'index.html'));
-copyInto(path.join(SITE, 'privacy.html'), path.join(WORKTREE, 'privacy.html'));
-copyInto(path.join(SITE, 'terms.html'), path.join(WORKTREE, 'terms.html'));
-copyInto(path.join(SITE, 'assets'), path.join(WORKTREE, 'assets'));
+// Every file in site/ is published as-is: the landing page, the legal pages,
+// the branding assets and — when Google asks for it — the site verification
+// file (google-site-verification.html), which has to sit in the site root.
+copyInto(SITE, WORKTREE);
 
 // The app itself, under /app/ so the root can be the public landing page.
 copyInto(DIST, path.join(WORKTREE, 'app'));
