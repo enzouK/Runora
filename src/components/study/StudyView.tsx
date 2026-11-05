@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Card, CardState, Deck, FSRSPrediction, FSRSRating, Note, NoteType } from '../../types/runora';
 import { FSRS } from '../../fsrs/algorithm';
+import { formatDifficultyPercent, hasDifficulty } from '../../fsrs/difficulty';
 import { ClozeService } from '../../services/clozeService';
 import { AudioService } from '../../services/audioService';
 import { StorageService } from '../../services/storage';
@@ -792,7 +793,14 @@ export const StudyView: React.FC<StudyViewProps> = ({
             </div>
             <div className="p-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06]">
               <div className="text-zinc-400 dark:text-zinc-500 text-[10px] font-medium">Dificuldade</div>
-              <div className="font-bold tabular-nums text-[13px] text-ios-orange">{currentCard.fsrs.difficulty.toFixed(2)}<span className="text-zinc-400 font-medium">/10</span></div>
+              <div
+                className="font-bold tabular-nums text-[13px] text-ios-orange"
+                title="Dificuldade (0% a 100% — quanto maior, mais difícil)"
+              >
+                {hasDifficulty(currentCard.fsrs.difficulty)
+                  ? formatDifficultyPercent(currentCard.fsrs.difficulty)
+                  : '—'}
+              </div>
             </div>
             <div className="p-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06]">
               <div className="text-zinc-400 dark:text-zinc-500 text-[10px] font-medium">Repetições</div>
