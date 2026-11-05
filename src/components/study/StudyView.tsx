@@ -12,6 +12,7 @@ import {
 import { Card, CardState, Deck, FSRSPrediction, FSRSRating, Note, NoteType } from '../../types/runora';
 import { FSRS } from '../../fsrs/algorithm';
 import { formatDifficultyPercent, hasDifficulty } from '../../fsrs/difficulty';
+import { formatTimespanDays } from '../../fsrs/timespan';
 import { ClozeService } from '../../services/clozeService';
 import { AudioService } from '../../services/audioService';
 import { StorageService } from '../../services/storage';
@@ -786,7 +787,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
           <div className="grid grid-cols-4 gap-2 text-center">
             <div className="p-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06]">
               <div className="text-zinc-400 dark:text-zinc-500 text-[10px] font-medium">Estabilidade</div>
-              <div className="font-bold tabular-nums text-[13px] text-ios-blue">{currentCard.fsrs.stability.toFixed(2)}d</div>
+              <div className="font-bold tabular-nums text-[13px] text-ios-blue">{formatTimespanDays(currentCard.fsrs.stability)}</div>
             </div>
             <div className="p-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06]">
               <div className="text-zinc-400 dark:text-zinc-500 text-[10px] font-medium">Dificuldade</div>

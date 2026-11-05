@@ -7,6 +7,7 @@
 
 import { CardState, FSRSCardData, FSRSParameters, FSRSPrediction, FSRSRating } from '../types/runora';
 import { DEFAULT_FSRS_PARAMETERS, FACTOR, FSRS_6_WEIGHT_COUNT, STABILITY_MIN, fsrsDecay } from './constants';
+import { formatTimespanDays } from './timespan';
 
 export class FSRS {
   private params: FSRSParameters;
@@ -217,28 +218,19 @@ export class FSRS {
   }
 
   /**
-   * Format interval for UI display (Apple-styled concise labels)
+   * Format interval for UI display: the largest unit the interval fills plus
+   * the remainder in the unit right below it — "1m30s", "2h30m", "1d3h",
+   * "1mo10d", "1y4mo13d".
    */
   public formatInterval(days: number, state?: CardState, rating?: FSRSRating): string {
     if (state === 0 || state === 1 || state === 3) {
       if (rating === 1) return '< 10m';
       if (rating === 2 && state !== 0) return '1d';
     }
-    if (days < 1) {
-      const minutes = Math.round(days * 24 * 60);
-      if (minutes < 60) return `${Math.max(1, minutes)}m`;
-      const hours = Math.round(days * 24);
-      return `${hours}h`;
-    }
-    if (days < 30) {
-      return `${Math.round(days)}d`;
-    }
-    if (days < 365) {
-      const months = (days / 30.4375).toFixed(1);
-      return `${months}m`;
-    }
-    const years = (days / 365.25).toFixed(1);
-    return `${years}a`;
+    // A zero interval only happens for a brand new card rated "Hard"; the
+    // caller replaces the label with the deck's first learning step.
+    if (days <= 0) return '1m';
+    return formatTimespanDays(days);
   }
 
   /**

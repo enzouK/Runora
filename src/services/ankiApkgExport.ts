@@ -684,14 +684,5 @@ export class AnkiApkgExportService {
 
 /** "1m 10m" → [1, 10]; supports m (default), s and h. */
 function stepsOf(steps: string | null | undefined): number[] {
-  if (!steps) return [];
-  const out: number[] = [];
-  for (const tok of steps.trim().split(/\s+/)) {
-    const m = /^(\d+(?:\.\d+)?)\s*([smh]?)$/i.exec(tok);
-    if (!m) continue;
-    const v = parseFloat(m[1]);
-    const unit = (m[2] || 'm').toLowerCase();
-    out.push(Math.round(v * (unit === 'h' ? 60 : unit === 's' ? 1 / 60 : 1)));
-  }
-  return out.length > 0 ? out : [1, 10];
+  return StorageService.stepsToAnkiMinutes(steps);
 }

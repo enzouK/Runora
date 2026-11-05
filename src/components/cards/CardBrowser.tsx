@@ -20,6 +20,7 @@ import { StorageService } from '../../services/storage';
 import { FSRS } from '../../fsrs/algorithm';
 import { getCardMaturity, MATURITY_THRESHOLD_DAYS, CardMaturity } from '../../fsrs/maturity';
 import { formatDifficultyPercent, hasDifficulty } from '../../fsrs/difficulty';
+import { formatTimespanDays } from '../../fsrs/timespan';
 import { MediaStore } from '../../services/mediaStore';
 import { ClozeService } from '../../services/clozeService';
 import {
@@ -1148,7 +1149,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                         title="Estabilidade (dias de memória)"
                       >
                         <span className="font-medium">S</span>{' '}
-                        <span className="text-ios-blue">{card.fsrs.stability.toFixed(1)}d</span>
+                        <span className="text-ios-blue">{formatTimespanDays(card.fsrs.stability)}</span>
                       </span>
                       <span
                         className="text-zinc-400 dark:text-zinc-500"

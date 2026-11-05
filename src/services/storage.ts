@@ -2,6 +2,7 @@ import { Card, DailyLimits, Deck, DeckCounts, DisplayOrderConfig, FSRSParameters
 import { ClozeService } from './clozeService';
 import { INITIAL_CARDS, INITIAL_DECKS, INITIAL_NOTE_TYPES, INITIAL_NOTES } from './sampleData';
 import { DEFAULT_FSRS_PARAMETERS, FSRS_WEIGHT_COUNT_MIN } from '../fsrs/constants';
+import { formatTimespanMinutes } from '../fsrs/timespan';
 import { isValidWeights } from '../fsrs/weights';
 
 const STORAGE_KEYS = {
@@ -1064,37 +1065,75 @@ export class StorageService {
   };
 
   /**
-   * Parse Runora-style step strings into minutes: "1m 10m", "30s 5m 1h 1d", or bare minutes "1 10".
+   * Parse Runora-style step strings into minutes: "1m 10m", "30s 5m 1h 1d",
+   * "1m30s", or bare minutes "1 10".
+   *
+   * A single step may combine several units in one token ("1m30s" is one step
+   * of 1.5 minutes). Months ("mo") are not valid steps — a learning step of a
+   * month would be pointless.
+   *
    * Invalid/empty input → null.
    */
   public static parseSteps(input: string): number[] | null {
     const trimmed = input.trim();
     if (!trimmed) return null;
-    const tokens = trimmed.split(/\s+/);
     const minutes: number[] = [];
-    for (const token of tokens) {
-      const m = token.match(/^(\d+(?:[.,]\d+)?)(s|m|h|d)?$/i);
-      if (!m) return null;
-      const value = parseFloat(m[1].replace(',', '.'));
-      const unit = (m[2] || 'm').toLowerCase();
-      const factor = unit === 's' ? 1 / 60 : unit === 'h' ? 60 : unit === 'd' ? 1440 : 1;
-      const asMinutes = value * factor;
-      if (!(asMinutes > 0)) return null;
+    for (const token of trimmed.split(/\s+/)) {
+      const asMinutes = this.parseStepToken(token);
+      if (asMinutes === null || !(asMinutes > 0)) return null;
       minutes.push(asMinutes);
     }
+    return minutes.length > 0 ? minutes : null;
+  }
+
+  /**
+   * A single step: one or more "value + unit" parts added together, e.g.
+   * "1m30s" (1.5 minutes). A part without a unit counts as minutes, and "min"
+   * is accepted as a spelled-out "m".
+   */
+  private static parseStepToken(token: string): number | null {
+    const pattern = /(\d+(?:[.,]\d+)?)\s*([a-z]*)/gi;
+    let match: RegExpExecArray | null;
+    let minutes = 0;
+    let consumed = 0;
+    while ((match = pattern.exec(token)) !== null) {
+      if (match.index !== consumed) return null;
+      const value = parseFloat(match[1].replace(',', '.'));
+      const unit = match[2].toLowerCase();
+      const factor =
+        unit === '' || unit === 'm' || unit === 'min'
+          ? 1
+          : unit === 's'
+            ? 1 / 60
+            : unit === 'h'
+              ? 60
+              : unit === 'd'
+                ? 1440
+                : null;
+      if (factor === null || !Number.isFinite(value)) return null;
+      minutes += value * factor;
+      consumed = match.index + match[0].length;
+    }
+    if (consumed === 0 || consumed !== token.length) return null;
     return minutes;
   }
 
   /** Format minutes[] back into a steps string: [1, 10] → "1m 10m" */
   public static formatSteps(minutes: number[]): string {
-    return minutes
-      .map((min) => {
-        if (min < 1) return `${Math.round(min * 60)}s`;
-        if (min % 1440 === 0) return `${min / 1440}d`;
-        if (min % 60 === 0) return `${min / 60}h`;
-        return `${min}m`;
-      })
-      .join(' ');
+    return minutes.map((min) => formatTimespanMinutes(min, 'd')).join(' ');
+  }
+
+  /**
+   * The learning steps the way Anki stores them: whole minutes.
+   *
+   * Anki's `delays` are integers, so a compound step ("1m30s") is rounded to
+   * the nearest minute. This is what ends up in the exported deck config.
+   */
+  public static stepsToAnkiMinutes(steps: string | null | undefined): number[] {
+    if (!steps) return [];
+    const parsed = this.parseSteps(steps);
+    if (!parsed || parsed.length === 0) return [1, 10];
+    return parsed.map((minutes) => Math.round(minutes));
   }
 
   // ---- FSRS scopes (global → preset → deck) ----
