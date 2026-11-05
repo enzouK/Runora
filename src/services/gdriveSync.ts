@@ -46,6 +46,7 @@ const LS = {
  *   http://localhost:3000                                          (vite dev)
  *   http://127.0.0.1:39102 … 39105, http://127.0.0.1:39110 … 39119 (Electron .exe local server)
  *   https://localhost                                              (Capacitor Android WebView)
+ *   https://enzouk.github.io                                        (Runora web app, published on GitHub Pages)
  * Scope used at runtime: drive.file + openid email.
  */
 export const DEFAULT_GOOGLE_CLIENT_ID =
