@@ -444,7 +444,19 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
   const deckMap = useMemo(() => new Map(decks.map((d) => [d.id, d])), [decks]);
   const noteTypeMap = useMemo(() => new Map(noteTypes.map((nt) => [nt.id, nt])), [noteTypes]);
 
-  const fsrsEngine = useMemo(() => new FSRS(StorageService.getFSRSSettings()), []);
+  // One FSRS engine per deck: the browser lists cards from many decks at
+  // once, and each deck may use its own retention, weights and — with them
+  // — its own decay, exactly like Anki's deck options groups.
+  const fsrsEngines = useMemo(() => {
+    const map = new Map<string, FSRS>();
+    for (const deck of decks) {
+      map.set(deck.id, new FSRS(StorageService.getEffectiveFSRSParamsForDeck(deck)));
+    }
+    return map;
+  }, [decks]);
+
+  // Fallback for a card whose deck no longer exists: the global settings.
+  const fallbackFsrsEngine = useMemo(() => new FSRS(StorageService.getFSRSSettings()), []);
 
   // Per-note-type render modes detected from the TEMPLATES ({{furigana:}}, {{kanji:}}, {{kana:}})
   const fieldModesCache = useMemo(() => {
@@ -966,6 +978,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
               const mediaImage = note.media?.find((m) => m.type === 'image')?.dataUrl;
               const mediaAudio = note.media?.find((m) => m.type === 'audio')?.dataUrl;
 
+              const fsrsEngine = fsrsEngines.get(card.deckId) ?? fallbackFsrsEngine;
               const r =
                 card.fsrs.stability > 0
                   ? (fsrsEngine.retrievability(card.fsrs.elapsedDays, card.fsrs.stability) * 100).toFixed(0) + '%'

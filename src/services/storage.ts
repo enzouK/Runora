@@ -967,7 +967,11 @@ export class StorageService {
 
   /** The preset a deck follows — falls back to the factory preset when unlinked. */
   public static getDeckPreset(deckId: string): Preset {
-    const deck = this.getDecks().find((d) => d.id === deckId);
+    return this.getPresetForDeck(this.getDecks().find((d) => d.id === deckId));
+  }
+
+  /** The preset of a deck object, falling back to the factory preset. */
+  private static getPresetForDeck(deck: Deck | undefined): Preset {
     if (deck?.presetId) {
       const preset = this.getPresetById(deck.presetId);
       if (preset) return preset;
@@ -1109,9 +1113,21 @@ export class StorageService {
    * inheriting the global weights — and with them the trainable decay (w[20]).
    */
   public static getEffectiveFSRSParams(deckId: string): FSRSParameters {
+    return this.getEffectiveFSRSParamsForDeck(
+      this.getDecks().find((d) => d.id === deckId)
+    );
+  }
+
+  /**
+   * The same resolution, for a deck object already in hand.
+   *
+   * The browser lists cards from many decks at once and needs one engine
+   * per deck; passing the deck avoids re-reading the storage for each one.
+   */
+  public static getEffectiveFSRSParamsForDeck(deck: Deck | undefined): FSRSParameters {
     return this.resolveFSRSParams(
-      this.getDeckPreset(deckId).fsrsParams,
-      this.getDeckFSRSOverride(deckId)
+      this.getPresetForDeck(deck).fsrsParams,
+      deck?.fsrsOverride ?? null
     );
   }
 
