@@ -980,10 +980,11 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
               const mediaAudio = note.media?.find((m) => m.type === 'audio')?.dataUrl;
 
               const fsrsEngine = fsrsEngines.get(card.deckId) ?? fallbackFsrsEngine;
-              const r =
-                card.fsrs.stability > 0
-                  ? (fsrsEngine.retrievability(card.fsrs.elapsedDays, card.fsrs.stability) * 100).toFixed(0) + '%'
-                  : '100%';
+              // A card only has R once it has been studied (hasDifficulty =
+              // has FSRS data); a new card shows N/D, matching Anki's blank cell.
+              const r = hasDifficulty(card.fsrs.difficulty)
+                ? (fsrsEngine.retrievability(card.fsrs.elapsedDays, card.fsrs.stability) * 100).toFixed(0) + '%'
+                : 'N/D';
 
               // Primary text shows at least the first 2 <br>-separated lines
               const primaryLines = primaryTextBlock ? primaryTextBlock.text.split('\n') : [];
@@ -1149,7 +1150,11 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                         title="Estabilidade (dias de memória)"
                       >
                         <span className="font-medium">S</span>{' '}
-                        <span className="text-ios-blue">{formatTimespanDays(card.fsrs.stability)}</span>
+                        <span className="text-ios-blue">
+                          {hasDifficulty(card.fsrs.difficulty)
+                            ? formatTimespanDays(card.fsrs.stability)
+                            : 'N/D'}
+                        </span>
                       </span>
                       <span
                         className="text-zinc-400 dark:text-zinc-500"
@@ -1159,7 +1164,7 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                         <span className="text-ios-orange">
                           {hasDifficulty(card.fsrs.difficulty)
                             ? formatDifficultyPercent(card.fsrs.difficulty)
-                            : '—'}
+                            : 'N/D'}
                         </span>
                       </span>
                       <span
