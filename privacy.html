@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Política de Privacidade — Runora</title>
+    <meta name="description" content="Como o Runora trata seus dados: tudo fica local no seu dispositivo e, se você ativar, no seu próprio Google Drive." />
+    <link rel="icon" type="image/png" href="./assets/runora-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        margin: 0;
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        background: radial-gradient(120% 80% at 50% -10%, #2a1150 0%, rgba(7, 1, 15, 0) 60%), #07010f;
+        color: #f4f2ff;
+        line-height: 1.7;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+      header { display: flex; align-items: center; gap: 12px; margin-bottom: 34px; }
+      header img { width: 36px; height: 36px; }
+      header a { color: inherit; text-decoration: none; font-weight: 800; font-size: 19px; }
+      h1 { font-size: clamp(28px, 5vw, 40px); letter-spacing: -0.02em; margin: 0 0 6px; }
+      h2 { font-size: 20px; margin: 34px 0 8px; letter-spacing: -0.01em; }
+      p, li { color: #b9b3d6; font-size: 16px; }
+      li { margin-bottom: 6px; }
+      strong { color: #f4f2ff; }
+      a { color: #a78bfa; }
+      .meta { font-size: 14px; color: #8d86b3; margin-bottom: 28px; }
+      .box { border: 1px solid rgba(255, 255, 255, 0.09); background: rgba(255, 255, 255, 0.04); border-radius: 16px; padding: 18px 22px; margin: 22px 0; }
+      footer { margin-top: 44px; padding-top: 22px; border-top: 1px solid rgba(255, 255, 255, 0.09); font-size: 14px; color: #8d86b3; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <a href="./"><img src="./assets/runora-icon.png" alt="Runora" /> Runora</a>
+      </header>
+
+      <h1>Política de Privacidade</h1>
+      <p class="meta">Última atualização: 5 de novembro de 2026</p>
+
+      <p>
+        O Runora é um aplicativo de cartões de estudo com o agendador FSRS. Esta política explica
+        quais dados o aplicativo trata e com quem — a resposta curta é: <strong>quase nenhum dado
+        sai do seu dispositivo</strong>.
+      </p>
+
+      <div class="box">
+        <p style="margin: 0">
+          <strong>Resumo:</strong> o Runora não exige cadastro, não possui servidor de contas, não
+          usa analytics e não vende ou compartilha dados com terceiros. Seus decks ficam no
+          armazenamento local do navegador/dispositivo. Se você ativar a sincronização, os arquivos
+          são gravados <strong>na sua própria conta do Google Drive</strong>.
+        </p>
+      </div>
+
+      <h2>1. Dados guardados no seu dispositivo</h2>
+      <p>
+        Decks, notas, cartões, histórico de revisões, mídias, preferências de interface e
+        parâmetros FSRS são gravados no armazenamento local do app (no navegador, isso é o
+        <code>localStorage</code>). Esses dados não são enviados a nenhum servidor do Runora e
+        some com o app ou com a limpeza de dados do navegador/dispositivo.
+      </p>
+
+      <h2>2. Integração com o Google Drive (opcional)</h2>
+      <p>
+        Você pode conectar uma conta Google para sincronizar decks, histórico e mídia. A conexão
+        usa o Google Identity Services e pede apenas estas permissões:
+      </p>
+      <ul>
+        <li>
+          <code>https://www.googleapis.com/auth/drive.file</code> — criar e gerenciar apenas os
+          arquivos que o Runora cria na sua conta (a pasta “Runora” no seu Drive);
+        </li>
+        <li>
+          <code>openid email</code> — identificar a conta conectada e mostrar o e-mail da sessão.
+        </li>
+      </ul>
+      <p>
+        O token de acesso fica salvo apenas no armazenamento local do seu navegador. O Runora
+        acessa a API do Google Drive <strong>diretamente do seu dispositivo</strong>, usando a sua
+        própria conta: os arquivos sincronizados pertencem a você e podem ser apagados por você a
+        qualquer momento. O Runora não recebe, revende ou analisa esse conteúdo.
+      </p>
+
+      <h2>3. Dados que não coletamos</h2>
+      <ul>
+        <li>Não há cadastro, login ou e-mail obrigatório.</li>
+        <li>Não há telemetria, analytics, cookies de rastreamento ou publicidade.</li>
+        <li>Não vendemos, alugamos nem compartilhamos dados com terceiros.</li>
+      </ul>
+
+      <h2>4. Sites e serviços de terceiros</h2>
+      <p>
+        O app usa as APIs do Google (Drive e Identity Services) quando você conecta uma conta, e
+        fontes do Google Fonts para tipografia. O código do Runora é aberto no GitHub e pode ser
+        auditado pela comunidade.
+      </p>
+
+      <h2>5. Crianças</h2>
+      <p>
+        O Runora não é direcionado a crianças com menos de 13 anos e não coleta conscientemente
+        dados pessoais de crianças.
+      </p>
+
+      <h2>6. Seus direitos e contato</h2>
+      <p>
+        Como seus dados ficam no seu dispositivo e, no caso do Drive, na sua própria conta, você
+        pode alterá-los, exportá-los ou apagá-los a qualquer momento — basta usar os controles do
+        app, apagar os dados locais ou remover os arquivos da pasta “Runora” no Drive.
+      </p>
+      <p>
+        Dúvidas, solicitações ou pedidos de exclusão:
+        <a href="mailto:kaji.vitor@gmail.com">kaji.vitor@gmail.com</a>.
+      </p>
+
+      <h2>7. Alterações nesta política</h2>
+      <p>
+        Mudanças relevantes serão refletidas nesta página com a data de atualização acima. O uso
+        contínuo do app após a publicação implica aceitação da versão vigente.
+      </p>
+
+      <footer>
+        Runora · <a href="./">Página inicial</a> · <a href="./terms.html">Termos de uso</a> ·
+        <a href="./app/">Abrir o app</a>
+      </footer>
+    </div>
+  </body>
+</html>
