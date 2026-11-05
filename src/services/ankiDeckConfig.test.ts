@@ -6,7 +6,9 @@ import {
   decodeDeckKind,
   fsrsFieldsForWeights,
   parseLegacyDeckFsrs,
+  resolveAnkiDeckFsrsScope,
   scanProtoFields,
+  type AnkiDeckOptions,
 } from './ankiDeckConfig';
 import { DEFAULT_FSRS_WEIGHTS } from '../fsrs/constants';
 
@@ -221,6 +223,42 @@ describe('parseLegacyDeckFsrs', () => {
     assert.deepEqual(parseLegacyDeckFsrs(null), {});
     assert.deepEqual(parseLegacyDeckFsrs('nope'), {});
     assert.deepEqual(parseLegacyDeckFsrs({ fsrsParams6: 'nope' }), {});
+  });
+});
+
+describe('resolveAnkiDeckFsrsScope', () => {
+  const fallback = { requestRetention: 0.9, maximumInterval: 36500 };
+
+  const group: AnkiDeckOptions = {
+    id: 1,
+    name: 'Default',
+    desiredRetention: 0.85,
+    maximumInterval: 18000,
+    weights: DEFAULT_FSRS_WEIGHTS,
+  };
+
+  it('takes the retention and the weights from the options group', () => {
+    const scope = resolveAnkiDeckFsrsScope(group, undefined, fallback);
+    assert.equal(scope.requestRetention, 0.85);
+    assert.equal(scope.maximumInterval, 18000);
+    assert.equal(scope.weights!.length, 21);
+    assert.equal(scope.hasDeckOverride, false);
+  });
+
+  it('lets a per-deck retention override win over the group', () => {
+    const scope = resolveAnkiDeckFsrsScope(group, 0.95, fallback);
+    assert.equal(scope.requestRetention, 0.95);
+    // The weights still come from the group, like in Anki.
+    assert.equal(scope.weights!.length, 21);
+    assert.equal(scope.hasDeckOverride, true);
+  });
+
+  it('falls back to the app settings without an options group', () => {
+    const scope = resolveAnkiDeckFsrsScope(undefined, undefined, fallback);
+    assert.equal(scope.requestRetention, 0.9);
+    assert.equal(scope.maximumInterval, 36500);
+    assert.equal(scope.weights, undefined);
+    assert.equal(scope.hasDeckOverride, false);
   });
 });
 

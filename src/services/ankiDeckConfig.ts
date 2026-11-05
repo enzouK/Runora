@@ -37,6 +37,16 @@ export interface AnkiDeckFsrs {
   historicalRetention?: number;
   /** The FSRS weights, following Anki's fsrs_params() precedence. */
   weights?: number[];
+  /** `maximum_review_interval` — the longest interval a card may get. */
+  maximumInterval?: number;
+}
+
+/** An Anki deck options group, with the identity Anki gives it. */
+export interface AnkiDeckOptions extends AnkiDeckFsrs {
+  /** The options group id (`deck_config.id` / the `col.dconf` key). */
+  id: number;
+  /** The options group name ("Default", "My group", …). */
+  name: string;
 }
 
 /** The JSON fields Anki uses for the FSRS options of a legacy options group. */
@@ -100,6 +110,11 @@ export function parseLegacyDeckFsrs(entry: unknown): AnkiDeckFsrs {
   const historical = Number(
     record.sm2Retention ?? record.historical_retention ?? record.historicalRetention
   );
+  const maxIvl = Number(
+    (record.rev as Record<string, unknown> | undefined)?.maxIvl ??
+      record.maxIvl ??
+      record.maximum_review_interval
+  );
 
   // Anki's precedence: FSRS-6 → FSRS-5 → FSRS-4 (`fsrsWeights`).
   const weights =
@@ -114,6 +129,7 @@ export function parseLegacyDeckFsrs(entry: unknown): AnkiDeckFsrs {
   if (Number.isFinite(desired)) result.desiredRetention = desired;
   if (Number.isFinite(historical)) result.historicalRetention = historical;
   if (weights) result.weights = weights;
+  if (Number.isFinite(maxIvl) && maxIvl > 0) result.maximumInterval = maxIvl;
   return result;
 }
 
@@ -239,6 +255,7 @@ export function decodeDeckConfigFsrs(bytes: Uint8Array | number[] | null): AnkiD
   const params6: number[] = [];
   let desiredRetention: number | undefined;
   let historicalRetention: number | undefined;
+  let maximumInterval: number | undefined;
 
   for (const field of fields) {
     switch (field.fieldNumber) {
@@ -250,6 +267,11 @@ export function decodeDeckConfigFsrs(bytes: Uint8Array | number[] | null): AnkiD
         break;
       case 6: // fsrs_params_6
         params6.push(...readFloats(field));
+        break;
+      case 16: // maximum_review_interval
+        if (field.wireType === 0 && field.varint !== undefined && field.varint > 0) {
+          maximumInterval = field.varint;
+        }
         break;
       case 37: // desired_retention
         if (field.wireType === 5) {
@@ -278,6 +300,7 @@ export function decodeDeckConfigFsrs(bytes: Uint8Array | number[] | null): AnkiD
   // Anki's precedence: FSRS-6 → FSRS-5 → FSRS-4.
   const weights = params6.length ? params6 : params5.length ? params5 : params4;
   if (weights.length) result.weights = weights;
+  if (maximumInterval !== undefined) result.maximumInterval = maximumInterval;
   return result;
 }
 
@@ -311,4 +334,40 @@ export function decodeDeckKind(
   }
 
   return result;
+}
+
+/** The FSRS scope of an imported deck, in Runora's terms. */
+export interface AnkiDeckFsrsScope {
+  /** The desired retention that applies to the deck. */
+  requestRetention: number;
+  /** The longest interval a card of the deck may get. */
+  maximumInterval: number;
+  /** The FSRS weights that apply to the deck (with them, the decay). */
+  weights?: number[];
+  /** Whether the deck carries its own retention override. */
+  hasDeckOverride: boolean;
+}
+
+/**
+ * Resolves the FSRS scope of an imported deck.
+ *
+ * In Anki a deck either follows an options group or overrides its
+ * retention on its own; the weights always come from the group. The result
+ * mirrors that: the deck's own retention wins, the group's fills in the
+ * rest, and the app's global settings are the last resort.
+ */
+export function resolveAnkiDeckFsrsScope(
+  options: AnkiDeckOptions | undefined,
+  deckRetentionOverride: number | undefined,
+  fallback: { requestRetention: number; maximumInterval: number }
+): AnkiDeckFsrsScope {
+  const requestRetention =
+    deckRetentionOverride ?? options?.desiredRetention ?? fallback.requestRetention;
+  const maximumInterval = options?.maximumInterval ?? fallback.maximumInterval;
+  return {
+    requestRetention,
+    maximumInterval,
+    weights: options?.weights,
+    hasDeckOverride: deckRetentionOverride !== undefined,
+  };
 }

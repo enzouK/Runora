@@ -8,6 +8,13 @@ import { Card, Deck, FSRSParameters, Note, NoteType, Preset, RevlogEntry } from 
 import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
 import { collectRevlogDifficulties, deriveImportedFsrsState } from './ankiFsrsState';
+import {
+  decodeDeckConfigFsrs,
+  decodeDeckKind,
+  parseLegacyDeckFsrs,
+  resolveAnkiDeckFsrsScope,
+  type AnkiDeckOptions,
+} from './ankiDeckConfig';
 
 export interface RunoraCollectionExport {
   version: string;
@@ -271,11 +278,24 @@ export class ExportImportService {
 
     try {
       // ── Collection row: creation time (and, on legacy, models/decks JSON) ──
-      const colRows = this.queryAll(db, 'SELECT crt, models, decks FROM col');
+      const colRows = this.queryAll(db, 'SELECT crt, models, decks, dconf FROM col');
       if (colRows.length === 0) throw new Error('Tabela col vazia/inválida');
       const colCrt = Number(colRows[0][0]) || 0;
       const modelsJson = JSON.parse(String(colRows[0][1] || '{}'));
       const decksJson = JSON.parse(String(colRows[0][2] || '{}'));
+
+      // ── Deck options groups ──
+      // Anki keeps the FSRS configuration (desired retention, weights and
+      // with them the decay) in an options group that many decks share —
+      // the same idea as Runora's presets. Reading them here is what makes
+      // an imported deck behave exactly like it did in Anki.
+      const deckOptions = this.readAnkiDeckOptions(db, schema, String(colRows[0][3] || '{}'));
+      /** Anki options group id → the Runora preset that carries it. */
+      const presetIdByConfigId = new Map<number, string>();
+      /** Anki deck id → its options group id. */
+      const configIdByAnkiDeck = new Map<number, number>();
+      /** Anki deck id → its own retention override, if any. */
+      const deckRetentionOverride = new Map<number, number>();
 
       // ── Decks (names contain hierarchy) ──
       const deckIdByAnkiId = new Map<number, string>();
@@ -284,10 +304,16 @@ export class ExportImportService {
 
       if (schema === 'schema18') {
         // New schema has a dedicated decks table
-        for (const [did, name] of this.queryAll(db, 'SELECT id, name FROM decks')) {
+        for (const [did, name, kind] of this.queryAll(db, 'SELECT id, name, kind FROM decks')) {
           const ankiId = Number(did);
           const id = `deck-apkg-${ankiId}`;
           deckIdByAnkiId.set(ankiId, id);
+          // The deck points at its options group through the `kind` blob.
+          const kindInfo = decodeDeckKind(kind as Uint8Array | number[] | null);
+          if (kindInfo.configId !== undefined) configIdByAnkiDeck.set(ankiId, kindInfo.configId);
+          if (kindInfo.desiredRetention !== undefined) {
+            deckRetentionOverride.set(ankiId, kindInfo.desiredRetention);
+          }
           decks.push({ id, name: String(name), description: '', createdAt: timestamp, updatedAt: timestamp });
         }
       } else {
@@ -295,6 +321,9 @@ export class ExportImportService {
           const ankiId = Number(ankiIdStr);
           const id = `deck-apkg-${ankiId}`;
           deckIdByAnkiId.set(ankiId, id);
+          // The legacy deck JSON carries the options group id in `conf`.
+          const conf = Number(d.conf);
+          if (Number.isFinite(conf) && conf > 0) configIdByAnkiDeck.set(ankiId, conf);
           decks.push({
             id,
             name: String(d.name || 'Sem nome'),
@@ -302,6 +331,66 @@ export class ExportImportService {
             createdAt: timestamp,
             updatedAt: timestamp,
           });
+        }
+      }
+
+      // ── Options groups → Runora presets ──
+      // Anki's options groups map one-to-one onto Runora's presets: decks
+      // that shared a group in Anki keep sharing their FSRS settings here.
+      const globalFsrs = StorageService.getFSRSSettings();
+      const factoryPreset = StorageService.getPresetById(StorageService.DEFAULT_PRESET_ID)!;
+      const importedPresets: Preset[] = [];
+      for (const options of deckOptions.values()) {
+        const hasFsrs =
+          options.desiredRetention !== undefined ||
+          options.weights !== undefined ||
+          options.maximumInterval !== undefined;
+        if (!hasFsrs) continue;
+        const presetId = `preset-apkg-${options.id}`;
+        presetIdByConfigId.set(options.id, presetId);
+        importedPresets.push({
+          ...factoryPreset,
+          id: presetId,
+          name: options.name || `Anki ${options.id}`,
+          fsrsParams: {
+            requestRetention: options.desiredRetention ?? globalFsrs.requestRetention,
+            maximumInterval: options.maximumInterval ?? globalFsrs.maximumInterval,
+            w: options.weights,
+          },
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
+      }
+
+      // ── Link each deck to its options group ──
+      for (const deck of decks) {
+        const ankiDeckId = Number(deck.id.replace('deck-apkg-', ''));
+        const configId = configIdByAnkiDeck.get(ankiDeckId);
+        const options = configId !== undefined ? deckOptions.get(configId) : undefined;
+        const presetId = configId !== undefined ? presetIdByConfigId.get(configId) : undefined;
+        if (presetId) deck.presetId = presetId;
+
+        // The effective FSRS scope of this deck in Anki.
+        const scope = resolveAnkiDeckFsrsScope(
+          options,
+          deckRetentionOverride.get(ankiDeckId),
+          globalFsrs
+        );
+
+        deck.fsrsParams = {
+          requestRetention: scope.requestRetention,
+          maximumInterval: scope.maximumInterval,
+          w: scope.weights,
+        };
+
+        // A deck with its own retention override in Anki keeps it here, so
+        // it does not drift to the group's value.
+        if (scope.hasDeckOverride) {
+          deck.fsrsOverride = {
+            requestRetention: scope.requestRetention,
+            maximumInterval: scope.maximumInterval,
+            w: scope.weights,
+          };
         }
       }
 
@@ -534,15 +623,26 @@ export class ExportImportService {
         return [...existing.filter((x) => !incomingIds.has(x.id)), ...incoming];
       };
       StorageService.saveNoteTypes(upsertById(StorageService.getNoteTypes(), noteTypes));
-      // Decks: incoming wins on name/desc, but keep the local preset/limits linkage
+      // Decks: incoming wins on name/desc and on the FSRS options it brings;
+      // the local preset linkage and daily limits survive a re-import.
       const existingDecks = StorageService.getDecks();
       const importedDecks = decks.map((d) => {
         const prev = existingDecks.find((x) => x.id === d.id);
-        return prev
-          ? { ...d, presetId: prev.presetId, dailyLimitsOverride: prev.dailyLimitsOverride }
-          : d;
+        return {
+          ...d,
+          presetId: d.presetId ?? prev?.presetId,
+          dailyLimitsOverride: d.dailyLimitsOverride ?? prev?.dailyLimitsOverride,
+          fsrsOverride: d.fsrsOverride ?? prev?.fsrsOverride,
+        };
       });
       StorageService.saveDecks(upsertById(existingDecks, importedDecks));
+      // The Anki options groups become Runora presets.
+      if (importedPresets.length > 0) {
+        const existingPresets = StorageService.getPresets();
+        const importedIds = new Set(importedPresets.map((p) => p.id));
+        const kept = existingPresets.filter((p) => !importedIds.has(p.id));
+        StorageService.savePresets([...kept, ...importedPresets]);
+      }
       StorageService.saveNotes(upsertById(StorageService.getNotes(), notes));
       StorageService.saveCards(upsertById(StorageService.getCards(), cards));
 
@@ -564,6 +664,64 @@ export class ExportImportService {
     const res = db.exec(sql);
     if (res.length === 0) return [];
     return res[0].values;
+  }
+
+  /**
+   * Reads Anki's deck options groups — where the FSRS configuration lives.
+   *
+   * - **schema 18**: the `deck_config` table, whose `config` column holds a
+   *   protobuf `DeckConfig.Config` message.
+   * - **legacy**: the `col.dconf` JSON, a map of group id → options.
+   *
+   * A collection without options groups simply yields an empty map, and the
+   * imported decks keep the app's global FSRS settings.
+   */
+  private static readAnkiDeckOptions(
+    db: import('sql.js').Database,
+    schema: 'legacy' | 'schema18',
+    legacyDconf: string
+  ): Map<number, AnkiDeckOptions> {
+    const options = new Map<number, AnkiDeckOptions>();
+
+    if (schema === 'schema18') {
+      try {
+        for (const [id, name, config] of this.queryAll(
+          db,
+          'SELECT id, name, config FROM deck_config'
+        )) {
+          const configId = Number(id);
+          if (!Number.isFinite(configId)) continue;
+          options.set(configId, {
+            id: configId,
+            name: String(name || `Anki ${configId}`),
+            ...decodeDeckConfigFsrs(config as Uint8Array | number[] | null),
+          });
+        }
+      } catch {
+        // No deck_config table (very old or trimmed collection).
+      }
+      return options;
+    }
+
+    // Legacy: the dconf JSON maps the group id → its options.
+    try {
+      const dconf = JSON.parse(legacyDconf || '{}');
+      for (const [key, entry] of Object.entries(dconf)) {
+        const configId = Number(key);
+        if (!Number.isFinite(configId)) continue;
+        const parsed = parseLegacyDeckFsrs(entry);
+        const groupName =
+          entry && typeof entry === 'object' ? String((entry as Record<string, unknown>).name || '') : '';
+        options.set(configId, {
+          id: configId,
+          name: groupName || `Anki ${configId}`,
+          ...parsed,
+        });
+      }
+    } catch {
+      // Malformed dconf — the decks keep the global FSRS settings.
+    }
+    return options;
   }
 
   /**
