@@ -47,7 +47,25 @@ const LS = {
  *   http://127.0.0.1:39102 … 39105, http://127.0.0.1:39110 … 39119 (Electron .exe local server)
  *   https://localhost                                              (Capacitor Android WebView)
  *   https://enzouk.github.io                                        (Runora web app, published on GitHub Pages)
+ *
  * Scope used at runtime: drive.file + openid email.
+ *
+ * Both scopes are classified by Google as NON-SENSITIVE (see "Choose Google
+ * Drive API scopes" — drive.file grants per-file access to the files the app
+ * itself creates). That matters for verification:
+ *   - OAuth app verification is NOT mandatory for non-sensitive scopes, so the
+ *     app works for any user account, with no test-user list and without the
+ *     "Google hasn't verified this app" warning.
+ *   - Brand verification (the optional, lighter check that demands a domain
+ *     you own with a DNS TXT record) is only needed to show the app NAME and
+ *     LOGO on the Google consent screen. It is NOT required for the sync to
+ *     work, and it cannot pass on a shared host such as github.io.
+ *   - The 100-user cap also only applies to unverified apps requesting
+ *     sensitive/restricted scopes.
+ *
+ * If a scope is ever changed here, re-check its classification before assuming
+ * the app still ships without verification: sensitive scopes need a demo video,
+ * a scope justification and an approved verification request.
  */
 export const DEFAULT_GOOGLE_CLIENT_ID =
   '209118424285-9pc42j7taleit3fobb8bof5ig11srp7j.apps.googleusercontent.com';
