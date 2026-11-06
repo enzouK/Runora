@@ -120,11 +120,11 @@ export class ClozeService {
     // 2. Conditionals: {{#FieldName}}content{{/FieldName}}
     for (const [name, val] of Object.entries(fields)) {
       const hasContent = val && val.trim().length > 0;
-      const condRegex = new RegExp(`\\{\\{#${name}\\}\\}([\\s\\S]*?)\\{\\{/${name}\\}`, 'g');
+      const condRegex = new RegExp(`\\{\\{#${name}\\}\\}([\\s\\S]*?)\\{\\{/${name}\\}\\}`, 'g');
       result = result.replace(condRegex, hasContent ? '$1' : '');
 
       // Inverted conditionals: {{^FieldName}}content{{/FieldName}}
-      const invRegex = new RegExp(`\\{\\{\\^${name}\\}\\}([\\s\\S]*?)\\{\\{/${name}\\}`, 'g');
+      const invRegex = new RegExp(`\\{\\{\\^${name}\\}\\}([\\s\\S]*?)\\{\\{/${name}\\}\\}`, 'g');
       result = result.replace(invRegex, !hasContent ? '$1' : '');
     }
 
@@ -241,26 +241,69 @@ export class ClozeService {
 
     let formatted = content;
 
-    // 1. Replace [sound:URL] with <audio autoplay> — [sound:] plays automatically
+    // 1. Mídia embutida (data URI) — imagem de exemplo do preview
+    formatted = formatted.replace(
+      /(?<!src=["'])(?<!href=["'])(data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)/gi,
+      (_match, uri) =>
+        `<img src="${uri}" alt="Imagem" class="rounded-xl max-h-64 mx-auto my-2 shadow-sm" />`
+    );
+
+    // 2. Mídia embutida (data URI) — áudio de exemplo do preview
+    formatted = formatted.replace(
+      /(?<!src=["'])(?<!href=["'])(data:audio\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)/gi,
+      (_match, uri) =>
+        `<audio controls autoplay src="${uri}" class="my-2 max-w-full h-9 rounded-xl"></audio>`
+    );
+
+    // 3. Replace [sound:URL] with <audio autoplay> — [sound:] plays automatically
     // unless the deck option disables autoplay (handled downstream by CardContentRenderer)
     formatted = formatted.replace(
       /\[sound:([^\]]+)\]/gi,
       (_match, url) => `<audio controls autoplay src="${url.trim()}" class="my-2 max-w-full h-9 rounded-xl"></audio>`
     );
 
-    // 2. Replace standalone TTSMaker and audio URLs not already inside an audio tag
+    // 4. Replace standalone TTSMaker and audio URLs not already inside an audio tag
     // Match URLs ending in .mp3, .wav, .ogg, .m4a, or containing ttsmaker-file
     formatted = formatted.replace(
-      /(?<!src=["'])(https?:\/\/[^\s<>"']*(?:ttsmaker-file\.com[^\s<>"']*|\.(?:mp3|wav|ogg|m4a|aac|opus)(?:\?[^\s<>"']*)?))/gi,
+      /(?<!src=["'])(?<!href=["'])(https?:\/\/[^\s<>"']*(?:ttsmaker-file\.com[^\s<>"']*|\.(?:mp3|wav|ogg|m4a|aac|opus)(?:\?[^\s<>"']*)?))/gi,
       (_match, url) => `<audio controls autoplay src="${url.trim()}" class="my-2 max-w-full h-9 rounded-xl"></audio>`
     );
 
-    // 3. Replace standalone image URLs not already inside an img tag
+    // 5. Replace standalone image URLs not already inside an img tag.
+    // A URL qualifies when it carries an image extension OR when it points to a
+    // known image host that serves extension-less paths (Unsplash, Imgur,
+    // Wikimedia, Cloudinary...). Without this, a perfectly valid image link
+    // was rendered as plain text.
     formatted = formatted.replace(
-      /(?<!src=["'])(https?:\/\/[^\s<>"']+\.(?:png|jpe?g|webp|gif|svg|avif)(?:\?[^\s<>"']*)?)/gi,
-      (_match, url) => `<img src="${url.trim()}" alt="Image" class="rounded-xl max-h-64 mx-auto my-2 shadow-sm" />`
+      /(?<!src=["'])(?<!href=["'])(https?:\/\/[^\s<>"']+)/gi,
+      (match, url) => {
+        const clean = url.trim();
+        const hasImageExtension = /\.(?:png|jpe?g|webp|gif|svg|avif)(?:\?|#|$)/i.test(clean);
+        if (!hasImageExtension && !isKnownImageHost(clean)) return match;
+        return `<img src="${clean}" alt="Image" class="rounded-xl max-h-64 mx-auto my-2 shadow-sm" />`;
+      }
     );
 
     return formatted;
   }
+}
+
+/**
+ * Hosts de imagem que entregam a foto por um caminho SEM extensão de arquivo
+ * (ex.: images.unsplash.com/photo-1503899036084-c55cdd92da26?w=300).
+ * Sem esta lista, essas URLs viravam texto cru no card.
+ */
+const KNOWN_IMAGE_HOSTS = [
+  'images.unsplash.com',
+  'i.imgur.com',
+  'upload.wikimedia.org',
+  'commons.wikimedia.org',
+  'res.cloudinary.com',
+  'cdn.discordapp.com',
+  'lh3.googleusercontent.com',
+];
+
+function isKnownImageHost(url: string): boolean {
+  const lower = url.toLowerCase();
+  return KNOWN_IMAGE_HOSTS.some((host) => lower.includes(`//${host}/`));
 }

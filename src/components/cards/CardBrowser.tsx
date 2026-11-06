@@ -41,6 +41,7 @@ import {
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSelect } from '../common/IOSSelect';
 import { useBodyScrollLock } from '../common/useBodyScrollLock';
+import { CardListItem } from './CardListItem';
 
 interface CardBrowserProps {
   onEditNote: (noteId: string) => void;
