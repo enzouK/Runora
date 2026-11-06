@@ -946,6 +946,34 @@
   --color-ios-border-active-dark: #9ccfd8;
 }
 
+/* ---- runora ---- */
+/* runora é somente dark: no modo claro usa a paleta iOS padrão (só a borda
+   muda p/ github) — exatamente como "aura" e "ayu". A identidade visual
+   violeta/rosa da landing page só existe no modo escuro. */
+:root:not(.dark)[data-color-theme="runora"] {
+  /* fallback claro para tema somente-dark: paleta iOS padrão,
+     apenas com borda estilo github (#d0d7de) nos cards/botões */
+  --color-ios-border: #d0d7de;
+}
+
+.dark[data-color-theme="runora"] {
+  --color-ios-bg-dark: #07010f;
+  --color-ios-card-dark: rgba(255, 255, 255, 0.04);
+  --color-ios-sep: rgba(255, 255, 255, 0.08);
+  --color-ios-blue: #a78bfa;
+  --color-ios-green: #34d399;
+  --color-ios-orange: #fbbf24;
+  --color-ios-red: #fb7185;
+  --color-ios-text-dark: #f4f2ff;
+  --color-ios-text-muted-dark: #a9a3c9;
+  --color-ios-element-dark: rgba(255, 255, 255, 0.07);
+  --color-ios-border-dark: rgba(255, 255, 255, 0.08);
+  --color-ios-accent-dark: #7c3aed;
+  --color-ios-secondary-dark: #f472b6;
+  --color-ios-info-dark: #a78bfa;
+  --color-ios-border-active-dark: #a78bfa;
+}
+
 /* ---- solarized ---- */
 :root:not(.dark)[data-color-theme="solarized"] {
   --color-ios-bg: #fdf6e3;

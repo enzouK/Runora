@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import './color-themes.css';
+/* Camada visual da landing page — só para a paleta "runora" (branch de teste) */
+@import './runora-landing.css';
 
 @variant dark (&:where(.dark, .dark *));
 

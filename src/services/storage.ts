@@ -4,6 +4,7 @@ import { INITIAL_CARDS, INITIAL_DECKS, INITIAL_NOTE_TYPES, INITIAL_NOTES } from 
 import { DEFAULT_FSRS_PARAMETERS, FSRS_WEIGHT_COUNT_MIN } from '../fsrs/constants';
 import { formatTimespanMinutes } from '../fsrs/timespan';
 import { isValidWeights } from '../fsrs/weights';
+import { DEFAULT_COLOR_THEME } from '../themes';
 
 const STORAGE_KEYS = {
   DECKS: 'runora_decks',
@@ -298,7 +299,7 @@ export class StorageService {
   }
 
   public static getColorTheme(): string {
-    return localStorage.getItem(STORAGE_KEYS.COLOR_THEME) ?? 'opencode';
+    return localStorage.getItem(STORAGE_KEYS.COLOR_THEME) ?? DEFAULT_COLOR_THEME;
   }
 
   public static setColorTheme(theme: string): void {

@@ -1,0 +1,124 @@
+/* ============================================================
+ * Runora — camada visual da landing page (branch de teste)
+ *
+ * Replica o repertório visual de site/index.html (que é dark-only):
+ *   - fundo em camadas (violeta no topo + rosa/lilás nos cantos)
+ *   - header de vidro com blur
+ *   - cards translúcidos com halo violeta
+ *   - gradiente violeta -> rosa em títulos e tags
+ *   - glow violeta nos botões
+ *   - scrollbar violeta
+ *
+ * O tema "runora" é SOMENTE ESCURO (como "aura" e "ayu"): no modo
+ * claro o app usa o tema claro padrão — por isso todas as regras
+ * aqui são escopadas em .dark[data-color-theme="runora"].
+ *
+ * Importado DEPOIS de color-themes.css para vencer regras de mesma
+ * especificidade (a ordem do arquivo decide).
+ * ============================================================ */
+
+/* ---------- 1. Fundo em camadas ---------- */
+.dark[data-color-theme='runora'] .min-h-screen {
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, #2a1150 0%, rgba(7, 1, 15, 0) 60%),
+    radial-gradient(90% 60% at 100% 10%, rgba(244, 114, 182, 0.14) 0%, rgba(7, 1, 15, 0) 55%),
+    radial-gradient(80% 60% at 0% 0%, rgba(124, 58, 237, 0.16) 0%, rgba(7, 1, 15, 0) 60%);
+  background-size: 100% 100vh;
+  background-repeat: no-repeat;
+  background-color: var(--color-ios-bg-dark);
+}
+
+/* halo nativo do app (elipse no topo) assume violeta */
+.dark[data-color-theme='runora'] .dark\:bg-\[radial-gradient\(ellipse_55\%_50\%_at_50\%_-12\%\,rgba\(64\,156\,255\,0\.14\)\,transparent\)\] {
+  background-image: radial-gradient(ellipse 55% 50% at 50% -12%, rgba(167, 139, 250, 0.2), transparent);
+}
+
+/* ---------- 2. Header glass ---------- */
+.dark[data-color-theme='runora'] header {
+  background-color: rgba(7, 1, 15, 0.72);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- 3. Cards de vidro com halo ---------- */
+.dark[data-color-theme='runora'] .dark\:bg-ios-card-dark {
+  box-shadow:
+    var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-shadow), var(--tw-shadow),
+    0 18px 40px -28px rgba(168, 85, 247, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ---------- 4. Título (h1) com gradiente ---------- */
+.dark[data-color-theme='runora'] h1 {
+  background-image: linear-gradient(100deg, #a78bfa 0%, #f472b6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---------- 5. Botões de ação: gradiente + glow ---------- */
+/* No dark o botão usa .bg-ios-blue (sem variante dark:) */
+.dark[data-color-theme='runora'] .bg-ios-blue.rounded-full,
+.dark[data-color-theme='runora'] .dark\:bg-ios-blue.rounded-full {
+  background-image: linear-gradient(120deg, #7c3aed 0%, #a855f7 55%, #c026d3 100%);
+  background-color: transparent;
+  box-shadow: 0 10px 30px -12px rgba(168, 85, 247, 0.8);
+}
+
+.dark[data-color-theme='runora'] .bg-ios-blue.rounded-full:hover,
+.dark[data-color-theme='runora'] .dark\:bg-ios-blue.rounded-full:hover {
+  filter: brightness(1.08);
+}
+
+/* ---------- 6. Segmentado ativo em vidro violeta ---------- */
+.dark[data-color-theme='runora'] .dark\:bg-\[\#636366\] {
+  background-color: rgba(167, 139, 250, 0.16);
+  color: #f4f2ff;
+  box-shadow:
+    inset 0 0 0 1px rgba(167, 139, 250, 0.3),
+    0 6px 18px -10px rgba(168, 85, 247, 0.7);
+}
+
+/* ---------- 7. Cards de estatística: vidro, mantendo a cor no ícone ---------- */
+.dark[data-color-theme='runora'] .dark\:bg-ios-blue\/\[0\.16\],
+.dark[data-color-theme='runora'] .dark\:bg-ios-orange\/\[0\.16\],
+.dark[data-color-theme='runora'] .dark\:bg-ios-green\/\[0\.16\] {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.dark[data-color-theme='runora'] .dark\:border-ios-blue\/20,
+.dark[data-color-theme='runora'] .dark\:border-ios-orange\/20,
+.dark[data-color-theme='runora'] .dark\:border-ios-green\/20 {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- 8. Scrollbar violeta ---------- */
+.dark[data-color-theme='runora'] ::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.35);
+}
+
+.dark[data-color-theme='runora'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(167, 139, 250, 0.55);
+}
+
+/* ---------- 9. Tags / badges com gradiente de texto ---------- */
+/* O gradiente usa color: transparent — por isso só se aplica a elementos
+   SEM ícone (com SVG, o currentColor herdado deixaria o ícone invisível). */
+.dark[data-color-theme='runora'] .text-ios-blue:not(:has(svg)) {
+  background-image: linear-gradient(100deg, #a78bfa, #f472b6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Elementos com ícone: cor sólida, para o SVG continuar visível */
+.dark[data-color-theme='runora'] .text-ios-blue:has(svg) {
+  background-image: none;
+  color: #a78bfa;
+}
+
+/* ---------- 10. Modal overlays ---------- */
+.dark[data-color-theme='runora'] .fixed.inset-0.bg-black\/50,
+.dark[data-color-theme='runora'] .fixed.inset-0.bg-black\/40,
+.dark[data-color-theme='runora'] .fixed.inset-0.bg-black\/60 {
+  background: radial-gradient(ellipse at center, rgba(124, 58, 237, 0.12), rgba(7, 1, 15, 0.6));
+}
