@@ -136,8 +136,8 @@
   },
   "runora": {
     "dark": { "primary": "#a78bfa", "secondary": "#f472b6", "accent": "#7c3aed", "error": "#fb7185", "warning": "#fbbf24", "success": "#34d399", "info": "#a78bfa", "text": "#f4f2ff", "textMuted": "#a9a3c9", "background": "#07010f", "backgroundPanel": "#140726", "backgroundElement": "#1d0b38", "border": "#2a1447", "borderActive": "#a78bfa", "borderSubtle": "#1a0b33" },
-    "light": { "primary": "#7c3aed", "secondary": "#db2777", "accent": "#8b5cf6", "error": "#e11d48", "warning": "#d97706", "success": "#059669", "info": "#7c3aed", "text": "#1b1230", "textMuted": "#6b6383", "background": "#f6f3ff", "backgroundPanel": "#ffffff", "backgroundElement": "#ece7fd", "border": "#ddd5f7", "borderActive": "#7c3aed", "borderSubtle": "#ece9fb" },
-    "modes": ["dark", "light"]
+    "light": { "primary": "#a78bfa", "secondary": "#f472b6", "accent": "#7c3aed", "error": "#fb7185", "warning": "#fbbf24", "success": "#34d399", "info": "#a78bfa", "text": "#f4f2ff", "textMuted": "#a9a3c9", "background": "#07010f", "backgroundPanel": "#140726", "backgroundElement": "#1d0b38", "border": "#2a1447", "borderActive": "#a78bfa", "borderSubtle": "#1a0b33" },
+    "modes": ["dark"]
   },
   "solarized": {
     "dark": { "primary": "#268bd2", "secondary": "#6c71c4", "accent": "#2aa198", "error": "#dc322f", "warning": "#b58900", "success": "#859900", "info": "#cb4b16", "text": "#839496", "textMuted": "#586e75", "background": "#002b36", "backgroundPanel": "#073642", "backgroundElement": "#073642", "border": "#073642", "borderActive": "#586e75", "borderSubtle": "#073642" },

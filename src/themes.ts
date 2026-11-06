@@ -5,7 +5,7 @@ import opencodeThemes from '../opencode-themes.json';
  * extraídas de github.com/anomalyco/opencode → packages/tui/src/theme/assets/*.json
  *
  * Cada tema tem variantes `dark` e `light`. Temas somente-dark
- * (aura, ayu, catppuccin-frappe, catppuccin-macchiato, nightowl)
+ * (aura, ayu, catppuccin-frappe, catppuccin-macchiato, nightowl, runora)
  * repetem as cores do dark no light.
  */
 export interface ThemePalette {
