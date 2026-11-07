@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -14,6 +14,7 @@ import {
   Volume2,
   ChevronDown,
   ChevronUp,
+  FlipHorizontal,
   Search,
   Database,
   Undo2,
@@ -27,7 +28,26 @@ import { CardContentRenderer } from '../study/CardContentRenderer';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { useBodyScrollLock } from '../common/useBodyScrollLock';
 import { CardListItem } from '../cards/CardListItem';
-import { useTemplateHistory, HistoryField } from './useTemplateHistory';
+import { useTemplateHistory, HistoryChange, HistoryEntry } from './useTemplateHistory';
+import { CssFieldToolbar, CssTarget } from './CssFieldToolbar';
+import { Popover } from './Popover';
+import {
+  CARD_CSS_SELECTOR,
+  buildFieldBlock,
+  buildFieldCssRule,
+  buildFieldSlugs,
+  cssFieldSelectors,
+  cssSelectorAt,
+  ensureFieldCssRule,
+  extractStyleableTags,
+  fieldCssSelector,
+  hasCssRule,
+  removeCssProperty,
+  setCssProperty,
+  tagCssSlug,
+  toggleCssProperty,
+} from '../../services/templateBlocks';
+import { featureOfTag, resolveFeatures } from '../../services/noteTypeFeatures';
 import {
   SAMPLE_AUDIO_DATA_URI,
   SAMPLE_IMAGE_DATA_URI,
@@ -50,6 +70,8 @@ interface CardTemplateEditorModalProps {
 const MINI_CARD_WIDTH = 'max-w-[360px]';
 /** Largura do card na pré-visualização ampliada (overlay). */
 const LARGE_CARD_WIDTH = 'max-w-[440px]';
+/** Identificador do alvo "card" na toolbar de CSS (não é um campo). */
+const CARD_TARGET_ID = '__card__';
 
 export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = ({
   isOpen,
@@ -58,6 +80,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
   onSaved,
 }) => {
   useBodyScrollLock(isOpen);
+
   const [templates, setTemplates] = useState<CardTemplate[]>(() =>
     noteType.templates.length > 0
       ? JSON.parse(JSON.stringify(noteType.templates))
@@ -76,6 +99,28 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
   const [cssCode, setCssCode] = useState(noteType.css || '');
   const [previewMode, setPreviewMode] = useState<'front' | 'back'>('front');
 
+  /**
+   * Tem alteração não salva? (o editor começa sempre com o que está
+   * salvo no app — sem rascunho. Isso é o que avisa antes de fechar.)
+   */
+  const hasUnsavedChanges = useMemo(() => {
+    const cssIgual = cssCode === (noteType.css || '');
+    const base = noteType.templates.length > 0
+      ? noteType.templates
+      : [
+          {
+            name: 'Card 1',
+            qfmt: '{{Frente}}',
+            afmt: '{{FrontSide}}\n<hr id="answer">\n{{Verso}}',
+          },
+        ];
+    const semIds = (lista: { name: string; qfmt: string; afmt: string }[]) =>
+      lista.map((t) => ({ name: t.name, qfmt: t.qfmt, afmt: t.afmt }));
+    const templatesIguais =
+      JSON.stringify(semIds(templates)) === JSON.stringify(semIds(base));
+    return !(cssIgual && templatesIguais);
+  }, [templates, cssCode, noteType.templates, noteType.css]);
+
   /* ---------- Valores de exemplo ----------
    * Todos os campos começam EM BRANCO (sem heurística por nome de campo).
    * Os botões Image/Audio preenchem o campo com a mídia local embutida.
@@ -89,12 +134,14 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
   /* ---------- Card Selector Modal ---------- */
   const [cardSelectorOpen, setCardSelectorOpen] = useState(false);
   const [cardSearch, setCardSearch] = useState('');
-
   /* ---------- Aviso (popup do app, no lugar do alert do navegador) ---------- */
   const [notice, setNotice] = useState<{ title: string; description: string } | null>(null);
 
   /* ---------- Limpar a aba atual (com confirmação) ---------- */
   const [clearTarget, setClearTarget] = useState<'front' | 'back' | 'css' | null>(null);
+
+  /* ---------- Aviso de saída sem salvar ---------- */
+  const [exitWarningOpen, setExitWarningOpen] = useState(false);
 
   /* ---------- Layout do workspace ----------
    * - divisória arrastável entre editor e preview (30% .. 85% do editor)
@@ -113,11 +160,11 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
   }, [sampleFields, noteType.id]);
 
   // Sincronizar previewMode com a aba ativa do editor
-  // Front tab -> preview frente; Back tab -> preview verso; CSS tab -> preview frente
+  // Front tab -> preview frente; Back tab -> preview verso;
+  // CSS tab -> mantém a escolha do usuário (botão de alternar no preview)
   useEffect(() => {
     if (activeTab === 'front') setPreviewMode('front');
     else if (activeTab === 'back') setPreviewMode('back');
-    else setPreviewMode('front');
   }, [activeTab]);
 
   // Divisória arrastável (pointer events — funciona com mouse e toque)
@@ -154,25 +201,49 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
   /* ---------- Histórico (desfazer/refazer) ---------- */
   const history = useTemplateHistory({ maxEntries: 20, coalesceMs: 700 });
 
-  /** Aplica um valor do histórico no campo correspondente. */
-  const applyHistoryValue = (entry: { field: HistoryField; templateIndex: number }, value: string) => {
-    if (entry.field === 'css') {
-      setCssCode(value);
-      return;
+  /** Aplica as mudanças de uma entrada do histórico. */
+  const applyHistoryEntry = (entry: HistoryEntry, direction: 'before' | 'after') => {
+    for (const change of entry.changes) {
+      const value = direction === 'before' ? change.before : change.after;
+      if (change.field === 'css') {
+        setCssCode(value);
+        continue;
+      }
+      setTemplates((prev) =>
+        prev.map((t, idx) =>
+          idx === change.templateIndex ? { ...t, [change.field]: value } : t
+        )
+      );
     }
-    setTemplates((prev) =>
-      prev.map((t, idx) => (idx === entry.templateIndex ? { ...t, [entry.field]: value } : t))
-    );
   };
 
   const handleUndo = () => {
     const entry = history.undo();
-    if (entry) applyHistoryValue(entry, entry.before);
+    if (entry) applyHistoryEntry(entry, 'before');
   };
 
   const handleRedo = () => {
     const entry = history.redo();
-    if (entry) applyHistoryValue(entry, entry.after);
+    if (entry) applyHistoryEntry(entry, 'after');
+  };
+
+  /**
+   * Aplica mudanças (no HTML e/ou no CSS) e registra no histórico.
+   * Várias mudanças juntas = UMA entrada (um botão = um desfazer).
+   */
+  const applyChanges = (changes: HistoryChange[], coalesce = false) => {
+    for (const change of changes) {
+      if (change.field === 'css') {
+        setCssCode(change.after);
+        continue;
+      }
+      setTemplates((prev) =>
+        prev.map((t, idx) =>
+          idx === change.templateIndex ? { ...t, [change.field]: change.after } : t
+        )
+      );
+    }
+    history.push(changes, coalesce);
   };
 
   /**
@@ -186,16 +257,12 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
     coalesce = false
   ) => {
     const before = currentTemplate?.[field] ?? '';
-    setTemplates((prev) =>
-      prev.map((t, idx) => (idx === activeTemplateIndex ? { ...t, [field]: value } : t))
-    );
-    history.push(field, activeTemplateIndex, before, value, coalesce);
+    applyChanges([{ field, templateIndex: activeTemplateIndex, before, after: value }], coalesce);
   };
 
   /** Atualiza o CSS do tipo de nota (com histórico). */
   const updateCssCode = (value: string, coalesce = false) => {
-    setCssCode(value);
-    history.push('css', 0, cssCode, value, coalesce);
+    applyChanges([{ field: 'css', templateIndex: 0, before: cssCode, after: value }], coalesce);
   };
 
   /** Limpa o conteúdo da aba atual (o conteúdo fica no histórico, então
@@ -223,8 +290,14 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
 
   /**
    * Insert snippet at cursor in the currently active textarea
+   *
+   * Se o textarea não estiver com o foco (o usuário clicou no botão sem
+   * nunca ter clicado no texto), o trecho entra no final do conteúdo.
+   *
+   * @param newParagraph quando true, pula o cursor para a linha de baixo
+   *                     (para não precisar apertar Enter a cada inserção).
    */
-  const insertSnippet = (snippet: string) => {
+  const insertSnippet = (snippet: string, newParagraph = false) => {
     let textarea: HTMLTextAreaElement | null = null;
     let fieldKey: 'qfmt' | 'afmt' | null = null;
 
@@ -238,17 +311,343 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
 
     if (!textarea || !fieldKey) return;
 
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
     const currentVal = currentTemplate[fieldKey];
-    const newVal = currentVal.substring(0, start) + snippet + currentVal.substring(end);
+    const hasFocus = document.activeElement === textarea;
+    const start = hasFocus ? textarea.selectionStart : currentVal.length;
+    const end = hasFocus ? textarea.selectionEnd : currentVal.length;
+    const texto = newParagraph ? `${snippet}\n` : snippet;
+    const newVal = currentVal.substring(0, start) + texto + currentVal.substring(end);
 
     updateCurrentTemplate(fieldKey, newVal);
 
     // Restore focus and cursor position after insertion
     setTimeout(() => {
       textarea?.focus();
-      textarea?.setSelectionRange(start + snippet.length, start + snippet.length);
+      textarea?.setSelectionRange(start + texto.length, start + texto.length);
+    }, 0);
+  };
+
+  /**
+   * Insere um BLOCO (campo ou tag) no HTML e cria a regra CSS dele.
+   * Tudo junto é UMA entrada do histórico (um clique = um desfazer).
+   */
+  const insertBlock = (tag: string, slug: string) => {
+    let textarea: HTMLTextAreaElement | null = null;
+    let fieldKey: 'qfmt' | 'afmt' | null = null;
+
+    if (activeTab === 'front') {
+      textarea = frontTextareaRef.current;
+      fieldKey = 'qfmt';
+    } else if (activeTab === 'back') {
+      textarea = backTextareaRef.current;
+      fieldKey = 'afmt';
+    }
+
+    if (!textarea || !fieldKey) return;
+
+    const bloco = buildFieldBlock(tag, slug);
+    const texto = `${bloco}\n`;
+    const currentVal = currentTemplate[fieldKey];
+    const hasFocus = document.activeElement === textarea;
+    const start = hasFocus ? textarea.selectionStart : currentVal.length;
+    const end = hasFocus ? textarea.selectionEnd : currentVal.length;
+    const newVal = currentVal.substring(0, start) + texto + currentVal.substring(end);
+
+    // a regra CSS do bloco (cria se ainda não existir)
+    const novoCss = ensureFieldCssRule(cssCode, slug);
+
+    const changes: HistoryChange[] = [
+      { field: fieldKey, templateIndex: activeTemplateIndex, before: currentVal, after: newVal },
+    ];
+    if (novoCss !== cssCode) {
+      changes.push({ field: 'css', templateIndex: 0, before: cssCode, after: novoCss });
+    }
+    applyChanges(changes);
+
+    // cursor fica na linha de baixo do bloco
+    setTimeout(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(start + texto.length, start + texto.length);
+    }, 0);
+  };
+
+  /**
+   * Insere a regra CSS do campo na posição do cursor (aba Estilo).
+   * Se a regra já existir, só seleciona o campo e leva o cursor até ela.
+   */
+  const insertCssRule = (fieldName: string, slug: string) => {
+    const textarea = cssTextareaRef.current;
+    if (!textarea) return;
+
+    // já fica selecionado na toolbar, para editar a regra
+    setCssTargetId(fieldName);
+
+    if (hasCssRule(cssCode, fieldCssSelector(slug))) {
+      // a regra já existe: mostra ela no código (sem duplicar)
+      const inicio = cssCode.indexOf(fieldCssSelector(slug));
+      const fim = inicio >= 0 ? cssCode.indexOf('}', inicio) : -1;
+      if (inicio >= 0 && fim >= 0) {
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(inicio, fim + 1);
+        }, 0);
+      }
+      return;
+    }
+
+    const rule = buildFieldCssRule(slug);
+    const hasFocus = document.activeElement === textarea;
+    const start = hasFocus ? textarea.selectionStart : cssCode.length;
+    const end = hasFocus ? textarea.selectionEnd : cssCode.length;
+
+    const before = cssCode.substring(0, start);
+    const after = cssCode.substring(end);
+
+    // Separa a regra do que já existe (linha em branco antes/depois)
+    let prefix = '';
+    if (before.length > 0) prefix = before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+    const suffix = after.length > 0 ? '\n\n' : '\n';
+
+    const inserted = prefix + rule + suffix;
+    const newVal = before + inserted + after;
+
+    updateCssCode(newVal);
+    // a toolbar passa a mexer nesse campo
+    setCssTargetId(fieldName);
+
+    const cursor = start + prefix.length + rule.length;
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(cursor, cursor);
+    }, 0);
+  };
+
+  /**
+   * Garante que a regra do card (.card) exista no CSS.
+   * Se já existir, só seleciona o card na toolbar.
+   */
+  const insertCardRule = () => {
+    const textarea = cssTextareaRef.current;
+    if (!textarea) return;
+
+    // já fica selecionado na toolbar
+    setCssTargetId(CARD_TARGET_ID);
+
+    if (hasCssRule(cssCode, CARD_CSS_SELECTOR)) return;
+
+    const rule = `${CARD_CSS_SELECTOR} {\n  font-size: 20px;\n}`;
+    const hasFocus = document.activeElement === textarea;
+    const start = hasFocus ? textarea.selectionStart : cssCode.length;
+    const end = hasFocus ? textarea.selectionEnd : cssCode.length;
+
+    const before = cssCode.substring(0, start);
+    const after = cssCode.substring(end);
+    let prefix = '';
+    if (before.length > 0) prefix = before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+    const suffix = after.length > 0 ? '\n\n' : '\n';
+
+    const inserted = prefix + rule + suffix;
+    updateCssCode(before + inserted + after);
+
+    const cursor = start + prefix.length + rule.length;
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(cursor, cursor);
+    }, 0);
+  };
+
+  /** Slug (classe CSS) de cada campo do tipo de nota. */
+  const fieldSlugs = useMemo(
+    () => buildFieldSlugs(noteType.fields.map((f) => f.name)),
+    [noteType.fields]
+  );
+
+  /**
+   * Slug (classe CSS) de uma tag — vale tanto para os campos do tipo de
+   * nota quanto para as tags especiais (hint, furigana:X, voice:record...).
+   *
+   * Campos usam o mapa com sufixo (nomes iguais não colidem); as tags
+   * especiais usam o slug direto ("furigana:Reading" -> "furigana-reading",
+   * "voice:record" -> "voice-record").
+   */
+  const slugForTag = useCallback(
+    (tag: string): string => tagCssSlug(tag, fieldSlugs),
+    [fieldSlugs]
+  );
+
+  /**
+   * Recursos (features) do Note Type que estão ligados.
+   * Cada recurso ligado mostra o seu botão na linha "Inserir".
+   */
+  const featuresOn = useMemo(() => {
+    const r = resolveFeatures(noteType);
+    return {
+      cloze: r.cloze,
+      hints: r.hints,
+      voice: r.voice,
+      furigana: r.furigana,
+    };
+  }, [noteType]);
+
+  /** A tag pertence a um recurso desligado? (então não entra na lista) */
+  const tagIsBlocked = useCallback(
+    (tag: string): boolean => {
+      const feature = featureOfTag(tag);
+      if (!feature) return false;
+      return !featuresOn[feature];
+    },
+    [featuresOn]
+  );
+
+  /* ---------- Formatação pelo CSS (aba Estilo) ---------- */
+
+  /** Alvo que a toolbar de CSS vai formatar (campo ou card). */
+  const [cssTargetId, setCssTargetId] = useState<string>(CARD_TARGET_ID);
+
+  /**
+   * Blocos que aparecem no HTML do template (frente ou verso):
+   * os campos do tipo de nota + as tags especiais (hint, furigana:X,
+   * voice:record...). É o que aparece na linha "Inserir" do CSS.
+   */
+  const htmlBlocks = useMemo(() => {
+    const html = `${currentTemplate?.qfmt || ''}\n${currentTemplate?.afmt || ''}`;
+    const tags = extractStyleableTags(html, noteType.fields.map((f) => f.name));
+
+    const out: { id: string; label: string; slug: string }[] = [];
+    const vistos = new Set<string>();
+
+    for (const tag of tags) {
+      // tag de um recurso desligado não aparece (o botão sumiu)
+      if (tagIsBlocked(tag)) continue;
+      const slug = slugForTag(tag);
+      if (vistos.has(slug)) continue;
+      vistos.add(slug);
+      out.push({ id: tag, label: tag, slug });
+    }
+
+    return out;
+  }, [noteType.fields, currentTemplate?.qfmt, currentTemplate?.afmt, slugForTag, tagIsBlocked]);
+
+  /**
+   * Blocos conhecidos (para dar nome às regras do CSS): todos os campos
+   * do tipo de nota + as tags especiais achadas no HTML.
+   */
+  const knownBlocks = useMemo(() => {
+    const out: { id: string; label: string; slug: string }[] = [];
+    const vistos = new Set<string>();
+
+    for (const f of noteType.fields) {
+      const slug = slugForTag(f.name);
+      if (vistos.has(slug)) continue;
+      vistos.add(slug);
+      out.push({ id: f.name, label: f.name, slug });
+    }
+
+    for (const bloco of htmlBlocks) {
+      if (vistos.has(bloco.slug)) continue;
+      vistos.add(bloco.slug);
+      out.push(bloco);
+    }
+
+    return out;
+  }, [noteType.fields, htmlBlocks, slugForTag]);
+
+  /**
+   * Alvos da toolbar: só os blocos que JÁ têm regra no CSS (o que o
+   * usuário colocou no Estilo) + o card.
+   */
+  const cssTargets: CssTarget[] = useMemo(() => {
+    const out: CssTarget[] = [];
+    const slugsDoCss = cssFieldSelectors(cssCode);
+    const cobertos = new Set<string>();
+
+    for (const bloco of knownBlocks) {
+      if (!slugsDoCss.includes(bloco.slug)) continue;
+      cobertos.add(bloco.slug);
+      out.push({
+        id: bloco.id,
+        label: bloco.label,
+        selector: fieldCssSelector(bloco.slug),
+      });
+    }
+
+    // regras escritas à mão (slug que não é campo conhecido)
+    for (const slug of slugsDoCss) {
+      if (cobertos.has(slug)) continue;
+      out.push({
+        id: slug,
+        label: slug,
+        selector: fieldCssSelector(slug),
+      });
+    }
+
+    out.push({
+      id: CARD_TARGET_ID,
+      label: 'Card',
+      selector: CARD_CSS_SELECTOR,
+    });
+
+    return out;
+  }, [knownBlocks, cssCode]);
+
+  /** Alvo atual (com fallback quando o campo sumiu do CSS). */
+  const cssTarget: CssTarget = useMemo(() => {
+    const achado = cssTargets.find((t) => t.id === cssTargetId);
+    return achado ?? cssTargets[cssTargets.length - 1];
+  }, [cssTargets, cssTargetId]);
+
+  /**
+   * Troca o alvo da toolbar conforme a regra CSS onde o cursor está.
+   * Clicar na linha do ".card" seleciona o card; clicar na linha de um
+   * campo (ex.: ".runora-field--sentence {") seleciona aquele campo.
+   */
+  const selectTargetAtCursor = (pos: number, css: string) => {
+    const seletor = cssSelectorAt(css, pos);
+    if (!seletor) return;
+
+    // seletor pode ter mais de um alvo: ".card, .outro {"
+    const partes = seletor
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    for (const parte of partes) {
+      const achado = cssTargets.find((t) => t.selector === parte);
+      if (achado) {
+        setCssTargetId(achado.id);
+        return;
+      }
+    }
+  };
+
+  /**
+   * Aplica uma formatação na regra CSS do alvo selecionado.
+   * @param toggle quando true, clicar de novo no mesmo formato remove.
+   */
+  const applyCssFormat = (property: string, value: string, toggle = true) => {
+    if (!cssTarget) return;
+
+    // Valor vazio = volta ao padrão (remove a propriedade da regra)
+    const novo = !value
+      ? removeCssProperty(cssCode, cssTarget.selector, property)
+      : toggle
+        ? toggleCssProperty(cssCode, cssTarget.selector, property, value)
+        : setCssProperty(cssCode, cssTarget.selector, property, value);
+
+    if (novo === cssCode) return;
+
+    updateCssCode(novo);
+
+    // Deixa o cursor no fim da regra que foi mexida
+    setTimeout(() => {
+      const textarea = cssTextareaRef.current;
+      if (!textarea) return;
+      const inicio = novo.indexOf(cssTarget.selector);
+      const fim = inicio >= 0 ? novo.indexOf('}', inicio) : -1;
+      if (fim >= 0) {
+        textarea.focus();
+        textarea.setSelectionRange(fim, fim);
+      }
     }, 0);
   };
 
@@ -328,8 +727,17 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
   }, [currentTemplate.qfmt, sampleValues]);
 
   const renderedBack = useMemo(() => {
-    return ClozeService.renderTemplate(currentTemplate.afmt, sampleValues, true, renderedFront);
-  }, [currentTemplate.afmt, sampleValues, renderedFront]);
+    // Tipo Cloze com verso sem {{cloze:Campo}}: igual ao card real, o
+    // {{FrontSide}} entra re-renderizado em MODO VERSO — mantém o HTML/CSS
+    // do template da frente e o cloze aparece REVELADO.
+    const isClozeSemClozeTag =
+      noteType.isCloze && !/\{\{cloze:/i.test(currentTemplate.afmt);
+    if (isClozeSemClozeTag) {
+      const frontRevelado = ClozeService.renderTemplate(currentTemplate.qfmt, sampleValues, true, undefined, 1);
+      return ClozeService.renderTemplate(currentTemplate.afmt, sampleValues, true, frontRevelado, 1);
+    }
+    return ClozeService.renderTemplate(currentTemplate.afmt, sampleValues, true, renderedFront, 1);
+  }, [currentTemplate.afmt, currentTemplate.qfmt, sampleValues, renderedFront, noteType.isCloze]);
 
   /**
    * Classes do wrapper do preview — EXATAMENTE as mesmas do card real
@@ -389,12 +797,46 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
     onClose();
   };
 
+  /**
+   * Pede para fechar o editor.
+   * Se houver alteração não salva, mostra o aviso (Salvar / Descartar /
+   * Cancelar) para nada ser perdido por engano.
+   */
+  const requestClose = () => {
+    if (hasUnsavedChanges) {
+      setExitWarningOpen(true);
+      return;
+    }
+    onClose();
+  };
+
+  // ESC fecha o editor (com aviso quando tem alteração não salva)
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // se tem algum popup por cima, deixa ele lidar com o ESC
+      if (
+        exitWarningOpen ||
+        templateToDeleteIdx !== null ||
+        clearTarget !== null ||
+        notice !== null ||
+        cardSelectorOpen
+      ) {
+        return;
+      }
+      e.preventDefault();
+      requestClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-md animate-in fade-in duration-200"
-      // close on backdrop press (mousedown, so text-selection drags don't close)
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-md animate-in fade-in duration-200"      // close on backdrop press (mousedown, so text-selection drags don't close)
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) requestClose();
       }}
       // Desfazer/refazer: Ctrl+Z / Ctrl+Shift+Z (ou Ctrl+Y)
       onKeyDown={(e) => {
@@ -448,8 +890,9 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="p-1.5 rounded-full text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            title="Fechar o editor"
           >
             <X className="w-5 h-5" />
           </button>
@@ -596,87 +1039,209 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
               <div className="px-4 py-2 border-b border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-wrap items-center gap-1.5 text-xs">
                 <span className="text-[10px] uppercase font-bold text-zinc-400 mr-1">Inserir:</span>
 
-                {/* Note Type fields (excluding Hint which has dedicated +hint button) */}
+                {/* Note Type fields (excluding Hint which has dedicated +hint button)
+                    Cada campo entra como BLOCO: wrapper com classe própria,
+                    para dar para estilizar o campo isolado no CSS. */}
                 {noteType.fields
                   .filter((f) => f.name.toLowerCase() !== 'hint')
                   .map((f) => (
                     <button
                       key={f.id}
                       type="button"
-                      onClick={() => insertSnippet(`{{${f.name}}}`)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => insertBlock(f.name, slugForTag(f.name))}
                       className="px-2 py-0.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60 font-mono text-[11px] transition-colors"
-                      title={`Inserir {{${f.name}}}`}
+                      title={`Inserir o bloco do campo {{${f.name}}} (classe .runora-field--${slugForTag(f.name)})`}
                     >
                       +{f.name}
                     </button>
                   ))}
 
-                {/* Single dedicated Hint tag insertion button */}
-                <button
-                  type="button"
-                  onClick={() => insertSnippet('{{hint}}')}
-                  className="px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60 font-mono text-[11px] font-semibold transition-colors"
-                  title="Inserir tag de dica {{hint}}"
-                >
-                  +hint
-                </button>
+                {/* Dicas: o usuario escolhe em qual campo aplicar.
+                    Só aparece com o recurso "Dicas" ligado no Note Type. */}
+                {featuresOn.hints && (
+                  <Popover
+                    title="Dicas: mostra o botão “Show Hint” com o conteúdo do campo escolhido"
+                    width={200}
+                    triggerClassName="px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60 font-mono text-[11px] font-semibold transition-colors"
+                    trigger="+hint"
+                  >
+                    {(close) => (
+                      <div className="max-h-56 overflow-y-auto space-y-0.5">
+                        {noteType.fields.map((f) => {
+                          const tag = `hint:${f.name}`;
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => {
+                                insertBlock(tag, slugForTag(tag));
+                                close();
+                              }}
+                              className="w-full text-left px-3 py-1.5 rounded-lg text-xs font-mono text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                              title={`Inserir o bloco {{${tag}}} (classe .runora-field--${slugForTag(tag)})`}
+                            >
+                              {f.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Popover>
+                )}
 
                 {/* Common special tags */}
                 {activeTab === 'back' && (
                   <button
                     type="button"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => insertSnippet('{{FrontSide}}\n<hr id="answer">\n')}
                     className="px-2 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60 font-mono text-[11px] transition-colors"
-                    title="Inserir {{FrontSide}} e divisor de resposta"
+                    title="Inserir {{FrontSide}} (a parte da Frente) e o divisor de resposta"
                   >
-                    +FrontSide
+                    +Front
                   </button>
                 )}
 
-                {/* Japanese Furigana Helper */}
-                {noteType.fields.some((f) => f.name.toLowerCase().includes('read') || f.name.toLowerCase().includes('leit')) && (
+                {/* Furigana: o usuario escolhe em qual campo aplicar.
+                    Só aparece com o recurso "Furigana" ligado no Note Type. */}
+                {featuresOn.furigana && (
+                  <Popover
+                    title="Furigana: converte kanji[kanji] em ruby (leitura)"
+                    width={200}
+                    triggerClassName="px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60 font-mono text-[11px] font-semibold transition-colors"
+                    trigger="+furigana"
+                  >
+                    {(close) => (
+                      <div className="max-h-56 overflow-y-auto space-y-0.5">
+                        {noteType.fields.map((f) => {
+                          const tag = `furigana:${f.name}`;
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => {
+                                insertBlock(tag, slugForTag(tag));
+                                close();
+                              }}
+                              className="w-full text-left px-3 py-1.5 rounded-lg text-xs font-mono text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                              title={`Inserir o bloco {{${tag}}} (classe .runora-field--${slugForTag(tag)})`}
+                            >
+                              {f.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Popover>
+                )}
+
+                {/* Gravação de voz — só com o recurso "Gravação de Voz" ligado */}
+                {featuresOn.voice && (
                   <button
                     type="button"
-                    onClick={() => {
-                      const readField = noteType.fields.find(
-                        (f) => f.name.toLowerCase().includes('read') || f.name.toLowerCase().includes('leit')
-                      );
-                      insertSnippet(`{{furigana:${readField?.name || 'Reading'}}}`);
-                    }}
-                    className="px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60 font-mono text-[11px] transition-colors"
-                    title="Furigana: converte 漢字[かんじ] em ruby tags"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => insertBlock('voice:record', slugForTag('voice:record'))}
+                    className="px-2 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/60 font-mono text-[11px] transition-colors"
+                    title="Inserir o bloco do botão de gravação de voz {{voice:record}} (classe .runora-field--voice-record)"
                   >
-                    +furigana
+                    +voice:record
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => insertSnippet('{{voice:record}}')}
-                  className="px-2 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/60 font-mono text-[11px] transition-colors"
-                  title="Inserir botão de gravação de voz {{voice:record}}"
-                >
-                  +voice:record
-                </button>
+                {featuresOn.voice && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => insertBlock('voice:reproduce', slugForTag('voice:reproduce'))}
+                    className="px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 font-mono text-[11px] transition-colors"
+                    title="Inserir o bloco do player de reprodução da sua voz {{voice:reproduce}} (classe .runora-field--voice-reproduce)"
+                  >
+                    +voice:reproduce
+                  </button>
+                )}
 
-                <button
-                  type="button"
-                  onClick={() => insertSnippet('{{voice:reproduce}}')}
-                  className="px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 font-mono text-[11px] transition-colors"
-                  title="Inserir player de reprodução da sua voz gravada {{voice:reproduce}}"
-                >
-                  +voice:reproduce
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => insertSnippet('<table align="center"><tr><td align="center">\n  \n</td></tr></table>')}
-                  className="px-1.5 py-0.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-mono text-[11px] transition-colors"
-                  title="Inserir estrutura de tabela centralizada"
-                >
-                  +table
-                </button>
+                {/* Omissão de Palavras (Cloze): escolhe em qual campo.
+                    Só aparece com o recurso "Omissão de Palavras" ligado. */}
+                {featuresOn.cloze && (
+                  <Popover
+                    title="Omissão de Palavras: processa as marcações {{c1::palavra}} do campo"
+                    width={200}
+                    triggerClassName="px-2 py-0.5 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/40 text-purple-600 dark:text-purple-400 border border-purple-200/60 dark:border-purple-800/60 font-mono text-[11px] font-semibold transition-colors"
+                    trigger="+cloze"
+                  >
+                    {(close) => (
+                      <div className="max-h-56 overflow-y-auto space-y-0.5">
+                        {noteType.fields.map((f) => {
+                          const tag = `cloze:${f.name}`;
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => {
+                                insertBlock(tag, slugForTag(tag));
+                                close();
+                              }}
+                              className="w-full text-left px-3 py-1.5 rounded-lg text-xs font-mono text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                              title={`Inserir o bloco {{${tag}}} (classe .runora-field--${slugForTag(tag)})`}
+                            >
+                              {f.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Popover>
+                )}
               </div>
+            )}
+
+            {/* Inserir a regra CSS de um campo (aba Estilo) */}
+            {activeTab === 'css' && (
+              <>
+                {/* Toolbar de formatação: mexe no CSS do campo escolhido */}
+                <CssFieldToolbar
+                  targets={cssTargets}
+                  targetId={cssTarget?.id ?? ''}
+                  onSelectTarget={setCssTargetId}
+                  css={cssCode}
+                  selector={cssTarget?.selector ?? CARD_CSS_SELECTOR}
+                  isCard={cssTarget?.id === CARD_TARGET_ID}
+                  onApply={applyCssFormat}
+                />
+
+                <div className="px-4 py-2 border-b border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="text-[10px] uppercase font-bold text-zinc-400 mr-1">Inserir:</span>
+
+                  {/* Só os campos/tags que já estão no HTML do template */}
+                  {htmlBlocks.map((bloco) => {
+                    const slug = bloco.slug;
+                    return (
+                      <button
+                        key={bloco.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertCssRule(bloco.id, slug)}
+                        className="px-2 py-0.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60 font-mono text-[11px] transition-colors"
+                        title={`Inserir a regra .runora-field--${slug} { ... }`}
+                      >
+                        +{bloco.label}
+                      </button>
+                    );
+                  })}
+
+                  {/* Regra do card (.card) */}
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={insertCardRule}
+                    className="px-2 py-0.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 font-mono text-[11px] transition-colors"
+                    title="Inserir (ou selecionar) a regra .card { ... } — o card inteiro"
+                  >
+                    +card
+                  </button>
+                </div>
+              </>
             )}
 
             {/* Code Textarea Area */}
@@ -708,6 +1273,8 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                   ref={cssTextareaRef}
                   value={cssCode}
                   onChange={(e) => updateCssCode(e.target.value, true)}
+                  onSelect={(e) => selectTargetAtCursor(e.currentTarget.selectionStart, e.currentTarget.value)}
+                  onClick={(e) => selectTargetAtCursor(e.currentTarget.selectionStart, e.currentTarget.value)}
                   placeholder="/* CSS aplicado aos cards */&#10;.card { text-align: center; font-family: sans-serif; font-size: 20px; }"
                   spellCheck={false}
                   className="w-full h-full p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-900 dark:text-zinc-100 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-inner"
@@ -747,6 +1314,23 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                 </div>
 
                 <div className="flex items-center gap-1">
+                  {/* Alternar Frente/Verso — só na aba Estilo (CSS),
+                      para ver o efeito da regra nos dois lados */}
+                  {activeTab === 'css' && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewMode((modo) => (modo === 'front' ? 'back' : 'front'))}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
+                      title={
+                        previewMode === 'front'
+                          ? 'Ver o Verso na pré-visualização'
+                          : 'Ver a Frente na pré-visualização'
+                      }
+                    >
+                      <FlipHorizontal className="w-4 h-4" />
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setIsPreviewExpanded(true)}
@@ -900,7 +1484,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
         <div className="flex items-center justify-between px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80">
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="px-4 py-2 rounded-full text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
           >
             Cancelar
@@ -1092,6 +1676,26 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
         confirmText="Excluir Template"
         cancelText="Cancelar"
         variant="danger"
+      />
+
+      {/* Aviso de saída sem salvar (X, clique no fundo ou ESC) */}
+      <ConfirmationModal
+        isOpen={exitWarningOpen}
+        onClose={() => setExitWarningOpen(false)}
+        onConfirm={() => {
+          setExitWarningOpen(false);
+          handleSave();
+        }}
+        onSecondary={() => {
+          setExitWarningOpen(false);
+          onClose();
+        }}
+        secondaryText="Descartar"
+        confirmText="Salvar"
+        cancelText="Cancelar"
+        title="Sair sem salvar?"
+        description="Você tem alterações que ainda não foram salvas. Se sair agora, elas serão perdidas."
+        variant="warning"
       />
 
       {/* Limpar a aba atual */}

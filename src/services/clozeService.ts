@@ -98,6 +98,59 @@ export class ClozeService {
   }
 
   /**
+   * Caixa da dica COLAPSADA (botão "Show Hint") — usada no ANTES de virar o card.
+   */
+  public static renderHintCollapsed(value: string, label: string): string {
+    if (!value || !value.trim()) return '';
+    return `<details class="runora-hint-details group my-2.5 inline-block text-left select-none rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-900 dark:text-amber-200 transition-all">
+        <summary class="cursor-pointer font-semibold text-xs py-2 px-3.5 flex items-center gap-1.5 text-amber-700 dark:text-amber-400 hover:opacity-90 outline-none list-none [&::-webkit-details-marker]:hidden">
+          <span>💡</span>
+          <span>${label}</span>
+        </summary>
+        <div class="px-3.5 pb-2.5 pt-1.5 text-xs text-zinc-800 dark:text-zinc-200 border-t border-amber-500/15 font-normal leading-relaxed opacity-95">
+          ${value}
+        </div>
+      </details>`;
+  }
+
+  /**
+   * Caixa da dica REVELADA — usada no VERSO do card (com a resposta visível
+   * não faz sentido manter o botão "Show Hint": a dica aparece direto).
+   */
+  public static renderHintRevealed(value: string): string {
+    if (!value || !value.trim()) return '';
+    return `<div class="runora-hint-revealed group my-2.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-900 dark:text-amber-200">
+        <div class="py-2 px-3.5 flex items-center gap-1.5 font-semibold text-xs text-amber-700 dark:text-amber-400">
+          <span>💡</span>
+          <span>Dica</span>
+        </div>
+        <div class="px-3.5 pb-2.5 pt-1.5 text-xs text-zinc-800 dark:text-zinc-200 border-t border-amber-500/15 font-normal leading-relaxed opacity-95">
+          ${value}
+        </div>
+      </div>`;
+  }
+
+  /**
+   * No verso, os botões "Show Hint" que vieram da frente dentro do
+   * {{FrontSide}} são abertos: viram a caixa revelada.
+   */
+  public static revealHintDetails(html: string): string {
+    if (!html) return html;
+    return html.replace(
+      /<details\s+class="runora-hint-details[^"]*"[^>]*>([\s\S]*?)<\/details>/gi,
+      (_full, inner: string) => {
+        // tira o resumo clicável "Some Hint" — a dica já está visível
+        const noSummary = inner.replace(/<summary[\s\S]*?<\/summary>\s*/i, '');
+        return `<div class="runora-hint-revealed group my-2.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-900 dark:text-amber-200">
+          <div class="py-2 px-3.5 flex items-center gap-1.5 font-semibold text-xs text-amber-700 dark:text-amber-400">
+            <span>💡</span>
+            <span>Dica</span>
+          </div>${noSummary}</div>`;
+      }
+    );
+  }
+
+  /**
    * Evaluates a Card Template against a Note's field values with full HTML support
    */
   public static renderTemplate(
@@ -115,6 +168,13 @@ export class ClozeService {
     } else {
       // On front, if someone accidentally places {{FrontSide}}, remove it
       result = result.replace(/\{\{FrontSide\}\}/gi, '');
+    }
+
+    // O HTML da frente pode ter entrado botões "Show Hint" colapsados
+    // (dica que está no template da frente). Ao virar o card a dica
+    // deve aparecer já aberta.
+    if (isBack) {
+      result = this.revealHintDetails(result);
     }
 
     // 2. Conditionals: {{#FieldName}}content{{/FieldName}}
@@ -155,6 +215,8 @@ export class ClozeService {
     });
 
     // 7. Filter {{hint}} and {{hint:FieldName}}
+    // Na frente a dica fica no botão "Show Hint" (colapsada); no verso
+    // (com o card virado) o conteúdo aparece direto, sem botão.
     result = result.replace(/\{\{hint\}\}/gi, () => {
       let val = '';
       for (const [k, v] of Object.entries(fields)) {
@@ -167,32 +229,17 @@ export class ClozeService {
       if (!val) {
         val = fields['Hint'] || fields['hint'] || fields['Dica'] || fields['dica'] || '';
       }
-      if (!val || !val.trim()) return '';
-      return `<details class="runora-hint-details group my-2.5 inline-block text-left select-none rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-900 dark:text-amber-200 transition-all">
-        <summary class="cursor-pointer font-semibold text-xs py-2 px-3.5 flex items-center gap-1.5 text-amber-700 dark:text-amber-400 hover:opacity-90 outline-none list-none [&::-webkit-details-marker]:hidden">
-          <span>💡</span>
-          <span>Show Hint</span>
-        </summary>
-        <div class="px-3.5 pb-2.5 pt-1.5 text-xs text-zinc-800 dark:text-zinc-200 border-t border-amber-500/15 font-normal leading-relaxed opacity-95">
-          ${val}
-        </div>
-      </details>`;
+      if (isBack) return this.renderHintRevealed(val);
+      return this.renderHintCollapsed(val, 'Show Hint');
     });
 
     result = result.replace(/\{\{hint:([^}]+)\}\}/gi, (_m, fieldName) => {
       const trimmedName = fieldName.trim();
       const val = fields[trimmedName] || '';
       if (!val) return '';
+      if (isBack) return this.renderHintRevealed(val);
       const label = trimmedName.toLowerCase() === 'hint' ? 'Show Hint' : `Show Hint: ${trimmedName}`;
-      return `<details class="runora-hint-details group my-2.5 inline-block text-left select-none rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-900 dark:text-amber-200 transition-all">
-        <summary class="cursor-pointer font-semibold text-xs py-2 px-3.5 flex items-center gap-1.5 text-amber-700 dark:text-amber-400 hover:opacity-90 outline-none list-none [&::-webkit-details-marker]:hidden">
-          <span>💡</span>
-          <span>${label}</span>
-        </summary>
-        <div class="px-3.5 pb-2.5 pt-1.5 text-xs text-zinc-800 dark:text-zinc-200 border-t border-amber-500/15 font-normal leading-relaxed opacity-95">
-          ${val}
-        </div>
-      </details>`;
+      return this.renderHintCollapsed(val, label);
     });
 
     // 8. Filter {{text:FieldName}} (strip HTML tags)
@@ -241,25 +288,31 @@ export class ClozeService {
 
     let formatted = content;
 
-    // 1. Mídia embutida (data URI) — imagem de exemplo do preview
+    // 1. [sound:URL] → <audio autoplay> — deve vir PRIMEIRO: assim um
+    //    arquivo anexado gravado como [sound:data:audio/...base64,...] é
+    //    convertido de uma vez, e o data URI fica DENTRO de src="".
+    //    (Se a regra do data URI rodasse antes, ela criaria uma tag <audio>
+    //    dentro do marcador [sound:...] — e a regra seguinte embrulharia
+    //    de novo, gerando HTML quebrado com o texto  class="..."  visível
+    //    no card.) [sound:] reproduz automaticamente, a menos que a opção do deck
+    //    desligue autoplay (feito pelo CardContentRenderer).
+    formatted = formatted.replace(
+      /\[sound:([^\]]+)\]/gi,
+      (_match, url) => `<audio controls autoplay src="${url.trim()}" class="my-2 max-w-full h-9 rounded-xl"></audio>`
+    );
+
+    // 2. Mídia embutida (data URI) — imagem de exemplo do preview
     formatted = formatted.replace(
       /(?<!src=["'])(?<!href=["'])(data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)/gi,
       (_match, uri) =>
         `<img src="${uri}" alt="Imagem" class="rounded-xl max-h-64 mx-auto my-2 shadow-sm" />`
     );
 
-    // 2. Mídia embutida (data URI) — áudio de exemplo do preview
+    // 3. Mídia embutida (data URI) — áudio de exemplo do preview
     formatted = formatted.replace(
       /(?<!src=["'])(?<!href=["'])(data:audio\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)/gi,
       (_match, uri) =>
         `<audio controls autoplay src="${uri}" class="my-2 max-w-full h-9 rounded-xl"></audio>`
-    );
-
-    // 3. Replace [sound:URL] with <audio autoplay> — [sound:] plays automatically
-    // unless the deck option disables autoplay (handled downstream by CardContentRenderer)
-    formatted = formatted.replace(
-      /\[sound:([^\]]+)\]/gi,
-      (_match, url) => `<audio controls autoplay src="${url.trim()}" class="my-2 max-w-full h-9 rounded-xl"></audio>`
     );
 
     // 4. Replace standalone TTSMaker and audio URLs not already inside an audio tag

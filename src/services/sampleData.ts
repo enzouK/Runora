@@ -13,6 +13,7 @@ export const INITIAL_NOTE_TYPES: NoteType[] = [
     isCloze: false,
     hintsEnabled: false,
     voiceRecordingEnabled: false,
+    furiganaEnabled: false,
     fields: [
       { id: 'f-front', name: 'Frente', ord: 0, description: 'Pergunta ou termo' },
       { id: 'f-back', name: 'Verso', ord: 1, description: 'Resposta ou explicação' },
@@ -22,11 +23,11 @@ export const INITIAL_NOTE_TYPES: NoteType[] = [
         id: 'tmpl-basic-1',
         name: 'Card 1',
         ord: 0,
-        qfmt: '<div class="runora-front-content">{{Frente}}</div>',
-        afmt: '<div class="runora-front-content">{{FrontSide}}</div><hr class="runora-divider my-4 border-black/10 dark:border-white/10" /><div class="runora-back-content">{{Verso}}</div>',
+        qfmt: '<div class="runora-field runora-field--frente">{{Frente}}</div>',
+        afmt: '{{FrontSide}}<hr id="answer" /><div class="runora-field runora-field--verso">{{Verso}}</div>',
       },
     ],
-    css: '.runora-front-content { font-size: 1.25rem; font-weight: 500; }',
+    css: '.card {\n  font-size: 20px;\n}\n\n.runora-field--frente {\n  font-size: 24px;\n}\n\n.runora-field--verso {\n  font-size: 24px;\n}',
     createdAt: Date.now(),
     updatedAt: Date.now(),
   },
@@ -34,22 +35,23 @@ export const INITIAL_NOTE_TYPES: NoteType[] = [
     id: 'nt-cloze',
     name: 'Omissão de Palavras (Cloze)',
     isCloze: true,
-    hintsEnabled: true,
+    hintsEnabled: false,
     voiceRecordingEnabled: false,
+    furiganaEnabled: false,
     fields: [
-      { id: 'f-text', name: 'Texto', ord: 0, description: 'Texto com {{c1::palavra::dica}}' },
-      { id: 'f-extra', name: 'Extra', ord: 1, description: 'Notas explicativas adicionais' },
+      { id: 'f-text', name: 'Frente', ord: 0, description: 'Texto com {{c1::palavra::dica}}' },
+      { id: 'f-extra', name: 'Verso', ord: 1, description: '' },
     ],
     templates: [
       {
         id: 'tmpl-cloze-1',
         name: 'Cloze Card',
         ord: 0,
-        qfmt: '<div class="runora-cloze-prompt">{{cloze:Texto}}</div>',
-        afmt: '<div class="runora-cloze-prompt">{{cloze:Texto}}</div><hr class="runora-divider my-4 border-black/10 dark:border-white/10" /><div class="runora-extra-content text-sm opacity-80">{{Extra}}</div>',
+        qfmt: '<div class="runora-field runora-field--cloze-frente">{{cloze:Frente}}</div>',
+        afmt: '{{FrontSide}}<hr id="answer" /><div class="runora-field runora-field--verso">{{Verso}}</div>',
       },
     ],
-    css: '.runora-cloze-prompt { font-size: 1.15rem; line-height: 1.6; }',
+    css: '.card {\n  font-size: 20px;\n}\n\n.runora-field--cloze-frente {\n  font-size: 24px;\n}\n\n.runora-field--verso {\n  font-size: 24px;\n}',
     createdAt: Date.now(),
     updatedAt: Date.now(),
   },
@@ -59,6 +61,7 @@ export const INITIAL_NOTE_TYPES: NoteType[] = [
     isCloze: false,
     hintsEnabled: true,
     voiceRecordingEnabled: true,
+    furiganaEnabled: false,
     fields: [
       { id: 'f-sentence', name: 'Frase', ord: 0, description: 'Frase no idioma alvo' },
       { id: 'f-audio', name: 'Áudio', ord: 1, description: 'Áudio nativo ([sound:...] ou cole um link)' },
@@ -70,21 +73,12 @@ export const INITIAL_NOTE_TYPES: NoteType[] = [
         name: 'Shadowing',
         ord: 0,
         // Front: hear the audio + record your voice (reprodução automática quando ativada no deck)
-        qfmt: `<div class="text-xs uppercase tracking-wider text-teal-500 font-semibold mb-2">Shadowing</div>
-               <div class="mb-3">{{Áudio}}</div>
-               {{hint:Dica}}
-               {{voice:record}}`,
+        qfmt: '<div class="runora-field runora-field--audio">{{Áudio}}</div>\n<div class="runora-field runora-field--voice-record">{{voice:record}}</div>\n<div class="runora-field runora-field--hint-frase">{{hint:Frase}}</div>',
         // Back: hear again, compare with your recording, read phrase & translation
-        afmt: `{{FrontSide}}
-               <hr class="runora-divider my-4 border-black/10 dark:border-white/10" />
-               <div class="space-y-3">
-                 <div class="text-xl font-semibold">{{Frase}}</div>
-                 <div class="text-base text-emerald-600 dark:text-emerald-400">{{Tradução}}</div>
-                 {{voice:reproduce}}
-               </div>`,
+        afmt: '{{FrontSide}}<hr id="answer" /><div class="runora-field runora-field--voice-reproduce">{{voice:reproduce}}</div><div class="runora-field runora-field--traducao">{{Tradução}}</div>',
       },
     ],
-    css: '.runora-front-content { font-size: 1.2rem; }',
+    css: '.card {\n  font-size: 20px;\n}\n\n.runora-field--audio {\n  font-size: 24px;\n}\n\n.runora-field--voice-record {\n  font-size: 24px;\n}\n\n.runora-field--hint-frase {\n  font-size: 24px;\n}\n\n.runora-field--voice-reproduce {\n  font-size: 24px;\n}\n\n.runora-field--traducao {\n  font-size: 24px;\n}',
     createdAt: Date.now(),
     updatedAt: Date.now(),
   },

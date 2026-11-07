@@ -204,7 +204,9 @@ export const CardEditorModal: React.FC<CardEditorModalProps> = ({
                 placeholder="Selecionar tipo…"
                 options={noteTypes.map((nt) => ({
                   value: nt.id,
-                  label: `${nt.name}${nt.isCloze ? ' (Cloze)' : ''}`,
+                  // Só completa com "(Cloze)" quando o nome ainda não traz
+                  // (o usuário pode ter nomeado o próprio tipo com Cloze)
+                  label: `${nt.name}${nt.isCloze && !nt.name.toLowerCase().includes('cloze') ? ' (Cloze)' : ''}`,
                 }))}
                 className="w-full px-3.5 py-2.5 !rounded-2xl !bg-zinc-100 dark:!bg-zinc-800/80 !text-sm"
               />

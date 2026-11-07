@@ -75,3 +75,66 @@ test('renderTemplate: campo preenchido satisfaz condicional {{#Campo}}', () => {
   const html = ClozeService.renderTemplate('{{#Foto}}tem foto{{/Foto}}', { Foto: 'x' }, false);
   assert.equal(html, 'tem foto');
 });
+
+test('formatMediaContent: [sound:] contendo data URI vira UMA tag <audio> (bug do anexo duplo)', () => {
+  // arquivo anexado é gravado como [sound:data:audio/mpeg;base64,...]
+  const out = ClozeService.formatMediaContent(`[sound:${SAMPLE_AUDIO_DATA_URI}]`);
+  assert.equal(out.match(/<audio\b/g)?.length, 1);
+  assert.ok(!out.includes('[sound:'), `sobrou marcador sound: ${out.slice(0, 120)}`);
+  assert.ok(!out.includes('<img'), 'não deve criar <img> no áudio anexado');
+  assert.ok(out.includes(`src="${SAMPLE_AUDIO_DATA_URI}"`));
+});
+
+test('formatMediaContent: [sound:] com arquivo normal continua funcionando', () => {
+  const out = ClozeService.formatMediaContent('[sound:audio.mp3]');
+  assert.equal(out.match(/<audio\b/g)?.length, 1);
+  assert.ok(out.includes('src="audio.mp3"'));
+});
+
+test('renderTemplate: template com audio anexado não deixa texto de tag no card', () => {
+  const campo = `[sound:${SAMPLE_AUDIO_DATA_URI}]`;
+  const front = ClozeService.renderTemplate('{{Audio}}', { Audio: campo }, false);
+  // o card inteiro é UM <audio> — nada de fragmento de tag solto em volta
+  assert.match(front, /^\s*<audio\b[^>]*><\/audio>\s*$/, `recebeu: ${front.slice(0, 200)}`);
+  // o verso embute a frente via {{FrontSide}} — o áudio não pode se duplicar
+  const back = ClozeService.renderTemplate('{{FrontSide}}<hr/>', { Audio: campo }, true, front);
+  assert.equal(back.match(/<audio\b/g)?.length, 1, `esperava 1 audio no verso, recebeu: ${back.slice(0, 200)}`);
+  assert.match(back, /^<audio\b[^>]*><\/audio><hr\/>$/, `recebeu: ${back.slice(0, 200)}`);
+});
+
+test('{{hint:Campo}}: na frente vira botão Show Hint colapsado', () => {
+  const html = ClozeService.renderTemplate('{{hint:Dica}}', { Dica: 'conteúdo da dica' }, false);
+  assert.match(html, /<details class="runora-hint-details/);
+  assert.ok(html.includes('Show Hint'));
+  assert.ok(html.includes('conteúdo da dica'));
+});
+
+test('{{hint:Campo}}: no verso a dica aparece revelada, sem botão', () => {
+  const html = ClozeService.renderTemplate('{{hint:Dica}}', { Dica: 'conteúdo da dica' }, true);
+  assert.ok(!html.includes('<details'), `não devia ter <details>: ${html}`);
+  assert.ok(html.includes('conteúdo da dica'));
+  assert.ok(html.includes('runora-hint-revealed'));
+});
+
+test('{{FrontSide}}: botão de dica da frente vira caixa revelada no verso', () => {
+  const front = ClozeService.renderTemplate('{{hint:Dica}}', { Dica: 'lembre-se' }, false);
+  assert.ok(front.includes('runora-hint-details'));
+  const back = ClozeService.renderTemplate('{{FrontSide}}<hr/>Resposta', { Dica: 'lembre-se' }, true, front);
+  assert.ok(!back.includes('<details'));
+  assert.ok(back.includes('lembre-se'));
+  assert.ok(back.includes('runora-hint-revealed'));
+  assert.ok(back.includes('Resposta'));
+});
+
+test('renderTemplate: template da frente re-renderizado em modo verso revela o cloze', () => {
+  // verso do tipo Cloze sem {{cloze:Campo}}: a StudyView re-renderiza a
+  // frente em modo verso para manter os divs/CSS e revelar a resposta
+  const qfmt = '<div class="campo">{{cloze:Texto}}</div>';
+  const campos = { Texto: 'Aqui {{c1::segredo}} aqui.' };
+  const frente = ClozeService.renderTemplate(qfmt, campos, false, undefined, 1);
+  assert.ok(frente.includes('runora-cloze-front-placeholder'), `mascara esperada: ${frente}`);
+  const frenteNoVerso = ClozeService.renderTemplate(qfmt, campos, true, undefined, 1);
+  assert.ok(frenteNoVerso.includes('runora-cloze-back-revealed'), `revelado esperado: ${frenteNoVerso}`);
+  assert.ok(!frenteNoVerso.includes('runora-cloze-front-placeholder'));
+  assert.ok(frenteNoVerso.includes('segredo'));
+});

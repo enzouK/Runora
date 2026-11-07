@@ -120,6 +120,16 @@
   display: inline-block;
 }
 
+/* Blocos de campo inseridos pelo editor de templates.
+   O CSS do tipo de nota (do .apkg) tem prioridade sobre estas regras
+   quando usa a mesma especificidade, porque é injetado depois. */
+.runora-field {
+  margin-bottom: 0.4em;
+}
+.runora-field:last-child {
+  margin-bottom: 0;
+}
+
 /* Custom Scrollbars (iOS subtle look) */
 ::-webkit-scrollbar {
   width: 6px;

@@ -1,9 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 /** Campo editável que pode sofrer undo/redo. */
 export type HistoryField = 'qfmt' | 'afmt' | 'css';
 
-export interface HistoryEntry {
+/** Uma alteração feita em um campo. */
+export interface HistoryChange {
   /** Qual campo foi alterado. */
   field: HistoryField;
   /** Índice do template (ignorado quando field === 'css'). */
@@ -12,6 +13,14 @@ export interface HistoryEntry {
   before: string;
   /** Conteúdo depois da alteração. */
   after: string;
+}
+
+export interface HistoryEntry {
+  /**
+   * Alterações feitas na ação. normally é UMA (digitar, clicar num botão),
+   * mas pode ter várias (inserir um bloco cria o HTML e a regra do CSS).
+   */
+  changes: HistoryChange[];
   /** Timestamp da alteração (usado para agrupar digitação). */
   ts: number;
 }
@@ -33,13 +42,18 @@ interface UseTemplateHistoryOptions {
  * Guarda até 20 alterações. Alterações feitas digitando são agrupadas
  * enquanto a digitação é contínua (pausa de 700 ms fecha a entrada);
  * ações por botão (inserir bloco, toolbar, limpar) sempre contam como
- * uma entrada nova.
+ * uma entrada nova — mesmo quando mexeem em mais de um lugar (HTML + CSS).
+ *
+ * As pilhas ficam em refs (e o estado só guarda o tamanho), assim vários
+ * "desfazer" seguidos — ou segurar Ctrl+Z — nunca pegam uma lista velha.
  */
 export const useTemplateHistory = (options: UseTemplateHistoryOptions = {}) => {
   const { maxEntries = 20, coalesceMs = 700 } = options;
 
-  const [past, setPast] = useState<HistoryEntry[]>([]);
-  const [future, setFuture] = useState<HistoryEntry[]>([]);
+  const pastRef = useRef<HistoryEntry[]>([]);
+  const futureRef = useRef<HistoryEntry[]>([]);
+  const [pastCount, setPastCount] = useState(0);
+  const [futureCount, setFutureCount] = useState(0);
 
   /**
    * Registra uma alteração.
@@ -47,71 +61,86 @@ export const useTemplateHistory = (options: UseTemplateHistoryOptions = {}) => {
    *                 com a última entrada do mesmo campo.
    */
   const push = useCallback(
-    (
-      field: HistoryField,
-      templateIndex: number,
-      before: string,
-      after: string,
-      coalesce = false
-    ) => {
+    (changes: HistoryChange | HistoryChange[], coalesce = false) => {
+      const list = (Array.isArray(changes) ? changes : [changes]).filter(
+        (c) => c.before !== c.after
+      );
       // Sem mudança real: não entra no histórico
-      if (before === after) return;
+      if (list.length === 0) return;
 
       const now = Date.now();
-      const entry: HistoryEntry = { field, templateIndex, before, after, ts: now };
+      const prev = pastRef.current;
+      const last = prev[prev.length - 1];
+      const lastChange = last?.changes.length === 1 ? last.changes[0] : null;
+      const canMerge =
+        coalesce &&
+        list.length === 1 &&
+        lastChange &&
+        lastChange.field === list[0].field &&
+        lastChange.templateIndex === list[0].templateIndex &&
+        now - last.ts < coalesceMs;
 
-      setPast((prev) => {
-        const last = prev[prev.length - 1];
-        const canMerge =
-          coalesce &&
-          last &&
-          last.field === field &&
-          last.templateIndex === templateIndex &&
-          now - last.ts < coalesceMs;
+      const next = canMerge
+        ? [
+            ...prev.slice(0, -1),
+            { changes: [{ ...lastChange, after: list[0].after }], ts: now },
+          ]
+        : [...prev, { changes: list, ts: now }];
 
-        const next = canMerge
-          ? [...prev.slice(0, -1), { ...last, after, ts: now }]
-          : [...prev, entry];
-
-        // Mantém no máximo maxEntries (descarta a mais antiga)
-        return next.length > maxEntries ? next.slice(next.length - maxEntries) : next;
-      });
+      // Mantém no máximo maxEntries (descarta a mais antiga)
+      pastRef.current =
+        next.length > maxEntries ? next.slice(next.length - maxEntries) : next;
 
       // Uma alteração nova invalida o futuro (refazer)
-      setFuture([]);
+      futureRef.current = [];
+
+      setPastCount(pastRef.current.length);
+      setFutureCount(0);
     },
     [coalesceMs, maxEntries]
   );
 
   /** Desfaz: devolve a entrada para ser aplicada (usar `before`). */
   const undo = useCallback((): HistoryEntry | null => {
-    if (past.length === 0) return null;
-    const entry = past[past.length - 1];
-    setPast(past.slice(0, -1));
-    setFuture([...future, entry]);
+    const prev = pastRef.current;
+    if (prev.length === 0) return null;
+
+    const entry = prev[prev.length - 1];
+    pastRef.current = prev.slice(0, -1);
+    futureRef.current = [...futureRef.current, entry];
+
+    setPastCount(pastRef.current.length);
+    setFutureCount(futureRef.current.length);
     return entry;
-  }, [future, past]);
+  }, []);
 
   /** Refaz: devolve a entrada para ser aplicada (usar `after`). */
   const redo = useCallback((): HistoryEntry | null => {
-    if (future.length === 0) return null;
-    const entry = future[future.length - 1];
-    setFuture(future.slice(0, -1));
-    setPast([...past, entry]);
+    const fut = futureRef.current;
+    if (fut.length === 0) return null;
+
+    const entry = fut[fut.length - 1];
+    futureRef.current = fut.slice(0, -1);
+    pastRef.current = [...pastRef.current, entry];
+
+    setPastCount(pastRef.current.length);
+    setFutureCount(futureRef.current.length);
     return entry;
-  }, [future, past]);
+  }, []);
 
   /** Esvazia o histórico (ex.: ao trocar de tipo de nota). */
   const reset = useCallback(() => {
-    setPast([]);
-    setFuture([]);
+    pastRef.current = [];
+    futureRef.current = [];
+    setPastCount(0);
+    setFutureCount(0);
   }, []);
 
   return {
-    canUndo: past.length > 0,
-    canRedo: future.length > 0,
-    pastCount: past.length,
-    futureCount: future.length,
+    canUndo: pastCount > 0,
+    canRedo: futureCount > 0,
+    pastCount,
+    futureCount,
     push,
     undo,
     redo,

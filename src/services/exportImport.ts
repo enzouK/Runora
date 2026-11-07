@@ -7,6 +7,7 @@ import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { Card, Deck, FSRSParameters, Note, NoteType, Preset, RevlogEntry } from '../types/runora';
 import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
+import { detectFeatures } from './noteTypeFeatures';
 import { collectRevlogDifficulties, deriveImportedFsrsState } from './ankiFsrsState';
 import {
   decodeDeckConfigFsrs,
@@ -435,13 +436,15 @@ export class ExportImportService {
               .filter((s) => s.includes('.card') && s.includes('{'))
               .sort((a, b) => b.length - a.length)[0] || '';
           const isCloze = templates.some((t) => /cloze:/i.test(t.qfmt + t.afmt));
+          const features = detectFeatures(templates);
 
           noteTypes.push({
             id: typeId,
             name: isCloze && !/cloze/i.test(String(name)) ? `${name} (Cloze)` : String(name),
             isCloze,
-            hintsEnabled: false,
-            voiceRecordingEnabled: false,
+            hintsEnabled: features.hints,
+            voiceRecordingEnabled: features.voice,
+            furiganaEnabled: features.furigana,
             fields,
             templates: templates.length > 0 ? templates : [{ id: 'tmpl-0', name: 'Card 1', ord: 0, qfmt: '', afmt: '' }],
             css,
@@ -455,24 +458,28 @@ export class ExportImportService {
           const typeId = `nt-apkg-${mid}`;
           typeIdByMid.set(mid, typeId);
           const isCloze = Number(m.type) === 1;
+          const templates = (m.tmpls || []).map((t: any, i: number) => ({
+            id: `tmpl-${i}`,
+            name: String(t.name || `Card ${i + 1}`),
+            ord: i,
+            qfmt: String(t.qfmt || ''),
+            afmt: String(t.afmt || ''),
+          }));
+          const features = detectFeatures(templates);
+
           noteTypes.push({
             id: typeId,
             name: isCloze ? `${m.name} (Cloze)` : String(m.name || 'Sem nome'),
             isCloze,
-            hintsEnabled: false,
-            voiceRecordingEnabled: false,
+            hintsEnabled: features.hints,
+            voiceRecordingEnabled: features.voice,
+            furiganaEnabled: features.furigana,
             fields: (m.flds || []).map((f: any, i: number) => ({
               id: `f-${i}`,
               name: String(f.name || `Campo ${i + 1}`),
               ord: i,
             })),
-            templates: (m.tmpls || []).map((t: any, i: number) => ({
-              id: `tmpl-${i}`,
-              name: String(t.name || `Card ${i + 1}`),
-              ord: i,
-              qfmt: String(t.qfmt || ''),
-              afmt: String(t.afmt || ''),
-            })),
+            templates,
             css: String(m.css || ''),
             createdAt: timestamp,
             updatedAt: timestamp,

@@ -10,6 +10,7 @@ import {
   Lightbulb,
   Scissors,
   Code2,
+  BookOpen,
 } from 'lucide-react';
 import { FieldDefinition, NoteType } from '../../types/runora';
 import { StorageService } from '../../services/storage';
@@ -17,6 +18,13 @@ import { CardTemplateEditorModal } from './CardTemplateEditorModal';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSwitch } from '../common/IOSSwitch';
 import { useBodyScrollLock } from '../common/useBodyScrollLock';
+import {
+  NOTE_TYPE_FEATURES,
+  NoteTypeFeature,
+  countCardsUsingFeature,
+  featureImpactText,
+  resolveFeatures,
+} from '../../services/noteTypeFeatures';
 
 export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh }) => {
   const [noteTypes, setNoteTypes] = useState<NoteType[]>(() => StorageService.getNoteTypes());
@@ -43,10 +51,17 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
   const [isCloze, setIsCloze] = useState(false);
   const [hintsEnabled, setHintsEnabled] = useState(false);
   const [voiceRecordingEnabled, setVoiceRecordingEnabled] = useState(false);
+  const [furiganaEnabled, setFuriganaEnabled] = useState(false);
   const [fields, setFields] = useState<FieldDefinition[]>([
     { id: 'f-1', name: 'Frente', ord: 0, description: '' },
     { id: 'f-2', name: 'Verso', ord: 1, description: '' },
   ]);
+
+  // Recurso que o usuário tentou desativar (aguardando confirmação)
+  const [pendingDisable, setPendingDisable] = useState<{
+    feature: NoteTypeFeature;
+    count: number;
+  } | null>(null);
 
   const openCreateModal = () => {
     setEditingType(null);
@@ -54,53 +69,105 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
     setIsCloze(false);
     setHintsEnabled(false);
     setVoiceRecordingEnabled(false);
+    setFuriganaEnabled(false);
     setFields([
       { id: 'f-1', name: 'Frente', ord: 0 },
       { id: 'f-2', name: 'Verso', ord: 1 },
     ]);
+    setPendingDisable(null);
     setIsModalOpen(true);
   };
 
   const openEditModal = (nt: NoteType) => {
     setEditingType(nt);
     setTypeName(nt.name);
-    setIsCloze(nt.isCloze);
-    setHintsEnabled(nt.hintsEnabled);
-    setVoiceRecordingEnabled(nt.voiceRecordingEnabled);
 
-    // If hintsEnabled is true, ensure Hint field exists
-    let initialFields = [...nt.fields];
-    if (nt.hintsEnabled && !initialFields.some((f) => f.name.toLowerCase() === 'hint')) {
-      initialFields.push({
-        id: `f-hint-auto-${Date.now()}`,
-        name: 'Hint',
-        ord: initialFields.length,
-        description: 'Dica do cartão',
-      });
-    }
-    setFields(initialFields);
+    // Recursos já usados no HTML são reconhecidos automaticamente
+    // (tipos criados antes dos recursos não tinham o botão gravado).
+    const detectado = resolveFeatures(nt);
+
+    setIsCloze(detectado.cloze);
+    setHintsEnabled(detectado.hints);
+    setVoiceRecordingEnabled(detectado.voice);
+    setFuriganaEnabled(detectado.furigana);
+    setPendingDisable(null);
+    setFields([...nt.fields]);
     setIsModalOpen(true);
   };
 
-  const handleToggleHints = (enabled: boolean) => {
-    setHintsEnabled(enabled);
-    if (enabled) {
-      // Add Hint field if not already present
-      if (!fields.some((f) => f.name.toLowerCase() === 'hint')) {
-        setFields((prev) => [
-          ...prev,
-          {
-            id: `f-hint-auto-${Date.now()}`,
-            name: 'Hint',
-            ord: prev.length,
-            description: 'Dica do cartão',
-          },
-        ]);
-      }
-    } else {
-      // Remove Hint field
-      setFields((prev) => prev.filter((f) => f.name.toLowerCase() !== 'hint'));
+  /* ---------- Recursos do Note Type ---------- */
+
+  /**
+   * Liga/desliga um recurso.
+   * Só a flag muda: o HTML e o CSS do template são mantidos, para o
+   * usuário poder religar o recurso sem perder o que já fez.
+   */
+  const setFeature = (feature: NoteTypeFeature, enabled: boolean) => {
+    switch (feature) {
+      case 'cloze':
+        setIsCloze(enabled);
+        break;
+      case 'voice':
+        setVoiceRecordingEnabled(enabled);
+        break;
+      case 'furigana':
+        setFuriganaEnabled(enabled);
+        break;
+      case 'hints':
+        setHintsEnabled(enabled);
+        break;
     }
+  };
+
+  /**
+   * Liga/desliga um recurso.
+   * Desligar mostra o aviso com quantos cards serão afetados
+   * (só quando há cards usando o recurso no template).
+   */
+  const handleFeatureToggle = (feature: NoteTypeFeature, enabled: boolean) => {
+    if (enabled) {
+      setPendingDisable(null);
+      setFeature(feature, true);
+      return;
+    }
+
+    // Conta os cards afetados (lê o estado atual do app)
+    const atual: NoteType = {
+      ...(editingType ?? {
+        id: '__novo__',
+        name: typeName,
+        fields,
+        templates: [],
+        css: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }),
+      isCloze,
+      hintsEnabled,
+      voiceRecordingEnabled,
+      furiganaEnabled,
+    };
+    const count = countCardsUsingFeature(
+      atual,
+      feature,
+      StorageService.getNotes(),
+      StorageService.getCards()
+    );
+
+    // Nenhum card afetado: desliga direto, sem aviso.
+    if (count === 0) {
+      setPendingDisable(null);
+      setFeature(feature, false);
+      return;
+    }
+
+    setPendingDisable({ feature, count });
+  };
+
+  const confirmDisableFeature = () => {
+    if (!pendingDisable) return;
+    setFeature(pendingDisable.feature, false);
+    setPendingDisable(null);
   };
 
   const handleAddField = () => {
@@ -136,6 +203,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
               isCloze,
               hintsEnabled,
               voiceRecordingEnabled,
+              furiganaEnabled,
               fields: cleanedFields,
               updatedAt: Date.now(),
             }
@@ -150,6 +218,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
         isCloze,
         hintsEnabled,
         voiceRecordingEnabled,
+        furiganaEnabled,
         fields: cleanedFields,
         templates: [
           {
@@ -158,9 +227,7 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
             ord: 0,
             qfmt: isCloze
               ? '<div class="runora-cloze-prompt">{{cloze:Texto}}</div>'
-              : `<div class="runora-front-content">{{${cleanedFields[0]?.name || 'Frente'}}}</div>${
-                  hintsEnabled ? '\n{{hint}}' : ''
-                }`,
+              : `<div class="runora-front-content">{{${cleanedFields[0]?.name || 'Frente'}}}</div>`,
             afmt: isCloze
               ? '<div class="runora-cloze-prompt">{{cloze:Texto}}</div><hr/><div class="runora-extra">{{Extra}}</div>'
               : `{{FrontSide}}<hr/><div class="runora-back-content">{{${cleanedFields[1]?.name || 'Verso'}}}</div>`,
@@ -286,6 +353,12 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                     Gravação de Voz
                   </span>
                 )}
+                {(nt.furiganaEnabled ?? false) && (
+                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[11px] font-semibold">
+                    <BookOpen className="w-3 h-3" />
+                    Furigana
+                  </span>
+                )}
               </div>
             </div>
 
@@ -377,7 +450,10 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                       </div>
                     </div>
                   </div>
-                  <IOSSwitch checked={isCloze} onChange={setIsCloze} />
+                  <IOSSwitch
+                    checked={isCloze}
+                    onChange={(v) => handleFeatureToggle('cloze', v)}
+                  />
                 </label>
 
                 {/* Hints Toggle */}
@@ -389,11 +465,14 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                         Dicas (Show Hint)
                       </div>
                       <div className="text-[11px] text-zinc-400 dark:text-zinc-500">
-                        Cria o campo Hint e ativa {'{{hint}}'} no HTML
+                        Ativa {'{{hint:Campo}}'} no HTML (escolhe o campo no editor)
                       </div>
                     </div>
                   </div>
-                  <IOSSwitch checked={hintsEnabled} onChange={handleToggleHints} />
+                  <IOSSwitch
+                    checked={hintsEnabled}
+                    onChange={(v) => handleFeatureToggle('hints', v)}
+                  />
                 </label>
 
                 {/* Voice Recording Toggle */}
@@ -409,7 +488,29 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                       </div>
                     </div>
                   </div>
-                  <IOSSwitch checked={voiceRecordingEnabled} onChange={setVoiceRecordingEnabled} />
+                  <IOSSwitch
+                    checked={voiceRecordingEnabled}
+                    onChange={(v) => handleFeatureToggle('voice', v)}
+                  />
+                </label>
+
+                {/* Furigana Toggle */}
+                <label className="flex items-center justify-between gap-3 cursor-pointer py-2 border-t border-black/[0.05] dark:border-white/[0.07]">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <BookOpen className="w-4 h-4 text-indigo-500 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
+                        Furigana
+                      </div>
+                      <div className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                        Ativa {'{{furigana:Campo}}'} no HTML (leitura do kanji)
+                      </div>
+                    </div>
+                  </div>
+                  <IOSSwitch
+                    checked={furiganaEnabled}
+                    onChange={(v) => handleFeatureToggle('furigana', v)}
+                  />
                 </label>
               </div>
 
@@ -430,66 +531,38 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
                 </div>
 
                 <div className="space-y-2">
-                  {fields.map((f, idx) => {
-                    const isHintField = hintsEnabled && f.name.toLowerCase() === 'hint';
-                    return (
-                      <div
-                        key={f.id}
-                        className={`flex items-center gap-2 p-2 rounded-[12px] border transition-all ${
-                          isHintField
-                            ? 'bg-ios-orange/10 border-ios-orange/25'
-                            : 'bg-black/[0.04] dark:bg-white/[0.07] border-transparent'
-                        }`}
+                  {fields.map((f, idx) => (
+                    <div
+                      key={f.id}
+                      className="flex items-center gap-2 p-2 rounded-[12px] border transition-all bg-black/[0.04] dark:bg-white/[0.07] border-transparent"
+                    >
+                      <span className="text-xs font-mono font-bold text-zinc-400 w-5 text-center shrink-0">
+                        {idx + 1}
+                      </span>
+
+                      <input
+                        type="text"
+                        value={f.name}
+                        onChange={(e) => {
+                          const newName = e.target.value;
+                          setFields((prev) =>
+                            prev.map((item) => (item.id === f.id ? { ...item, name: newName } : item))
+                          );
+                        }}
+                        className="flex-1 px-2.5 py-1.5 rounded-[10px] bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-ios-blue"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveField(f.id)}
+                        disabled={fields.length <= 1}
+                        className="p-1.5 rounded-full text-zinc-400 hover:text-ios-red hover:bg-ios-red/10 disabled:opacity-30 transition-colors"
+                        title="Excluir campo"
                       >
-                        <span className="text-xs font-mono font-bold text-zinc-400 w-5 text-center shrink-0">
-                          {idx + 1}
-                        </span>
-
-                        {isHintField ? (
-                          <div className="flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-[10px] bg-white/90 dark:bg-zinc-900/90 border border-ios-orange/40 text-xs font-medium text-ios-orange">
-                            <div className="flex items-center gap-1.5">
-                              <span>💡</span>
-                              <span className="font-semibold">Hint</span>
-                              <span className="text-[10px] font-normal opacity-70">
-                                (Dica automática do sistema)
-                              </span>
-                            </div>
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-ios-orange/15 text-ios-orange">
-                              Fixo
-                            </span>
-                          </div>
-                        ) : (
-                          <input
-                            type="text"
-                            value={f.name}
-                            onChange={(e) => {
-                              const newName = e.target.value;
-                              setFields((prev) =>
-                                prev.map((item) => (item.id === f.id ? { ...item, name: newName } : item))
-                              );
-                            }}
-                            className="flex-1 px-2.5 py-1.5 rounded-[10px] bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-ios-blue"
-                          />
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (isHintField) {
-                              handleToggleHints(false);
-                            } else {
-                              handleRemoveField(f.id);
-                            }
-                          }}
-                          disabled={!isHintField && fields.length <= 1}
-                          className="p-1.5 rounded-full text-zinc-400 hover:text-ios-red hover:bg-ios-red/10 disabled:opacity-30 transition-colors"
-                          title={isHintField ? 'Remover campo Hint e desativar Show Hint' : 'Excluir campo'}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    );
-                  })}
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -540,6 +613,26 @@ export const NoteTypeManager: React.FC<{ onRefresh: () => void }> = ({ onRefresh
         confirmText="Excluir Modelo"
         cancelText="Cancelar"
         variant="danger"
+      />
+
+      {/* Aviso ao desativar um recurso do Note Type */}
+      <ConfirmationModal
+        isOpen={!!pendingDisable}
+        onClose={() => setPendingDisable(null)}
+        onConfirm={confirmDisableFeature}
+        title={
+          pendingDisable
+            ? `Desativar ${NOTE_TYPE_FEATURES[pendingDisable.feature].label}?`
+            : 'Desativar recurso?'
+        }
+        description={
+          pendingDisable
+            ? featureImpactText(pendingDisable.feature, pendingDisable.count)
+            : ''
+        }
+        confirmText="Desativar"
+        cancelText="Cancelar"
+        variant="warning"
       />
 
       {/* Notice Modal if user tries to delete the only remaining Note Type */}

@@ -63,6 +63,7 @@ export interface NoteType {
   // Specific Runora features configured per Note Type:
   hintsEnabled: boolean;           // Show "Show Hint" button on front of card
   voiceRecordingEnabled: boolean;  // Show "Record Voice" on front of card
+  furiganaEnabled: boolean;        // Ativa {{furigana:Campo}} no template
   createdAt: number;
   updatedAt: number;
 }

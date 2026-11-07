@@ -418,14 +418,13 @@ export const StudyView: React.FC<StudyViewProps> = ({
     });
 
     let html = '';
-    if (noteType.isCloze) {
-      const textField = note.fields['Texto'] || Object.values(note.fields)[0] || '';
-      html = ClozeService.formatMediaContent(ClozeService.renderClozeFront(textField, currentCard.templateOrd));
-    } else {
-      const template = noteType.templates[currentCard.templateOrd] || noteType.templates[0];
-      if (template) {
-        html = ClozeService.renderTemplate(template.qfmt, note.fields, false, undefined, currentCard.templateOrd);
-      }
+    const template = noteType.templates[currentCard.templateOrd] || noteType.templates[0];
+    if (template) {
+      // Em tipos normais (não Cloze) cada nota tem 1 card por template,
+      // então templateOrd não é índice de cloze — c1 é o ativo.
+      // Em tipos Cloze, templateOrd É o índice do cloze (1-based).
+      const clozeOrd = noteType.isCloze ? currentCard.templateOrd : 1;
+      html = ClozeService.renderTemplate(template.qfmt, note.fields, false, undefined, clozeOrd);
     }
 
     const after = AddonSystem.runHook('afterCardRender', { ...hookCtx, html });
@@ -446,18 +445,17 @@ export const StudyView: React.FC<StudyViewProps> = ({
     });
 
     let html = '';
-    if (noteType.isCloze) {
-      const textField = note.fields['Texto'] || Object.values(note.fields)[0] || '';
-      const extraField = note.fields['Extra'] || '';
-      const renderedCloze = ClozeService.formatMediaContent(ClozeService.renderClozeBack(textField, currentCard.templateOrd));
-      const formattedExtra = ClozeService.formatMediaContent(extraField);
-      html = `<div>${renderedCloze}</div>${
-        extraField ? `<hr class="my-4 border-black/10 dark:border-white/10" /><div class="text-sm opacity-85">${formattedExtra}</div>` : ''
-      }`;
-    } else {
-      const template = noteType.templates[currentCard.templateOrd] || noteType.templates[0];
-      if (template) {
-        html = ClozeService.renderTemplate(template.afmt, note.fields, true, frontHtml, currentCard.templateOrd);
+    const template = noteType.templates[currentCard.templateOrd] || noteType.templates[0];
+    if (template) {
+      const clozeOrd = noteType.isCloze ? currentCard.templateOrd : 1;
+      if (noteType.isCloze && !/\{\{cloze:/i.test(template.afmt)) {
+        // Verso de tipo Cloze sem {{cloze:Campo}}: o {{FrontSide}} entra
+        // re-renderizado em MODO VERSO — mantém o HTML/CSS do template da
+        // frente e o cloze aparece REVELADO (as dicas idem).
+        const frontRevelado = ClozeService.renderTemplate(template.qfmt, note.fields, true, undefined, clozeOrd);
+        html = ClozeService.renderTemplate(template.afmt, note.fields, true, frontRevelado, clozeOrd);
+      } else {
+        html = ClozeService.renderTemplate(template.afmt, note.fields, true, frontHtml, clozeOrd);
       }
     }
 
