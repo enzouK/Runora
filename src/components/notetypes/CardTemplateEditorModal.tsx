@@ -122,6 +122,21 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
     return !(cssIgual && templatesIguais);
   }, [templates, cssCode, noteType.templates, noteType.css]);
 
+  /* ---------- Tela estreita (celular) ----------
+   * No celular o editor e a pré-visualização ficam EMPILHADOS (um em cima
+   * do outro) em vez de lado a lado — senão o preview fica espremido em
+   * poucos pixels e o editor cramped.
+   */
+  const [isNarrow, setIsNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const onChange = () => setIsNarrow(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
   /* ---------- Valores de exemplo ----------
    * Todos os campos começam EM BRANCO (sem heurística por nome de campo).
    * Os botões Image/Audio preenchem o campo com a mídia local embutida.
@@ -130,7 +145,8 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
   const [sampleFields, setSampleFields] = useState<Record<string, SampleFieldState>>(() =>
     loadSampleFields(noteType.id)
   );
-  const [samplesOpen, setSamplesOpen] = useState(true);
+  // No celular a gaveta começa fechada para sobrar espaço pro preview
+  const [samplesOpen, setSamplesOpen] = useState(() => !isNarrow);
 
   /* ---------- Card Selector Modal ---------- */
   const [cardSelectorOpen, setCardSelectorOpen] = useState(false);
@@ -957,12 +973,24 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
           </div>
         )}
 
-        {/* Main Workspace: Editor (esquerda) | divisória | Pré-visualização (direita) */}
-        <div ref={workspaceRef} className="flex-1 flex overflow-hidden select-none">
+        {/* Main Workspace: Editor (esquerda) | divisória | Pré-visualização (direita)
+            No celular (tela estreita) o preview fica ABAIXO do editor, em largura cheia. */}
+        <div
+          ref={workspaceRef}
+          className={`flex-1 flex select-none ${
+            isNarrow ? 'flex-col overflow-y-auto' : 'flex-row overflow-hidden'
+          }`}
+        >
           {/* ---------- ESQUERDA: Code & HTML Editor ---------- */}
           <div
-            className="flex flex-col h-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-950/30 min-w-0"
-            style={{ width: previewCollapsed ? '100%' : `${editorPercent}%` }}
+            className={`flex flex-col overflow-hidden bg-zinc-50/50 dark:bg-zinc-950/30 min-w-0 min-h-0 shrink-0 ${
+              isNarrow ? 'h-auto' : 'h-full'
+            }`}
+            style={
+              isNarrow
+                ? { width: '100%', minHeight: '52vh' }
+                : { width: previewCollapsed ? '100%' : `${editorPercent}%` }
+            }
           >
             {/* Editor Tabs (Front, Back, CSS) */}
             <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-zinc-200/80 dark:border-zinc-800">
@@ -1303,8 +1331,8 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
             </div>
           </div>
 
-          {/* ---------- Divisória arrastável ---------- */}
-          {!previewCollapsed && (
+          {/* ---------- Divisória arrastável (só no desktop) ---------- */}
+          {!previewCollapsed && !isNarrow && (
             <div
               role="separator"
               aria-orientation="vertical"
@@ -1321,9 +1349,13 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
             />
           )}
 
-          {/* ---------- DIREITA: Pré-visualização ao vivo ---------- */}
+          {/* ---------- DIREITA (abaixo, no celular): Pré-visualização ao vivo ---------- */}
           {!previewCollapsed && (
-            <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-100/40 dark:bg-zinc-950/40 min-w-0">
+            <div
+              className={`flex-1 flex flex-col overflow-hidden bg-zinc-100/40 dark:bg-zinc-950/40 min-w-0 min-h-0 ${
+                isNarrow ? 'h-auto' : 'h-full'
+              }`}
+            >
               {/* Preview Controls */}
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-200/80 dark:border-zinc-800">
                 <div className="flex items-center gap-2">
@@ -1372,7 +1404,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
               </div>
 
               {/* Mini card (tamanho de celular, como o card real no estudo) */}
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className={`flex-1 overflow-y-auto p-4 ${isNarrow ? 'min-h-[200px]' : ''}`}>
                 {renderPreviewCard(MINI_CARD_WIDTH, true)}
               </div>
 
