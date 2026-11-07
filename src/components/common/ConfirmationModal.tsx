@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Info, Trash2, X } from 'lucide-react';
 import { useBodyScrollLock } from './useBodyScrollLock';
 
 export interface ConfirmationModalProps {
@@ -90,6 +90,8 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           >
             {variant === 'danger' ? (
               <Trash2 className="w-6 h-6 stroke-[2]" />
+            ) : variant === 'info' ? (
+              <Info className="w-6 h-6 stroke-[2]" />
             ) : (
               <AlertTriangle className="w-6 h-6 stroke-[2]" />
             )}

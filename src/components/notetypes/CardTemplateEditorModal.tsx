@@ -87,6 +87,9 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
   const [cardSelectorOpen, setCardSelectorOpen] = useState(false);
   const [cardSearch, setCardSearch] = useState('');
 
+  /* ---------- Aviso (popup do app, no lugar do alert do navegador) ---------- */
+  const [notice, setNotice] = useState<{ title: string; description: string } | null>(null);
+
   /* ---------- Layout do workspace ----------
    * - divisória arrastável entre editor e preview (30% .. 85% do editor)
    * - botão para recolher a coluna do preview (editor volta a 100%)
@@ -245,7 +248,10 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
     const allNotes = StorageService.getNotes();
     const notesOfType = allNotes.filter((n) => n.noteTypeId === noteType.id);
     if (notesOfType.length === 0) {
-      alert('Nenhum card criado para este tipo de nota.');
+      setNotice({
+        title: 'Nenhum card encontrado',
+        description: 'Nenhum card criado para este tipo de nota.',
+      });
       return;
     }
     setCardSearch('');
@@ -262,7 +268,10 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
       }
     }
     if (Object.keys(newFields).length === 0) {
-      alert('A nota selecionada não tem campos preenchidos.');
+      setNotice({
+        title: 'Nota sem conteúdo',
+        description: 'A nota selecionada não tem campos preenchidos.',
+      });
       return;
     }
     setSampleFields(newFields);
@@ -992,6 +1001,18 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
         confirmText="Excluir Template"
         cancelText="Cancelar"
         variant="danger"
+      />
+
+      {/* Aviso informativo (no lugar do alert do navegador) */}
+      <ConfirmationModal
+        isOpen={notice !== null}
+        onClose={() => setNotice(null)}
+        onConfirm={() => setNotice(null)}
+        title={notice?.title ?? ''}
+        description={notice?.description ?? ''}
+        confirmText="Entendi"
+        showCancelButton={false}
+        variant="info"
       />
     </div>
   );
