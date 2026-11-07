@@ -16,6 +16,9 @@ import {
   ChevronUp,
   Search,
   Database,
+  Undo2,
+  Redo2,
+  Eraser,
 } from 'lucide-react';
 import { CardTemplate, NoteType, Note } from '../../types/runora';
 import { ClozeService } from '../../services/clozeService';
@@ -24,6 +27,7 @@ import { CardContentRenderer } from '../study/CardContentRenderer';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { useBodyScrollLock } from '../common/useBodyScrollLock';
 import { CardListItem } from '../cards/CardListItem';
+import { useTemplateHistory, HistoryField } from './useTemplateHistory';
 import {
   SAMPLE_AUDIO_DATA_URI,
   SAMPLE_IMAGE_DATA_URI,
@@ -89,6 +93,9 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
   /* ---------- Aviso (popup do app, no lugar do alert do navegador) ---------- */
   const [notice, setNotice] = useState<{ title: string; description: string } | null>(null);
 
+  /* ---------- Limpar a aba atual (com confirmação) ---------- */
+  const [clearTarget, setClearTarget] = useState<'front' | 'back' | 'css' | null>(null);
+
   /* ---------- Layout do workspace ----------
    * - divisória arrastável entre editor e preview (30% .. 85% do editor)
    * - botão para recolher a coluna do preview (editor volta a 100%)
@@ -144,10 +151,60 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
 
   const currentTemplate = templates[activeTemplateIndex] || templates[0];
 
-  const updateCurrentTemplate = (field: 'qfmt' | 'afmt', value: string) => {
+  /* ---------- Histórico (desfazer/refazer) ---------- */
+  const history = useTemplateHistory({ maxEntries: 20, coalesceMs: 700 });
+
+  /** Aplica um valor do histórico no campo correspondente. */
+  const applyHistoryValue = (entry: { field: HistoryField; templateIndex: number }, value: string) => {
+    if (entry.field === 'css') {
+      setCssCode(value);
+      return;
+    }
+    setTemplates((prev) =>
+      prev.map((t, idx) => (idx === entry.templateIndex ? { ...t, [entry.field]: value } : t))
+    );
+  };
+
+  const handleUndo = () => {
+    const entry = history.undo();
+    if (entry) applyHistoryValue(entry, entry.before);
+  };
+
+  const handleRedo = () => {
+    const entry = history.redo();
+    if (entry) applyHistoryValue(entry, entry.after);
+  };
+
+  /**
+   * Atualiza o template atual.
+   * @param coalesce true quando a alteração veio de digitação (agrupa no
+   *                 histórico); false para ações por botão (1 entrada cada).
+   */
+  const updateCurrentTemplate = (
+    field: 'qfmt' | 'afmt',
+    value: string,
+    coalesce = false
+  ) => {
+    const before = currentTemplate?.[field] ?? '';
     setTemplates((prev) =>
       prev.map((t, idx) => (idx === activeTemplateIndex ? { ...t, [field]: value } : t))
     );
+    history.push(field, activeTemplateIndex, before, value, coalesce);
+  };
+
+  /** Atualiza o CSS do tipo de nota (com histórico). */
+  const updateCssCode = (value: string, coalesce = false) => {
+    setCssCode(value);
+    history.push('css', 0, cssCode, value, coalesce);
+  };
+
+  /** Limpa o conteúdo da aba atual (o conteúdo fica no histórico, então
+      dá para desfazer). */
+  const confirmClearCurrentTab = () => {
+    if (clearTarget === 'front') updateCurrentTemplate('qfmt', '');
+    else if (clearTarget === 'back') updateCurrentTemplate('afmt', '');
+    else if (clearTarget === 'css') updateCssCode('');
+    setClearTarget(null);
   };
 
   const [templateToDeleteIdx, setTemplateToDeleteIdx] = useState<number | null>(null);
@@ -281,8 +338,8 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
    */
   const previewWrapperClass =
     previewMode === 'front'
-      ? 'runora-front-wrapper prose prose-zinc dark:prose-invert max-w-none text-zinc-900 dark:text-zinc-100 font-sans leading-relaxed'
-      : 'runora-back-wrapper prose prose-zinc dark:prose-invert max-w-none text-zinc-900 dark:text-zinc-100 font-sans leading-relaxed ios-fade-in';
+      ? 'card runora-front-wrapper prose prose-zinc dark:prose-invert max-w-none font-sans leading-relaxed'
+      : 'card runora-back-wrapper prose prose-zinc dark:prose-invert max-w-none font-sans leading-relaxed ios-fade-in';
 
   const previewHtml = previewMode === 'front' ? renderedFront : renderedBack;
 
@@ -338,6 +395,30 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
       // close on backdrop press (mousedown, so text-selection drags don't close)
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
+      }}
+      // Desfazer/refazer: Ctrl+Z / Ctrl+Shift+Z (ou Ctrl+Y)
+      onKeyDown={(e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        const key = e.key.toLowerCase();
+        if (key !== 'z' && key !== 'y') return;
+
+        const target = e.target as HTMLElement | null;
+        const isTemplateArea =
+          target === frontTextareaRef.current ||
+          target === backTextareaRef.current ||
+          target === cssTextareaRef.current;
+        const isFormField =
+          !!target &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.isContentEditable);
+
+        // Dentro de campos de exemplo o undo nativo do navegador é que vale
+        if (isFormField && !isTemplateArea) return;
+
+        e.preventDefault();
+        if (key === 'y' || e.shiftKey) handleRedo();
+        else handleUndo();
       }}
     >
       <div className="w-full max-w-6xl bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col h-[94vh] overflow-hidden">
@@ -463,18 +544,51 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                 </button>
               </div>
 
-              {/* Reabrir preview quando a coluna está recolhida */}
-              {previewCollapsed && (
+              {/* Ações do editor: desfazer, refazer, limpar e reabrir preview */}
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setPreviewCollapsed(false)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60 text-xs font-semibold transition-colors"
-                  title="Mostrar a pré-visualização novamente"
+                  onClick={handleUndo}
+                  disabled={!history.canUndo}
+                  className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-900 hover:bg-white dark:hover:text-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                  title="Desfazer (Ctrl+Z)"
                 >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>Preview</span>
+                  <Undo2 className="w-4 h-4" />
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={handleRedo}
+                  disabled={!history.canRedo}
+                  className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-900 hover:bg-white dark:hover:text-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                  title="Refazer (Ctrl+Shift+Z)"
+                >
+                  <Redo2 className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClearTarget(activeTab)}
+                  className="p-1.5 rounded-lg text-zinc-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors"
+                  title={`Limpar o conteúdo de ${
+                    activeTab === 'front' ? 'Modelo da Frente' : activeTab === 'back' ? 'Modelo do Verso' : 'Estilo (CSS)'
+                  }`}
+                  aria-label="Limpar o conteúdo desta aba"
+                >
+                  <Eraser className="w-4 h-4" />
+                </button>
+
+                {/* Reabrir preview quando a coluna está recolhida */}
+                {previewCollapsed && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewCollapsed(false)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60 text-xs font-semibold transition-colors"
+                    title="Mostrar a pré-visualização novamente"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Preview</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Field insertion helper buttons (não fazem sentido no CSS) */}
@@ -571,7 +685,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                 <textarea
                   ref={frontTextareaRef}
                   value={currentTemplate.qfmt}
-                  onChange={(e) => updateCurrentTemplate('qfmt', e.target.value)}
+                  onChange={(e) => updateCurrentTemplate('qfmt', e.target.value, true)}
                   placeholder="Insira o HTML completo da Frente do card (ex: <table>...{{Sentence}}...</table>)"
                   spellCheck={false}
                   className="w-full h-full p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-900 dark:text-zinc-100 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-inner"
@@ -582,7 +696,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                 <textarea
                   ref={backTextareaRef}
                   value={currentTemplate.afmt}
-                  onChange={(e) => updateCurrentTemplate('afmt', e.target.value)}
+                  onChange={(e) => updateCurrentTemplate('afmt', e.target.value, true)}
                   placeholder="Insira o HTML completo do Verso do card (ex: {{FrontSide}}<hr id=answer>{{furigana:Reading}}...)"
                   spellCheck={false}
                   className="w-full h-full p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-900 dark:text-zinc-100 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-inner"
@@ -593,7 +707,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                 <textarea
                   ref={cssTextareaRef}
                   value={cssCode}
-                  onChange={(e) => setCssCode(e.target.value)}
+                  onChange={(e) => updateCssCode(e.target.value, true)}
                   placeholder="/* CSS aplicado aos cards */&#10;.card { text-align: center; font-family: sans-serif; font-size: 20px; }"
                   spellCheck={false}
                   className="w-full h-full p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-900 dark:text-zinc-100 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-inner"
@@ -976,6 +1090,24 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
             : undefined
         }
         confirmText="Excluir Template"
+        cancelText="Cancelar"
+        variant="danger"
+      />
+
+      {/* Limpar a aba atual */}
+      <ConfirmationModal
+        isOpen={clearTarget !== null}
+        onClose={() => setClearTarget(null)}
+        onConfirm={confirmClearCurrentTab}
+        title="Limpar esta aba?"
+        description={`O conteúdo de ${
+          clearTarget === 'front'
+            ? 'Modelo da Frente'
+            : clearTarget === 'back'
+              ? 'Modelo do Verso'
+              : 'Estilo (CSS)'
+        } será apagado. Dá para desfazer logo em seguida.`}
+        confirmText="Limpar"
         cancelText="Cancelar"
         variant="danger"
       />

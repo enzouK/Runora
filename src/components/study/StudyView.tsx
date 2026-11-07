@@ -831,10 +831,12 @@ export const StudyView: React.FC<StudyViewProps> = ({
           </button>
         )}
 
-        {/* Card Content Area (Frente quando !isAnswerRevealed, Verso quando isAnswerRevealed) */}
+        {/* Card Content Area (Frente quando !isAnswerRevealed, Verso quando isAnswerRevealed)
+            A cor do texto NÃO é fixada aqui: quem manda é o CSS do tipo de
+            nota (seletor .card), igual no Anki. */}
         <div className="flex-1">
           {!isAnswerRevealed ? (
-            <div className="runora-front-wrapper prose prose-zinc dark:prose-invert max-w-none text-zinc-900 dark:text-zinc-100 font-sans leading-relaxed">
+            <div className="card runora-front-wrapper prose prose-zinc dark:prose-invert max-w-none font-sans leading-relaxed">
               <CardContentRenderer
                 key={`front-${currentCard.id}`}
                 html={frontHtml}
@@ -845,7 +847,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
               />
             </div>
           ) : (
-            <div className="runora-back-wrapper prose prose-zinc dark:prose-invert max-w-none text-zinc-900 dark:text-zinc-100 font-sans leading-relaxed ios-fade-in">
+            <div className="card runora-back-wrapper prose prose-zinc dark:prose-invert max-w-none font-sans leading-relaxed ios-fade-in">
               <CardContentRenderer
                 key={`back-${currentCard.id}`}
                 html={backHtml}
