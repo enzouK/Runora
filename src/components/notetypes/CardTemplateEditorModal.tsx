@@ -1,16 +1,15 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Code2,
   Eye,
-  Plus,
   Trash2,
   Check,
   FileCode,
   Paintbrush,
   Maximize2,
   PanelRightClose,
-  PanelRightOpen,
   Image as ImageIcon,
   Volume2,
   ChevronDown,
@@ -145,23 +144,10 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
 
   const currentTemplate = templates[activeTemplateIndex] || templates[0];
 
-  const updateCurrentTemplate = (field: 'qfmt' | 'afmt' | 'name', value: string) => {
+  const updateCurrentTemplate = (field: 'qfmt' | 'afmt', value: string) => {
     setTemplates((prev) =>
       prev.map((t, idx) => (idx === activeTemplateIndex ? { ...t, [field]: value } : t))
     );
-  };
-
-  const handleAddTemplate = () => {
-    const nextOrd = templates.length;
-    const newTmpl: CardTemplate = {
-      id: `tmpl-${Date.now()}-${nextOrd}`,
-      name: `Card ${nextOrd + 1}`,
-      ord: nextOrd,
-      qfmt: `<div style="text-align: center; font-size: 24px;">\n  {{${noteType.fields[0]?.name || 'Frente'}}}\n</div>`,
-      afmt: `{{FrontSide}}\n\n<hr id="answer">\n\n<div style="text-align: center; font-size: 20px;">\n  {{${noteType.fields[1]?.name || 'Verso'}}}\n</div>`,
-    };
-    setTemplates([...templates, newTmpl]);
-    setActiveTemplateIndex(templates.length);
   };
 
   const [templateToDeleteIdx, setTemplateToDeleteIdx] = useState<number | null>(null);
@@ -388,69 +374,44 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
           </button>
         </div>
 
-        {/* Card Template selector bar */}
-        <div className="flex items-center justify-between px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-900/40 text-xs">
-          <div className="flex items-center gap-1.5 overflow-x-auto py-1">
-            <span className="font-semibold text-zinc-400 uppercase tracking-wider mr-2 text-[10px]">
-              Templates de Card:
-            </span>
-            {templates.map((tmpl, idx) => (
-              <div key={tmpl.id || idx} className="flex items-center">
-                <button
-                  type="button"
-                  onClick={() => setActiveTemplateIndex(idx)}
-                  className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
-                    idx === activeTemplateIndex
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
-                  }`}
-                >
-                  {tmpl.name || `Card ${idx + 1}`}
-                </button>
-                {templates.length > 1 && idx === activeTemplateIndex && (
+        {/* Card Template selector bar
+            (só aparece quando existe mais de um template — tipos de nota
+             importados de .apkg podem ter vários. Criar novos templates é
+             feito em Note Types e o nome do template não é editável aqui.) */}
+        {templates.length > 1 && (
+          <div className="flex items-center justify-between px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-900/40 text-xs">
+            <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+              <span className="font-semibold text-zinc-400 uppercase tracking-wider mr-2 text-[10px]">
+                Templates de Card:
+              </span>
+              {templates.map((tmpl, idx) => (
+                <div key={tmpl.id || idx} className="flex items-center">
                   <button
                     type="button"
-                    onClick={() => handleDeleteTemplate(idx)}
-                    className="p-1 text-zinc-400 hover:text-red-500 ml-0.5"
-                    title="Excluir este template"
+                    onClick={() => setActiveTemplateIndex(idx)}
+                    className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
+                      idx === activeTemplateIndex
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                    }`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    {tmpl.name || `Card ${idx + 1}`}
                   </button>
-                )}
-              </div>
-            ))}
-
-            <button
-              type="button"
-              onClick={handleAddTemplate}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 hover:bg-blue-50 hover:text-blue-600 text-zinc-600 dark:text-zinc-300 font-medium transition-colors"
-              title="Adicionar mais um Card Template (ex: Card 2 invertido)"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Novo Card</span>
-            </button>
+                  {idx === activeTemplateIndex && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTemplate(idx)}
+                      className="p-1 text-zinc-400 hover:text-red-500 ml-0.5"
+                      title="Excluir este template"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-
-          <div className="hidden sm:flex items-center gap-1.5">
-            <span className="text-[11px] text-zinc-400">Nome:</span>
-            <input
-              type="text"
-              value={currentTemplate.name}
-              onChange={(e) => updateCurrentTemplate('name', e.target.value)}
-              className="px-2 py-0.5 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs w-32 font-medium"
-            />
-            {!previewCollapsed && (
-              <button
-                type="button"
-                onClick={() => setPreviewCollapsed(true)}
-                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 transition-colors"
-                title="Recolher a pré-visualização (o editor ocupa a largura toda)"
-              >
-                <PanelRightClose className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* Main Workspace: Editor (esquerda) | divisória | Pré-visualização (direita) */}
         <div ref={workspaceRef} className="flex-1 flex overflow-hidden select-none">
@@ -511,7 +472,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                   title="Mostrar a pré-visualização novamente"
                 >
                   <Eye className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Preview</span>
+                  <span>Preview</span>
                 </button>
               )}
             </div>
@@ -671,14 +632,25 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsPreviewExpanded(true)}
-                  className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
-                  title="Ampliar a pré-visualização"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsPreviewExpanded(true)}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
+                    title="Ampliar a pré-visualização"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPreviewCollapsed(true)}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
+                    title="Recolher a pré-visualização (o editor ocupa a largura toda)"
+                  >
+                    <PanelRightClose className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Mini card (tamanho de celular, como o card real no estudo) */}
@@ -831,23 +803,25 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
         </div>
       </div>
 
-      {/* Pré-visualização ampliada (overlay por cima do editor) */}
-      {isPreviewExpanded && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-md p-4"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setIsPreviewExpanded(false);
-          }}
-        >
+      {/* Pré-visualização ampliada (overlay por cima do editor)
+          Renderizado no body (portal) para ter exatamente o mesmo fundo
+          borrado/gradiente dos outros popups do app — quando fica dentro do
+          modal, o blur fica preso ao "backdrop root" do modal e não embaça
+          a página de verdade. */}
+      {isPreviewExpanded &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setIsPreviewExpanded(false);
+            }}
+          >
           <div className="w-full max-w-2xl max-h-[92vh] flex flex-col bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
               <div className="flex items-center gap-2">
                 <Eye className="w-4 h-4 text-blue-500" />
                 <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
                   Pré-visualização ampliada
-                </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-semibold">
-                  ao vivo
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -890,12 +864,14 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
               {renderPreviewCard(LARGE_CARD_WIDTH)}
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
 
-      {/* Card Selector Modal */}
-      {cardSelectorOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-md animate-in fade-in duration-150">
+      {/* Card Selector Modal (também no body, pelo mesmo motivo do overlay acima) */}
+      {cardSelectorOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-2xl max-h-[85vh] bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
               <div className="flex items-center gap-2">
@@ -984,8 +960,9 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
               </button>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
 
       <ConfirmationModal
         isOpen={templateToDeleteIdx !== null}
