@@ -10,6 +10,8 @@ export interface ConfirmationModalProps {
   title: string;
   description: string;
   highlightItem?: string;
+  /** Lista opcional de itens em tópicos (ex.: problemas de validação do template). */
+  bullets?: string[];
   confirmText?: string;
   cancelText?: string;
   showCancelButton?: boolean;
@@ -32,6 +34,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   title,
   description,
   highlightItem,
+  bullets,
   confirmText = 'Excluir',
   cancelText = 'Cancelar',
   showCancelButton = true,
@@ -120,6 +123,17 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Lista de itens em tópicos (validação de template) */}
+        {bullets && bullets.length > 0 && (
+          <ul className="list-disc pl-5 space-y-1.5 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed max-h-40 overflow-y-auto pr-1 mr-4">
+            {bullets.map((item, i) => (
+              <li key={i} className="break-words">
+                {item}
+              </li>
+            ))}
+          </ul>
+        )}
 
         {/* Highlight Item Badge / Card if provided */}
         {highlightItem && (

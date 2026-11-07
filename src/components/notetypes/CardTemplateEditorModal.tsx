@@ -26,6 +26,7 @@ import { ClozeService } from '../../services/clozeService';
 import { StorageService } from '../../services/storage';
 import { CardContentRenderer } from '../study/CardContentRenderer';
 import { ConfirmationModal } from '../common/ConfirmationModal';
+import { validateTemplates } from '../../services/templateValidation';
 import { useBodyScrollLock } from '../common/useBodyScrollLock';
 import { CardListItem } from '../cards/CardListItem';
 import { useTemplateHistory, HistoryChange, HistoryEntry } from './useTemplateHistory';
@@ -142,6 +143,12 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
 
   /* ---------- Aviso de saída sem salvar ---------- */
   const [exitWarningOpen, setExitWarningOpen] = useState(false);
+
+  /* ---------- Validação ao salvar (Fase 3) ----------
+   * Antes de gravar, procura campos inexistentos e HTML/CSS quebrados.
+   * Os problemas são listados num aviso, mas NÃO impedem de salvar.
+   */
+  const [saveIssues, setSaveIssues] = useState<string[] | null>(null);
 
   /* ---------- Layout do workspace ----------
    * - divisória arrastável entre editor e preview (30% .. 85% do editor)
@@ -772,7 +779,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
     </div>
   );
 
-  const handleSave = () => {
+  const doSave = () => {
     const allNoteTypes = StorageService.getNoteTypes();
     const updatedNoteType: NoteType = {
       ...noteType,
@@ -795,6 +802,18 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
 
     onSaved();
     onClose();
+  };
+
+  const handleSave = () => {
+    // Validar antes de salvar: campos inexistentes, HTML desbalanceado e
+    // CSS quebrado viram um aviso — mas o usuário pode salvar do mesmo jeito.
+    const fieldNames = noteType.fields.map((f) => f.name);
+    const issues = validateTemplates(templates, cssCode, fieldNames);
+    if (issues.length === 0) {
+      doSave();
+      return;
+    }
+    setSaveIssues(issues);
   };
 
   /**
@@ -821,7 +840,8 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
         templateToDeleteIdx !== null ||
         clearTarget !== null ||
         notice !== null ||
-        cardSelectorOpen
+        cardSelectorOpen ||
+        saveIssues !== null
       ) {
         return;
       }
@@ -1695,6 +1715,26 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
         cancelText="Cancelar"
         title="Sair sem salvar?"
         description="Você tem alterações que ainda não foram salvas. Se sair agora, elas serão perdidas."
+        variant="warning"
+      />
+
+      {/* Validação ao salvar: problemas encontrados, com opção de salvar assim mesmo */}
+      <ConfirmationModal
+        isOpen={saveIssues !== null}
+        onClose={() => setSaveIssues(null)}
+        onConfirm={() => {
+          setSaveIssues(null);
+          doSave();
+        }}
+        bullets={saveIssues ?? undefined}
+        title="Problemas no template"
+        description={
+          saveIssues && saveIssues.length === 1
+            ? 'Encontramos 1 problema que pode fazer o card não aparecer direito no estudo. Você pode corrigir ou salvar mesmo assim.'
+            : `Encontramos ${saveIssues?.length ?? 0} problemas que podem fazer o card não aparecer direito no estudo. Você pode corrigi-los ou salvar mesmo assim.`
+        }
+        confirmText="Salvar mesmo assim"
+        cancelText="Corrigir"
         variant="warning"
       />
 
