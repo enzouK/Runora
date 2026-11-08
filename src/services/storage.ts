@@ -267,6 +267,11 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.REVLOG, JSON.stringify(list));
   }
 
+  /** Replaces the whole review history (bulk imports build the union first). */
+  public static saveRevlogAll(entries: RevlogEntry[]): void {
+    localStorage.setItem(STORAGE_KEYS.REVLOG, JSON.stringify(entries));
+  }
+
   public static getFSRSSettings(): FSRSParameters {
     const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     if (!raw) return DEFAULT_FSRS_PARAMETERS;

@@ -4,6 +4,12 @@ import { Deck, NoteType } from './types/runora';
 import { StorageService } from './services/storage';
 import { AddonSystem, APP_VERSION } from './services/addonSystem';
 import { ExportImportService } from './services/exportImport';
+import {
+  analyzeImport,
+  type ImportableCollection,
+  type ImportPlanSummary,
+} from './services/importPlan';
+import { ImportPreviewModal } from './components/import/ImportPreviewModal';
 import { ensureNoteGuids } from './services/noteIdentity';
 import { Header, MainNavTab } from './components/navbar/Header';
 import { DeckList } from './components/decks/DeckList';
@@ -161,15 +167,41 @@ export default function App() {
     setIsAddCardModalOpen(true);
   };
 
-  // Import a .colpkg/.apkg/.json from the home screen footer button
+  // Import a .colpkg/.apkg/.json from the home screen footer button.
+  // Two steps, nothing is replaced blindly: read + analyze → show the plan
+  // modal → apply in the chosen mode (see importPlan).
+  const [importPreview, setImportPreview] = useState<
+    { fileName: string; data: ImportableCollection; summary: ImportPlanSummary } | null
+  >(null);
+  const [importApplying, setImportApplying] = useState(false);
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const res = await ExportImportService.importPackage(file);
-    setToast(res.message);
-    refreshAll();
     e.target.value = '';
-    setTimeout(() => setToast(null), 5000);
+    if (!file) return;
+    try {
+      const data = await ExportImportService.readPackageData(file);
+      setImportPreview({ fileName: file.name, data, summary: analyzeImport(data).summary });
+    } catch (err) {
+      setToast(`Falha na importação: ${(err as Error).message}`);
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
+
+  const handleApplyImport = async (mode: 'overwrite' | 'keep') => {
+    if (!importPreview) return;
+    setImportApplying(true);
+    try {
+      const result = await ExportImportService.applyCollection(importPreview.data, mode);
+      setToast(result.message);
+      setTimeout(() => setToast(null), 6000);
+    } catch (err) {
+      setToast(`Falha ao aplicar a importação: ${(err as Error).message}`);
+      setTimeout(() => setToast(null), 6000);
+    } finally {
+      setImportApplying(false);
+      setImportPreview(null);
+      refreshAll();
+    }
   };
 
   // If in review mode, render StudyView exclusively
@@ -369,6 +401,18 @@ export default function App() {
         conflict={sync.conflict}
         onResolve={(choice) => sync.conflict?.resolve(choice)}
       />
+
+      {/* Import plan preview: what will be added / is repeated, and the
+          overwrite-vs-keep question (Fase 2) */}
+      {importPreview && (
+        <ImportPreviewModal
+          summary={importPreview.summary}
+          fileName={importPreview.fileName}
+          applying={importApplying}
+          onApply={handleApplyImport}
+          onCancel={() => setImportPreview(null)}
+        />
+      )}
     </div>
   );
 }

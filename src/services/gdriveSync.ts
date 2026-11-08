@@ -730,7 +730,7 @@ export class DriveSyncService {
     progress(`Baixando backup de "${remoteMeta.deviceName}" (${formatBytes(Number(pkg.size || 0))})…`);
     const blob = await downloadFile(token, pkg.id);
 
-    progress('Guardando um backup local de segurança antes de substituir…');
+    progress('Guardando um backup local de segurança antes de mesclar…');
     try {
       const current = await ExportImportService.buildCollectionPackage();
       await saveLocalBackup(`antes-de-baixar-${Date.now()}`, current.blob);
@@ -738,8 +738,10 @@ export class DriveSyncService {
       console.warn('Não foi possível salvar o backup local (seguindo mesmo assim):', e);
     }
 
-    progress('Substituindo os dados deste dispositivo pelo backup baixado…');
-    await MediaStore.clear();
+    // Merges by the same plan the interactive import uses ("download" style):
+    // this device keeps everything that only exists here, the backup wins on
+    // items it carries, and FSRS stays with the most recently studied card.
+    progress('Mesclando o backup baixado com os dados deste dispositivo…');
     const file = new File([blob], DRIVE_FILES.COLPKG, { type: 'application/octet-stream' });
     const res = await ExportImportService.importPackage(file);
     if (!res.success) {
@@ -747,7 +749,6 @@ export class DriveSyncService {
       try {
         const backup = await getLatestLocalBackup();
         if (backup) {
-          await MediaStore.clear();
           await ExportImportService.importPackage(
             new File([backup.blob], DRIVE_FILES.COLPKG, { type: 'application/octet-stream' })
           );

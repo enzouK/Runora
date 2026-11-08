@@ -332,6 +332,18 @@ const STATE_BADGE_STYLES: Record<number, { label: string; cls: string }> = {
   3: { label: 'Reaprendizagem', cls: 'bg-ios-red/15 text-ios-red' },
 };
 
+// Real card dates (shown in the browser list): creation and last modification.
+const fmtDate = (ts: number): string =>
+  new Date(ts).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const fmtDateTime = (ts: number): string =>
+  new Date(ts).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
 /** Status pill for every card (+ derived maturity pill for review cards). */
 const CardStatusBadges: React.FC<{ state: number; maturity: CardMaturity }> = ({
   state,
@@ -1135,6 +1147,15 @@ export const CardBrowser: React.FC<CardBrowserProps> = ({ onEditNote, onRefresh 
                         {textBlocks.length === 0 && !hasAnyVisual && (
                           <div className="text-[13px] text-zinc-400 py-1">Card sem conteúdo</div>
                         )}
+
+                        {/* Real dates of the card (creation and last change) */}
+                        <div
+                          className="text-[10px] leading-tight text-zinc-400 dark:text-zinc-500 tabular-nums"
+                          title={`Criado em ${fmtDateTime(card.createdAt)} · Modificado em ${fmtDateTime(card.updatedAt)}`}
+                        >
+                          Criado em {fmtDate(card.createdAt)} · Modificado em{' '}
+                          {fmtDateTime(card.updatedAt)}
+                        </div>
                       </div>
                     </div>
                   </div>

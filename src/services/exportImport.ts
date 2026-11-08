@@ -9,6 +9,7 @@ import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
 import { detectFeatures } from './noteTypeFeatures';
 import { ensureNoteGuids, generateGuid } from './noteIdentity';
+import { analyzeImport, applyImportPlan, type ImportableCollection, type ImportConflictMode } from './importPlan';
 import { collectRevlogDifficulties, deriveImportedFsrsState } from './ankiFsrsState';
 import {
   decodeDeckConfigFsrs,
@@ -209,57 +210,72 @@ export class ExportImportService {
   }
 
   /**
-   * Imports a .colpkg, .apkg or JSON package
+   * Reads a package (.colpkg, .apkg or JSON) and builds the importable
+   * collection WITHOUT touching the local data — the caller analyzes it
+   * (importPlan.analyzeImport), shows the plan to the user and applies it
+   * in the chosen mode (importPlan.applyImportPlan).
+   *
+   * The attached zip (when there is one) carries the media files; they are
+   * imported only at apply time.
    */
-  public static async importPackage(file: File): Promise<{ success: boolean; message: string; count?: number }> {
+  public static async readPackageData(file: File): Promise<ImportableCollection> {
+    if (file.name.endsWith('.json')) {
+      const text = await file.text();
+      return this.buildRunoraCollection(JSON.parse(text) as RunoraCollectionExport);
+    }
+
+    // Read ZIP (.colpkg / .apkg)
+    const zip = await JSZip.loadAsync(file);
+    const collectionFile = zip.file('collection.runora.json');
+    if (collectionFile) {
+      const text = await collectionFile.async('text');
+      return this.buildRunoraCollection(JSON.parse(text) as RunoraCollectionExport, zip);
+    }
+
+    // Fallback check for any json inside
+    const jsonFiles = Object.keys(zip.files).filter((k) => k.endsWith('.json') && k !== 'media' && k !== 'media.json');
+    if (jsonFiles.length > 0) {
+      const text = await zip.files[jsonFiles[0]].async('text');
+      return this.buildRunoraCollection(JSON.parse(text) as RunoraCollectionExport, zip);
+    }
+
+    // New-format Anki package (.apkg with collection.anki21b, zstd-compressed
+    // SQLite, schema 18). The legacy collection.anki2 inside is just a
+    // "please update Anki" placeholder — always prefer the anki21b data.
+    const zstdEntry = zip.file('collection.anki21b');
+    if (zstdEntry) {
+      const decompressed = zstdDecompress(await zstdEntry.async('uint8array'));
+      return await this.readAnkiCollection(decompressed, 'schema18', zip);
+    }
+
+    // Legacy Anki package (.apkg): collection.anki2 / collection.anki21
+    const sqliteEntry = zip.file('collection.anki2') || zip.file('collection.anki21');
+    if (sqliteEntry) {
+      return await this.readAnkiCollection(await sqliteEntry.async('uint8array'), 'legacy', zip);
+    }
+
+    throw new Error(
+      'Pacote inválido: não contém nem dados do Runora (JSON) nem uma coleção SQLite (collection.anki2).'
+    );
+  }
+
+  /**
+   * Convenience full import (analyze + apply, overwriting conflicts) for
+   * callers that don't need the interactive plan — e.g. restoring a local
+   * security backup after a failed sync.
+   */
+  public static async importPackage(
+    file: File,
+    mode: ImportConflictMode = 'overwrite'
+  ): Promise<{ success: boolean; message: string; count?: number }> {
     try {
-      if (file.name.endsWith('.json')) {
-        const text = await file.text();
-        const data = JSON.parse(text) as RunoraCollectionExport;
-        return this.applyCollectionData(data);
-      }
-
-      // Read ZIP (.colpkg / .apkg)
-      const zip = await JSZip.loadAsync(file);
-      const collectionFile = zip.file('collection.runora.json');
-
-      if (collectionFile) {
-        const text = await collectionFile.async('text');
-        const data = JSON.parse(text) as RunoraCollectionExport;
-        const result = this.applyCollectionData(data);
-        await this.importZipMedia(zip);
-        return result;
-      }
-
-      // Fallback check for any json inside
-      const jsonFiles = Object.keys(zip.files).filter((k) => k.endsWith('.json') && k !== 'media' && k !== 'media.json');
-      if (jsonFiles.length > 0) {
-        const text = await zip.files[jsonFiles[0]].async('text');
-        const data = JSON.parse(text) as RunoraCollectionExport;
-        const result = this.applyCollectionData(data);
-        await this.importZipMedia(zip);
-        return result;
-      }
-
-      // New-format Anki package (.apkg with collection.anki21b, zstd-compressed
-      // SQLite, schema 18). The legacy collection.anki2 inside is just a
-      // "please update Anki" placeholder — always prefer the anki21b data.
-      const zstdEntry = zip.file('collection.anki21b');
-      if (zstdEntry) {
-        const decompressed = zstdDecompress(await zstdEntry.async('uint8array'));
-        return await this.importAnkiSqlite(decompressed, 'schema18', zip);
-      }
-
-      // Legacy Anki package (.apkg): collection.anki2 / collection.anki21
-      const sqliteEntry = zip.file('collection.anki2') || zip.file('collection.anki21');
-      if (sqliteEntry) {
-        return await this.importAnkiSqlite(await sqliteEntry.async('uint8array'), 'legacy', zip);
-      }
-
+      const data = await this.readPackageData(file);
+      await this.importCollectionMedia(data);
+      const result = applyImportPlan(analyzeImport(data), mode);
       return {
-        success: false,
-        message:
-          'Pacote inválido: não contém nem dados do Runora (JSON) nem uma coleção SQLite (collection.anki2).',
+        success: true,
+        message: result.message,
+        count: result.addedCards + result.updatedCards,
       };
     } catch (err) {
       console.error('Import error:', err);
@@ -271,17 +287,76 @@ export class ExportImportService {
   }
 
   /**
-   * Imports an external SQLite collection database (legacy collection.anki2 with models/decks
+   * Applies a previously read package in the chosen conflict mode (static de
+   * interface com o ImportPreviewModal): brings the media along and merges.
+   * Re-analyzes against the CURRENT local data — between the plan preview
+   * and the user's choice, the collection may have changed.
+   */
+  public static async applyCollection(
+    data: ImportableCollection,
+    mode: ImportConflictMode
+  ): Promise<ReturnType<typeof applyImportPlan>> {
+    await this.importCollectionMedia(data);
+    return applyImportPlan(analyzeImport(data), mode);
+  }
+
+  /** Normalizes a Runora JSON export into the shape the plan service reads. */
+  private static buildRunoraCollection(
+    data: RunoraCollectionExport,
+    zip?: JSZip
+  ): ImportableCollection {
+    if (!data.decks || !data.notes || !data.cards) {
+      throw new Error('Arquivo de coleção inválido ou incompleto.');
+    }
+    const mediaCount = zip
+      ? Object.keys(zip.files).filter(
+          (k) => !k.startsWith('collection.') && k !== 'media' && k !== 'media.json' && k !== 'meta'
+        ).length
+      : undefined;
+    return {
+      kind: 'runora',
+      decks: data.decks,
+      noteTypes: data.noteTypes ?? [],
+      notes: data.notes,
+      cards: data.cards,
+      presets: data.presets,
+      revlog: data.revlog,
+      fsrsParameters: data.fsrsParameters,
+      mediaCount,
+      zip,
+    };
+  }
+
+  /**
+   * Imports the media files of a package zip (Runora and Anki alike) into
+   * the MediaStore. Runs at APPLY time: reading the plan must be cheap for
+   * the user to cancel. Media names are unique per package, so this is
+   * idempotent on re-import.
+   */
+  private static async importCollectionMedia(data: ImportableCollection): Promise<number> {
+    if (!data.zip) return 0;
+    const n = await this.importZipMedia(data.zip as JSZip);
+    data.zip = undefined;
+    return n;
+  }
+
+  /**
+   * Reads an external SQLite collection database (legacy collection.anki2 with models/decks
    * as JSON in `col`, or new schema 18 from decompressed collection.anki21b
    * with dedicated `decks`, `notetypes`, `fields` and `templates` tables).
    * Card queue/type is mapped onto FSRS states; the imported interval becomes the
-   * initial FSRS stability. Media files are not imported yet.
+   * initial FSRS stability.
+   *
+   * READ-ONLY: builds and returns the importable collection — real creation
+   * dates (Anki's ids are ms timestamps) and note modification dates (mod)
+   * are captured, and the caller applies the plan afterwards. Media files
+   * are imported at apply time.
    */
-  private static async importAnkiSqlite(
+  private static async readAnkiCollection(
     dbBytes: Uint8Array,
     schema: 'legacy' | 'schema18',
     zip: JSZip
-  ): Promise<{ success: boolean; message: string; count?: number }> {
+  ): Promise<ImportableCollection> {
     const SQL = await initSqlJs({ locateFile: () => sqlWasmUrl });
     const db = new SQL.Database(dbBytes);
 
@@ -496,7 +571,8 @@ export class ExportImportService {
       }
 
       // ── Notes ──
-      const noteRows = this.queryAll(db, 'SELECT id, mid, flds, tags, guid FROM notes');
+      // mod = instant of the last edit (ms or s — detect by magnitude)
+      const noteRows = this.queryAll(db, 'SELECT id, mid, flds, tags, guid, mod FROM notes');
       const cardRows = this.queryAll(
         db,
         'SELECT id, nid, did, ord, type, queue, ivl, due, reps, lapses, data FROM cards'
@@ -510,10 +586,17 @@ export class ExportImportService {
       // the same encoding Anki itself uses to rebuild it
       // (rslib/src/scheduler/fsrs/memory_state.rs).
       let revlogDifficultyByCard = new Map<number, number>();
+      let lastReviewByCard = new Map<number, number>();
       try {
-        revlogDifficultyByCard = collectRevlogDifficulties(
-          this.queryAll(db, 'SELECT cid, factor FROM revlog ORDER BY id')
-        );
+        const revlogRows = this.queryAll(db, 'SELECT cid, factor, id FROM revlog ORDER BY id');
+        revlogDifficultyByCard = collectRevlogDifficulties(revlogRows);
+        // The row id is the instant of the review (ms) — the last one per
+        // card is the card's last real study date.
+        for (const row of revlogRows) {
+          const cid = Number(row[0]);
+          const at = Number(row[2]) || 0;
+          if (at > (lastReviewByCard.get(cid) ?? 0)) lastReviewByCard.set(cid, at);
+        }
       } catch {
         // No revlog table (trimmed/very old collection): cards.data is the
         // only source of truth.
@@ -551,7 +634,7 @@ export class ExportImportService {
         if (!deckIdByNoteId.has(Number(nid))) deckIdByNoteId.set(Number(nid), Number(did));
       }
 
-      const notes: Note[] = noteRows.map(([id, mid, flds, tags, ankiGuid]) => {
+      const notes: Note[] = noteRows.map(([id, mid, flds, tags, ankiGuid, noteMod]) => {
         const typeId = typeIdByMid.get(Number(mid)) || '';
         const nt = noteTypes.find((t) => t.id === typeId);
         const values = String(flds).split('');
@@ -562,6 +645,11 @@ export class ExportImportService {
         });
         const ankiDeckId = deckIdByNoteId.get(Number(id));
         const deckId = (ankiDeckId !== undefined && deckIdByAnkiId.get(ankiDeckId)) || decks[0]?.id || 'deck-default';
+        // Datas reais do Anki:
+        //  - criação: o próprio ID da nota é o timestamp unix em ms
+        //  - última edição: a coluna `mod` — ms nas coleções modernas,
+        //    segundos nas antigas (detectado pela magnitude)
+        const noteCreatedAt = this.ankiIdToMs(Number(id), colCrt);
         return {
           id: `note-apkg-${id}`,
           // O GUID do Anki vira o "RG" da nota: uma reimportação do mesmo
@@ -573,8 +661,8 @@ export class ExportImportService {
           fields,
           media: [],
           tags: String(tags || '').trim().split(/\s+/).filter(Boolean),
-          createdAt: colCrt * 1000 || timestamp,
-          updatedAt: timestamp,
+          createdAt: noteCreatedAt,
+          updatedAt: this.ankiModToMs(Number(noteMod)) ?? noteCreatedAt,
         };
       });
 
@@ -617,8 +705,11 @@ export class ExportImportService {
             // queue -1 suspended, -2/-3 buried — all excluded from due counts, like Anki
             suspended: ankiQueue < 0,
             fsrs,
-            createdAt: timestamp,
-            updatedAt: timestamp,
+            // Datas reais do Anki: o ID do card é o unix timestamp em ms da
+            // criação; a última edição é a última revisão real (revlog), ou a
+            // criação quando o card nunca foi estudado.
+            createdAt: this.ankiIdToMs(Number(id), colCrt),
+            updatedAt: lastReviewByCard.get(Number(id)) ?? this.ankiIdToMs(Number(id), colCrt),
           } satisfies Card;
         }
       );
@@ -630,47 +721,21 @@ export class ExportImportService {
 
       db.close();
 
-      // ── Media ──
-      const mediaCount = await this.importZipMedia(zip);
-
-      // Write into storage, UPSERTING by id: re-importing a package (e.g. the same
-      // deck once without and once with scheduling info) must REPLACE the previous
-      // notes/cards with the same ids, not append duplicates — Anki merges by note
-      // GUID the same way, so the second import updates the existing cards in place.
-      const upsertById = <T extends { id: string }>(existing: T[], incoming: T[]): T[] => {
-        const incomingIds = new Set(incoming.map((x) => x.id));
-        return [...existing.filter((x) => !incomingIds.has(x.id)), ...incoming];
-      };
-      StorageService.saveNoteTypes(upsertById(StorageService.getNoteTypes(), noteTypes));
-      // Decks: incoming wins on name/desc and on the FSRS options it brings;
-      // the local preset linkage and daily limits survive a re-import.
-      const existingDecks = StorageService.getDecks();
-      const importedDecks = decks.map((d) => {
-        const prev = existingDecks.find((x) => x.id === d.id);
-        return {
-          ...d,
-          presetId: d.presetId ?? prev?.presetId,
-          dailyLimitsOverride: d.dailyLimitsOverride ?? prev?.dailyLimitsOverride,
-          fsrsOverride: d.fsrsOverride ?? prev?.fsrsOverride,
-        };
-      });
-      StorageService.saveDecks(upsertById(existingDecks, importedDecks));
-      // The Anki options groups become Runora presets.
-      if (importedPresets.length > 0) {
-        const existingPresets = StorageService.getPresets();
-        const importedIds = new Set(importedPresets.map((p) => p.id));
-        const kept = existingPresets.filter((p) => !importedIds.has(p.id));
-        StorageService.savePresets([...kept, ...importedPresets]);
-      }
-      StorageService.saveNotes(upsertById(StorageService.getNotes(), notes));
-      StorageService.saveCards(upsertById(StorageService.getCards(), cards));
+      // Sem gravação aqui: o plano (analyzeImport/applyImportPlan) decide o
+      // que entra — e a mídia é importada na APLICAÇÃO do plano.
+      const mediaCount = Object.keys(zip.files).filter(
+        (k) => !k.startsWith('collection.') && k !== 'media' && k !== 'media.json' && k !== 'meta'
+      ).length;
 
       return {
-        success: true,
-        message: `Coleção importada com sucesso! ${decks.length} decks, ${notes.length} notas, ${cards.length} cards convertidos para FSRS${
-          mediaCount > 0 ? ` e ${mediaCount} arquivos de mídia` : ''
-        }.`,
-        count: cards.length,
+        kind: 'anki',
+        decks,
+        noteTypes,
+        notes,
+        cards,
+        presets: importedPresets.length > 0 ? importedPresets : undefined,
+        mediaCount,
+        zip,
       };
     } catch (err) {
       db.close();
@@ -683,6 +748,30 @@ export class ExportImportService {
     const res = db.exec(sql);
     if (res.length === 0) return [];
     return res[0].values;
+  }
+
+  /**
+   * Anki note/card ids ARE their creation instant: a unix timestamp in ms.
+   * When an id is out of range (very old collections hand-crafted ids still
+   * fall in range — only decade-scale values would break it), fall back to
+   * the collection creation date.
+   */
+  private static ankiIdToMs(id: number, colCrt: number): number {
+    if (Number.isFinite(id) && id > 1e12) return id;
+    return colCrt * 1000 || id || Date.now();
+  }
+
+  /**
+   * Anki's notes.mod (instant of the last edit) came in SECONDS in old
+   * collections and in MILLISECONDS in the modern ones — 1e9..1e10 covers
+   * 2001..2286 in seconds; anything above 1e12 is already ms. `undefined`
+   * means "no reliable value".
+   */
+  private static ankiModToMs(mod: number): number | undefined {
+    if (!Number.isFinite(mod) || mod <= 0) return undefined;
+    if (mod > 1e12) return mod;
+    if (mod >= 1e9 && mod <= 1e10) return mod * 1000;
+    return undefined;
   }
 
   /**
@@ -893,40 +982,4 @@ export class ExportImportService {
     return out;
   }
 
-  private static applyCollectionData(data: RunoraCollectionExport): { success: boolean; message: string; count: number } {
-    if (!data.decks || !data.notes || !data.cards) {
-      throw new Error('Arquivo de coleção inválido ou incompleto.');
-    }
-
-    // Backfill: notas sem GUID (exportado de versões antigas ou criadas
-    // externamente) recebem um na importação — assim a coleção inteira
-    // passa a carregar identidade universal a partir daqui.
-    data.notes = ensureNoteGuids(data.notes);
-
-    // Merge or replace
-    StorageService.saveDecks(data.decks);
-    if (data.presets) {
-      // Imported presets win on id collision; the factory "Padrão" preset is
-      // always preserved (getPresets re-seeds it when missing)
-      const existing = StorageService.getPresets();
-      const importedIds = new Set(data.presets.map((p) => p.id));
-      const factory = existing.filter((p) => p.id === StorageService.DEFAULT_PRESET_ID && !importedIds.has(p.id));
-      StorageService.savePresets([...factory, ...data.presets]);
-    }
-    if (data.noteTypes) StorageService.saveNoteTypes(data.noteTypes);
-    StorageService.saveNotes(data.notes);
-    StorageService.saveCards(data.cards);
-    if (data.revlog) {
-      localStorage.setItem('runora_revlog', JSON.stringify(data.revlog));
-    }
-    if (data.fsrsParameters) {
-      StorageService.saveFSRSSettings(data.fsrsParameters);
-    }
-
-    return {
-      success: true,
-      message: `Coleção restaurada com sucesso! ${data.decks.length} decks, ${data.notes.length} notas, ${data.cards.length} cards com parâmetros FSRS.`,
-      count: data.cards.length,
-    };
-  }
 }

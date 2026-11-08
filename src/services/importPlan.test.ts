@@ -1,0 +1,383 @@
+/**
+ * importPlan — plano de importação: análise + aplicação nos dois modos.
+ *
+ * StorageService lê a coleção de `localStorage`; como os outros testes de
+ * serviço, roda sobre um MemoryStorage.
+ */
+
+import { describe, it, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { StorageService } from './storage';
+import {
+  analyzeImport,
+  applyImportPlan,
+  type ImportableCollection,
+} from './importPlan';
+import type { Card, Deck, Note, NoteType } from '../types/runora';
+
+class MemoryStorage {
+  private map = new Map<string, string>();
+  getItem(key: string): string | null {
+    return this.map.has(key) ? this.map.get(key)! : null;
+  }
+  setItem(key: string, value: string): void {
+    this.map.set(key, String(value));
+  }
+  removeItem(key: string): void {
+    this.map.delete(key);
+  }
+  clear(): void {
+    this.map.clear();
+  }
+}
+
+Object.defineProperty(globalThis, 'localStorage', {
+  value: new MemoryStorage(),
+  configurable: true,
+  writable: true,
+});
+
+function makeDeck(id: string, name: string): Deck {
+  return { id, name, description: '', createdAt: 1, updatedAt: 1 };
+}
+
+function makeNoteType(id: string, name: string, isCloze = false): NoteType {
+  return {
+    id,
+    name,
+    isCloze,
+    css: '',
+    hintsEnabled: false,
+    voiceRecordingEnabled: false,
+    furiganaEnabled: false,
+    fields: [
+      { id: 'f1', name: 'Frente', ord: 0 },
+      { id: 'f2', name: 'Verso', ord: 1 },
+    ],
+    templates: [
+      { id: 't1', name: 'Card 1', ord: 0, qfmt: '{{Frente}}', afmt: '{{Frente}}<hr>{{Verso}}' },
+    ],
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
+
+function makeNote(partial: Partial<Note> & { id: string }): Note {
+  return {
+    noteTypeId: 'nt-a',
+    deckId: 'deck-in',
+    fields: { Frente: 'gato', Verso: 'cat' },
+    media: [],
+    tags: [],
+    createdAt: 1000,
+    updatedAt: 1000,
+    ...partial,
+  };
+}
+
+function makeCard(partial: Partial<Card> & { id: string; noteId: string }): Card {
+  return {
+    deckId: 'deck-in',
+    templateOrd: 0,
+    due: 0,
+    fsrs: {
+      stability: 0,
+      difficulty: 0,
+      elapsedDays: 0,
+      scheduledDays: 0,
+      reps: 0,
+      lapses: 0,
+      state: 0,
+      lastReview: null,
+    },
+    createdAt: 1000,
+    updatedAt: 1000,
+    ...partial,
+  };
+}
+
+function collectionData(partial: Partial<ImportableCollection> = {}): ImportableCollection {
+  return {
+    kind: 'runora',
+    decks: [makeDeck('deck-in', 'Japanese')],
+    noteTypes: [makeNoteType('nt-a', 'Básico')],
+    notes: [makeNote({ id: 'note-in-1', guid: 'guid-A' })],
+    cards: [makeCard({ id: 'card-in-1', noteId: 'note-in-1' })],
+    ...partial,
+  };
+}
+
+describe('analyzeImport', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    // Impede o re-seed dos decks/presets de fábrica nos testes com seed manual
+    localStorage.setItem('runora_seed_version', '3');
+  });
+
+  it('coleção local vazia: tudo é novo, nada é conflito', () => {
+    const plan = analyzeImport(collectionData());
+    assert.equal(plan.summary.newNotesCount, 1);
+    assert.equal(plan.summary.existingNotesCount, 0);
+    assert.equal(plan.summary.newCardsCount, 1);
+    assert.deepEqual(plan.summary.newDeckNames, ['Japanese']);
+  });
+
+  it('a mesma nota (GUID igual) é reconhecida, mesmo com id diferente', () => {
+    localStorage.setItem('runora_notes', JSON.stringify([
+      makeNote({ id: 'note-local-1', guid: 'guid-B', deckId: 'deck-loc', noteTypeId: 'nt-loc' }),
+    ]));
+    localStorage.setItem('runora_cards', JSON.stringify([
+      makeCard({ id: 'card-local-1', noteId: 'note-local-1', deckId: 'deck-loc' }),
+    ]));
+    localStorage.setItem('runora_decks', JSON.stringify([
+      makeDeck('deck-loc', 'Japanese'),
+    ]));
+    localStorage.setItem('runora_notetypes', JSON.stringify([makeNoteType('nt-loc', 'Básico')]));
+
+    const plan = analyzeImport(collectionData());
+    assert.equal(plan.summary.existingNotesCount, 1);
+    assert.equal(plan.summary.newCardsCount, 0); // mesma nota, mesmo template
+    assert.equal(plan.deckLinks.get('deck-in'), 'deck-loc'); // casou por nome
+    assert.equal(plan.noteLinks.get('note-in-1'), 'note-local-1');
+  });
+
+  it('sem GUID dos dois lados: assinatura por conteúdo reconhece a nota', () => {
+    localStorage.setItem('runora_notes', JSON.stringify([
+      makeNote({
+        id: 'note-local-open',
+        // sem guid —
+        fields: { Frente: ' <b>gato</b> ', Verso: 'cat ' }, // conteúdo equivalente
+        noteTypeId: 'nt-loc',
+        deckId: 'deck-loc',
+      }),
+    ]));
+    localStorage.setItem('runora_decks', JSON.stringify([makeDeck('deck-loc', 'Japanese')]));
+    localStorage.setItem('runora_notetypes', JSON.stringify([makeNoteType('nt-loc', 'Básico')]));
+
+    const incoming = collectionData({
+      notes: [makeNote({ id: 'note-in-1', fields: { Frente: 'gato', Verso: 'cat' } })],
+    });
+    const plan = analyzeImport(incoming);
+    assert.equal(plan.summary.existingNotesCount, 1);
+    assert.equal(plan.noteLinks.get('note-in-1'), 'note-local-open');
+  });
+
+  it('conteúdo diferente não casa (nota nova mesmo com o mesmo tipo/deck)', () => {
+    localStorage.setItem('runora_notes', JSON.stringify([
+      makeNote({ id: 'note-local-1', fields: { Frente: 'cão', Verso: 'dog' } }),
+    ]));
+    const plan = analyzeImport(collectionData({ notes: [makeNote({ id: 'note-in-1', guid: 'guid-A' })] }));
+    assert.equal(plan.summary.newNotesCount, 1);
+    assert.equal(plan.summary.existingNotesCount, 0);
+  });
+
+  it('garante GUID nas notas do pacote que não tinham (backfill na análise)', () => {
+    const data = collectionData({
+      notes: [makeNote({ id: 'note-in-x', guid: undefined as unknown as string })],
+    });
+    const plan = analyzeImport(data);
+    assert.ok(plan.data.notes[0].guid && plan.data.notes[0].guid!.length >= 16);
+  });
+
+  it('mesma nota (mesmo GUID) com conteúdo diferente entra como conflito de conteúdo', () => {
+    localStorage.setItem('runora_notes', JSON.stringify([
+      makeNote({ id: 'note-local-1', guid: 'guid-A', fields: { Frente: 'gato', Verso: 'cat (editado aqui)' } }),
+    ]));
+    const plan = analyzeImport(collectionData());
+    assert.equal(plan.summary.existingNotesCount, 1);
+    assert.equal(plan.summary.conflictingNotesCount, 1); // há disputa a perguntar
+  });
+
+  it('mesma nota com conteúdo idêntico não é conflito (nem dispara pergunta)', () => {
+    localStorage.setItem('runora_notes', JSON.stringify([
+      makeNote({ id: 'note-local-1', guid: 'guid-A' }),
+    ]));
+    const plan = analyzeImport(collectionData());
+    assert.equal(plan.summary.conflictingNotesCount, 0);
+  });
+});
+
+describe('applyImportPlan', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('runora_seed_version', '3');
+  });
+
+  it('modo keep: nota existente fica intacta; a nova entra', () => {
+    seedLocalOneNote('card-local-old', { stability: 5 });
+    const data = collectionData({
+      notes: [
+        makeNote({ id: 'note-in-1', guid: 'guid-A' }), // existente
+        makeNote({ id: 'note-in-2', guid: 'guid-N', fields: { Frente: 'cão', Verso: 'dog' } }),
+      ],
+      cards: [
+        makeCard({ id: 'card-in-1', noteId: 'note-in-1', fsrs: dummyFsrs({ stability: 99 }) }),
+        makeCard({ id: 'card-in-2', noteId: 'note-in-2' }),
+      ],
+    });
+    const plan = analyzeImport(data);
+    const r = applyImportPlan(plan, 'keep');
+
+    const notes = StorageService.getNotes();
+    assert.equal(notes.length, 2);
+    const kept = notes.find((n) => n.guid === 'guid-A')!;
+    assert.equal(kept.createdAt, 2000); // não mexe na de cá
+    assert.equal(r.keptDuplicates, 1);
+    assert.equal(r.addedNotes, 1);
+
+    const cards = StorageService.getCards();
+    const keptCard = cards.find((c) => c.noteId === kept.id)!;
+    assert.equal(keptCard.id, 'card-local-old');
+    assert.equal(keptCard.fsrs.stability, 5); // progresso de cá intacto
+    assert.equal(cards.length, 2); // + o card da nota nova
+  });
+
+  it('modo overwrite: FSRS fica com a versão estudada mais recentemente', () => {
+    seedLocalOneNote('card-local-old', { stability: 5, lastReview: 5_000 });
+    const data = collectionData({
+      cards: [
+        makeCard({
+          id: 'card-in-1',
+          noteId: 'note-in-1',
+          fsrs: dummyFsrs({ stability: 9, lastReview: 6_000 }), // estudada DEPOIS
+        }),
+      ],
+    });
+    const r = applyImportPlan(analyzeImport(data), 'overwrite');
+    assert.equal(r.updatedCards, 1);
+
+    const card = StorageService.getCards().find((c) => c.id === 'card-local-old')!;
+    assert.equal(card.fsrs.stability, 9); // venceu a mais recente
+    assert.equal(card.fsrs.lastReview, 6_000);
+
+    // E o inverso: local mais recente fica com a de cá
+    localStorage.clear();
+    seedLocalOneNote('card-local-new', { stability: 7, lastReview: 99_000 });
+    applyImportPlan(analyzeImport(collectionData({
+      cards: [makeCard({ id: 'card-in-1', noteId: 'note-in-1', fsrs: dummyFsrs({ stability: 99, lastReview: 6_000 }) })],
+    })), 'overwrite');
+    const card2 = StorageService.getCards().find((c) => c.id === 'card-local-new')!;
+    assert.equal(card2.fsrs.stability, 7);
+    assert.equal(card2.fsrs.lastReview, 99_000);
+  });
+
+  it('overwrite: nota existente recebe o conteúdo do pacote e o deck casa por nome', () => {
+    localStorage.setItem('runora_notes', JSON.stringify([
+      makeNote({
+        id: 'note-local-1',
+        guid: 'guid-A',
+        deckId: 'deck-loc',
+        fields: { Frente: 'gato', Verso: 'cat (antigo)' },
+        createdAt: 2000,
+        updatedAt: 3000,
+      }),
+    ]));
+    localStorage.setItem('runora_cards', JSON.stringify([
+      makeCard({ id: 'card-local-1', noteId: 'note-local-1', deckId: 'deck-loc' }),
+    ]));
+    localStorage.setItem('runora_decks', JSON.stringify([makeDeck('deck-loc', 'Japanese')]));
+
+    const data = collectionData({
+      notes: [makeNote({ id: 'note-in-1', guid: 'guid-A', deckId: 'deck-in', updatedAt: 4000 })],
+      cards: [makeCard({ id: 'card-in-1', noteId: 'note-in-1', deckId: 'deck-in' })],
+    });
+    const r = applyImportPlan(analyzeImport(data), 'overwrite');
+
+    const note = StorageService.getNotes().find((n) => n.guid === 'guid-A')!;
+    assert.equal(note.id, 'note-local-1'); // mesmo "físico" de cá
+    assert.equal(note.deckId, 'deck-loc'); // mesmo deck (casado por nome)
+    assert.equal(note.fields.Verso, 'cat'); // conteúdo do pacote venceu
+    assert.equal(note.createdAt, 1000); // a mais antiga das duas
+    assert.equal(note.updatedAt, 4000); // a mais recente das duas
+    assert.equal(r.addedDecks, 0); // "Japanese" já existia — nada duplicado
+    assert.equal(StorageService.getDecks().length, 1);
+  });
+
+  it('revlog: união sem duplicar (mesma revisão dos dois lados entra uma vez)', () => {
+    const e = (id: number, cardId: string) => ({
+      id: String(id),
+      cardId,
+      noteId: 'n',
+      rating: 3 as const,
+      reviewTime: id,
+      elapsedDays: 0,
+      scheduledDays: 1,
+      state: 2 as const,
+      stability: 1,
+      difficulty: 5,
+    });
+    localStorage.setItem('runora_revlog', JSON.stringify([
+      e(1000, 'card-local-1'),
+      e(2000, 'card-local-1'),
+    ]));
+    const data = collectionData({
+      revlog: [e(2000, 'card-local-1'), e(3000, 'card-local-1')],
+    });
+    const before = StorageService.getRevlog().length;
+    const r = applyImportPlan(analyzeImport(data), 'overwrite');
+    const after = StorageService.getRevlog();
+    assert.equal(after.length, before + r.addedRevlog);
+    assert.equal(r.addedRevlog, 1); // só a revisão 3000 era nova
+    assert.equal(after.filter((x) => x.reviewTime === 2000).length, 1);
+  });
+
+  it('FSRS global só é substituído quando a coleção local está vazia', () => {
+    seedLocalOneNote('card-local-1', {});
+    const withFsrs = collectionData({
+      fsrsParameters: { requestRetention: 0.8, maximumInterval: 100, w: new Array(19).fill(0.5), enableFuzz: false },
+    });
+    applyImportPlan(analyzeImport(withFsrs), 'keep');
+    assert.notEqual(StorageService.getFSRSSettings().requestRetention, 0.8); // preservou
+
+    localStorage.clear(); // coleção vazia agora
+    applyImportPlan(analyzeImport(withFsrs), 'keep');
+    assert.equal(StorageService.getFSRSSettings().requestRetention, 0.8); // restaurou
+  });
+
+  it('id em choque de conteúdo diferente recebe id novo (nada é sobrescrito por engano)', () => {
+    localStorage.setItem('runora_notes', JSON.stringify([
+      makeNote({ id: 'note-in-1', guid: 'guid-OUTRA', fields: { Frente: 'outra' } }),
+    ]));
+    const data = collectionData({ notes: [makeNote({ id: 'note-in-1', guid: 'guid-A' })] });
+    const r = applyImportPlan(analyzeImport(data), 'keep');
+    assert.equal(r.addedNotes, 1);
+    const notes = StorageService.getNotes();
+    const added = notes.find((n) => n.guid === 'guid-A')!;
+    assert.notEqual(added.id, 'note-in-1'); // colidiu → id novo
+  });
+});
+
+// ── helpers ──
+
+function dummyFsrs(p: Partial<Card['fsrs']>): Card['fsrs'] {
+  return {
+    stability: 0,
+    difficulty: 0,
+    elapsedDays: 0,
+    scheduledDays: 0,
+    reps: 0,
+    lapses: 0,
+    state: 0,
+    lastReview: null,
+    ...p,
+  };
+}
+
+/** Uma nota+card local existente (nota em 2000 — é a "de cá"). */
+function seedLocalOneNote(cardId: string, fsrs: Partial<Card['fsrs']>): void {
+  localStorage.setItem('runora_notes', JSON.stringify([
+    makeNote({ id: 'note-local-A', guid: 'guid-A', deckId: 'deck-loc', createdAt: 2000, updatedAt: 2000 }),
+  ]));
+  localStorage.setItem('runora_cards', JSON.stringify([
+    makeCard({
+      id: cardId,
+      noteId: 'note-local-A',
+      deckId: 'deck-loc',
+      createdAt: 2000,
+      updatedAt: 2000,
+      fsrs: dummyFsrs(fsrs),
+    }),
+  ]));
+  localStorage.setItem('runora_decks', JSON.stringify([makeDeck('deck-loc', 'Japanese')]));
+}
