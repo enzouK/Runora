@@ -14,6 +14,7 @@ import {
   Volume2,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
   FlipHorizontal,
   Search,
   Database,
@@ -137,6 +138,11 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
+  /* No celular o editor e a pré-visualização são DOIS PAINéis (um por
+     vez, em tela cheia). Lado a lado ficaria espremido e esconderia a
+     gaveta de valores de exemplo. */
+  const [mobilePane, setMobilePane] = useState<'editor' | 'preview'>('editor');
+
   /* ---------- Valores de exemplo ----------
    * Todos os campos começam EM BRANCO (sem heurística por nome de campo).
    * Os botões Image/Audio preenchem o campo com a mídia local embutida.
@@ -145,8 +151,8 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
   const [sampleFields, setSampleFields] = useState<Record<string, SampleFieldState>>(() =>
     loadSampleFields(noteType.id)
   );
-  // No celular a gaveta começa fechada para sobrar espaço pro preview
-  const [samplesOpen, setSamplesOpen] = useState(() => !isNarrow);
+  // No celular a gaveta abre junto: o preview tem um painel próprio
+  const [samplesOpen, setSamplesOpen] = useState(true);
 
   /* ---------- Card Selector Modal ---------- */
   const [cardSelectorOpen, setCardSelectorOpen] = useState(false);
@@ -973,28 +979,24 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
           </div>
         )}
 
-        {/* Main Workspace: Editor (esquerda) | divisória | Pré-visualização (direita)
-            No celular (tela estreita) o preview fica ABAIXO do editor, em largura cheia. */}
+        {/* Main Workspace: Editor | divisória | Pré-visualização
+            No celular são dois painéis alternados (editor OU preview), em
+            tela cheia — lado a lado não caberia. */}
         <div
           ref={workspaceRef}
-          className={`flex-1 flex select-none ${
-            isNarrow ? 'flex-col overflow-y-auto' : 'flex-row overflow-hidden'
+          className={`flex-1 flex select-none overflow-hidden ${
+            isNarrow ? 'flex-col' : 'flex-row'
           }`}
         >
           {/* ---------- ESQUERDA: Code & HTML Editor ---------- */}
+          {(!isNarrow || mobilePane === 'editor') && (
           <div
-            className={`flex flex-col overflow-hidden bg-zinc-50/50 dark:bg-zinc-950/30 min-w-0 min-h-0 shrink-0 ${
-              isNarrow ? 'h-auto' : 'h-full'
-            }`}
-            style={
-              isNarrow
-                ? { width: '100%', minHeight: '52vh' }
-                : { width: previewCollapsed ? '100%' : `${editorPercent}%` }
-            }
+            className="flex flex-col h-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-950/30 min-w-0 min-h-0 shrink-0"
+            style={isNarrow ? { width: '100%' } : { width: previewCollapsed ? '100%' : `${editorPercent}%` }}
           >
             {/* Editor Tabs (Front, Back, CSS) */}
-            <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-zinc-200/80 dark:border-zinc-800">
-              <div className="flex p-0.5 rounded-xl bg-zinc-200/80 dark:bg-zinc-800 text-xs font-semibold">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 pb-2 border-b border-zinc-200/80 dark:border-zinc-800">
+              <div className="flex shrink min-w-0 max-w-full overflow-x-auto p-0.5 rounded-xl bg-zinc-200/80 dark:bg-zinc-800 text-xs font-semibold">
                 <button
                   type="button"
                   onClick={() => setActiveTab('front')}
@@ -1035,8 +1037,8 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                 </button>
               </div>
 
-              {/* Ações do editor: desfazer, refazer, limpar e reabrir preview */}
-              <div className="flex items-center gap-1.5">
+              {/* Ações do editor: desfazer, refazer, limpar e preview */}
+              <div className="flex items-center gap-1.5 shrink-0 ml-auto">
                 <button
                   type="button"
                   onClick={handleUndo}
@@ -1067,8 +1069,21 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
                   <Eraser className="w-4 h-4" />
                 </button>
 
-                {/* Reabrir preview quando a coluna está recolhida */}
-                {previewCollapsed && (
+                {/* No celular: abre a pré-visualização em tela cheia */}
+                {isNarrow && (
+                  <button
+                    type="button"
+                    onClick={() => setMobilePane('preview')}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60 text-xs font-semibold transition-colors"
+                    title="Ver a pré-visualização do card"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Preview</span>
+                  </button>
+                )}
+
+                {/* Reabrir preview quando a coluna está recolhida (desktop) */}
+                {previewCollapsed && !isNarrow && (
                   <button
                     type="button"
                     onClick={() => setPreviewCollapsed(false)}
@@ -1330,6 +1345,7 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
               )}
             </div>
           </div>
+          )}
 
           {/* ---------- Divisória arrastável (só no desktop) ---------- */}
           {!previewCollapsed && !isNarrow && (
@@ -1349,23 +1365,19 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
             />
           )}
 
-          {/* ---------- DIREITA (abaixo, no celular): Pré-visualização ao vivo ---------- */}
-          {!previewCollapsed && (
-            <div
-              className={`flex-1 flex flex-col overflow-hidden bg-zinc-100/40 dark:bg-zinc-950/40 min-w-0 min-h-0 ${
-                isNarrow ? 'h-auto' : 'h-full'
-              }`}
-            >
+          {/* ---------- Pré-visualização ao vivo ---------- */}
+          {(isNarrow ? mobilePane === 'preview' : !previewCollapsed) && (
+            <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-100/40 dark:bg-zinc-950/40 min-w-0 min-h-0">
               {/* Preview Controls */}
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-200/80 dark:border-zinc-800">
-                <div className="flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-blue-500" />
-                  <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
+              <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-zinc-200/80 dark:border-zinc-800">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Eye className="w-4 h-4 text-blue-500 shrink-0" />
+                  <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 truncate">
                     Pré-visualização
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                   {/* Alternar Frente/Verso — só na aba Estilo (CSS),
                       para ver o efeito da regra nos dois lados */}
                   {activeTab === 'css' && (
@@ -1394,11 +1406,25 @@ export const CardTemplateEditorModal: React.FC<CardTemplateEditorModalProps> = (
 
                   <button
                     type="button"
-                    onClick={() => setPreviewCollapsed(true)}
+                    onClick={() => {
+                      // No celular o preview é um painel próprio: o botão
+                      // volta para o editor. No desktop, recolhe a coluna.
+                      if (isNarrow) setMobilePane('editor');
+                      else setPreviewCollapsed(true);
+                    }}
                     className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
-                    title="Recolher a pré-visualização (o editor ocupa a largura toda)"
+                    title={
+                      isNarrow
+                        ? 'Voltar para o editor'
+                        : 'Recolher a pré-visualização (o editor ocupa a largura toda)'
+                    }
+                    aria-label={isNarrow ? 'Voltar para o editor' : 'Recolher a pré-visualização'}
                   >
-                    <PanelRightClose className="w-4 h-4" />
+                    {isNarrow ? (
+                      <ChevronLeft className="w-4 h-4" />
+                    ) : (
+                      <PanelRightClose className="w-4 h-4" />
+                    )}
                   </button>
                 </div>
               </div>
