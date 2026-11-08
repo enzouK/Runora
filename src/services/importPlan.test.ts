@@ -115,7 +115,7 @@ describe('analyzeImport', () => {
     localStorage.setItem('runora_seed_version', '3');
   });
 
-  it('coleção local vazia: tudo é novo, nada é conflito', () => {
+  it('coleção local vazia: tudo é novo, nada é conflito', async () => {
     const plan = analyzeImport(collectionData());
     assert.equal(plan.summary.newNotesCount, 1);
     assert.equal(plan.summary.existingNotesCount, 0);
@@ -123,7 +123,7 @@ describe('analyzeImport', () => {
     assert.deepEqual(plan.summary.newDeckNames, ['Japanese']);
   });
 
-  it('a mesma nota (GUID igual) é reconhecida, mesmo com id diferente', () => {
+  it('a mesma nota (GUID igual) é reconhecida, mesmo com id diferente', async () => {
     localStorage.setItem('runora_notes', JSON.stringify([
       makeNote({ id: 'note-local-1', guid: 'guid-B', deckId: 'deck-loc', noteTypeId: 'nt-loc' }),
     ]));
@@ -142,7 +142,7 @@ describe('analyzeImport', () => {
     assert.equal(plan.noteLinks.get('note-in-1'), 'note-local-1');
   });
 
-  it('sem GUID dos dois lados: assinatura por conteúdo reconhece a nota', () => {
+  it('sem GUID dos dois lados: assinatura por conteúdo reconhece a nota', async () => {
     localStorage.setItem('runora_notes', JSON.stringify([
       makeNote({
         id: 'note-local-open',
@@ -163,7 +163,7 @@ describe('analyzeImport', () => {
     assert.equal(plan.noteLinks.get('note-in-1'), 'note-local-open');
   });
 
-  it('conteúdo diferente não casa (nota nova mesmo com o mesmo tipo/deck)', () => {
+  it('conteúdo diferente não casa (nota nova mesmo com o mesmo tipo/deck)', async () => {
     localStorage.setItem('runora_notes', JSON.stringify([
       makeNote({ id: 'note-local-1', fields: { Frente: 'cão', Verso: 'dog' } }),
     ]));
@@ -172,7 +172,7 @@ describe('analyzeImport', () => {
     assert.equal(plan.summary.existingNotesCount, 0);
   });
 
-  it('garante GUID nas notas do pacote que não tinham (backfill na análise)', () => {
+  it('garante GUID nas notas do pacote que não tinham (backfill na análise)', async () => {
     const data = collectionData({
       notes: [makeNote({ id: 'note-in-x', guid: undefined as unknown as string })],
     });
@@ -180,7 +180,7 @@ describe('analyzeImport', () => {
     assert.ok(plan.data.notes[0].guid && plan.data.notes[0].guid!.length >= 16);
   });
 
-  it('mesma nota (mesmo GUID) com conteúdo diferente entra como conflito de conteúdo', () => {
+  it('mesma nota (mesmo GUID) com conteúdo diferente entra como conflito de conteúdo', async () => {
     localStorage.setItem('runora_notes', JSON.stringify([
       makeNote({ id: 'note-local-1', guid: 'guid-A', fields: { Frente: 'gato', Verso: 'cat (editado aqui)' } }),
     ]));
@@ -189,7 +189,7 @@ describe('analyzeImport', () => {
     assert.equal(plan.summary.conflictingNotesCount, 1); // há disputa a perguntar
   });
 
-  it('mesma nota com conteúdo idêntico não é conflito (nem dispara pergunta)', () => {
+  it('mesma nota com conteúdo idêntico não é conflito (nem dispara pergunta)', async () => {
     localStorage.setItem('runora_notes', JSON.stringify([
       makeNote({ id: 'note-local-1', guid: 'guid-A' }),
     ]));
@@ -204,7 +204,7 @@ describe('applyImportPlan', () => {
     localStorage.setItem('runora_seed_version', '3');
   });
 
-  it('modo keep: nota existente fica intacta; a nova entra', () => {
+  it('modo keep: nota existente fica intacta; a nova entra', async () => {
     seedLocalOneNote('card-local-old', { stability: 5 });
     const data = collectionData({
       notes: [
@@ -217,7 +217,7 @@ describe('applyImportPlan', () => {
       ],
     });
     const plan = analyzeImport(data);
-    const r = applyImportPlan(plan, 'keep');
+    const r = await applyImportPlan(plan, 'keep');
 
     const notes = StorageService.getNotes();
     assert.equal(notes.length, 2);
@@ -233,7 +233,7 @@ describe('applyImportPlan', () => {
     assert.equal(cards.length, 2); // + o card da nota nova
   });
 
-  it('modo overwrite: FSRS fica com a versão estudada mais recentemente', () => {
+  it('modo overwrite: FSRS fica com a versão estudada mais recentemente', async () => {
     seedLocalOneNote('card-local-old', { stability: 5, lastReview: 5_000 });
     const data = collectionData({
       cards: [
@@ -244,7 +244,7 @@ describe('applyImportPlan', () => {
         }),
       ],
     });
-    const r = applyImportPlan(analyzeImport(data), 'overwrite');
+    const r = await applyImportPlan(analyzeImport(data), 'overwrite');
     assert.equal(r.updatedCards, 1);
 
     const card = StorageService.getCards().find((c) => c.id === 'card-local-old')!;
@@ -254,7 +254,7 @@ describe('applyImportPlan', () => {
     // E o inverso: local mais recente fica com a de cá
     localStorage.clear();
     seedLocalOneNote('card-local-new', { stability: 7, lastReview: 99_000 });
-    applyImportPlan(analyzeImport(collectionData({
+    await applyImportPlan(analyzeImport(collectionData({
       cards: [makeCard({ id: 'card-in-1', noteId: 'note-in-1', fsrs: dummyFsrs({ stability: 99, lastReview: 6_000 }) })],
     })), 'overwrite');
     const card2 = StorageService.getCards().find((c) => c.id === 'card-local-new')!;
@@ -262,7 +262,7 @@ describe('applyImportPlan', () => {
     assert.equal(card2.fsrs.lastReview, 99_000);
   });
 
-  it('overwrite: nota existente recebe o conteúdo do pacote e o deck casa por nome', () => {
+  it('overwrite: nota existente recebe o conteúdo do pacote e o deck casa por nome', async () => {
     localStorage.setItem('runora_notes', JSON.stringify([
       makeNote({
         id: 'note-local-1',
@@ -282,7 +282,7 @@ describe('applyImportPlan', () => {
       notes: [makeNote({ id: 'note-in-1', guid: 'guid-A', deckId: 'deck-in', updatedAt: 4000 })],
       cards: [makeCard({ id: 'card-in-1', noteId: 'note-in-1', deckId: 'deck-in' })],
     });
-    const r = applyImportPlan(analyzeImport(data), 'overwrite');
+    const r = await applyImportPlan(analyzeImport(data), 'overwrite');
 
     const note = StorageService.getNotes().find((n) => n.guid === 'guid-A')!;
     assert.equal(note.id, 'note-local-1'); // mesmo "físico" de cá
@@ -294,7 +294,7 @@ describe('applyImportPlan', () => {
     assert.equal(StorageService.getDecks().length, 1);
   });
 
-  it('revlog: união sem duplicar (mesma revisão dos dois lados entra uma vez)', () => {
+  it('revlog: união sem duplicar (mesma revisão dos dois lados entra uma vez)', async () => {
     const e = (id: number, cardId: string) => ({
       id: String(id),
       cardId,
@@ -315,36 +315,67 @@ describe('applyImportPlan', () => {
       revlog: [e(2000, 'card-local-1'), e(3000, 'card-local-1')],
     });
     const before = StorageService.getRevlog().length;
-    const r = applyImportPlan(analyzeImport(data), 'overwrite');
+    const r = await applyImportPlan(analyzeImport(data), 'overwrite');
     const after = StorageService.getRevlog();
     assert.equal(after.length, before + r.addedRevlog);
     assert.equal(r.addedRevlog, 1); // só a revisão 3000 era nova
     assert.equal(after.filter((x) => x.reviewTime === 2000).length, 1);
   });
 
-  it('FSRS global só é substituído quando a coleção local está vazia', () => {
+  it('FSRS global só é substituído quando a coleção local está vazia', async () => {
     seedLocalOneNote('card-local-1', {});
     const withFsrs = collectionData({
       fsrsParameters: { requestRetention: 0.8, maximumInterval: 100, w: new Array(19).fill(0.5), enableFuzz: false },
     });
-    applyImportPlan(analyzeImport(withFsrs), 'keep');
+    await applyImportPlan(analyzeImport(withFsrs), 'keep');
     assert.notEqual(StorageService.getFSRSSettings().requestRetention, 0.8); // preservou
 
     localStorage.clear(); // coleção vazia agora
-    applyImportPlan(analyzeImport(withFsrs), 'keep');
+    await applyImportPlan(analyzeImport(withFsrs), 'keep');
     assert.equal(StorageService.getFSRSSettings().requestRetention, 0.8); // restaurou
   });
 
-  it('id em choque de conteúdo diferente recebe id novo (nada é sobrescrito por engano)', () => {
+  it('id em choque de conteúdo diferente recebe id novo (nada é sobrescrito por engano)', async () => {
     localStorage.setItem('runora_notes', JSON.stringify([
       makeNote({ id: 'note-in-1', guid: 'guid-OUTRA', fields: { Frente: 'outra' } }),
     ]));
     const data = collectionData({ notes: [makeNote({ id: 'note-in-1', guid: 'guid-A' })] });
-    const r = applyImportPlan(analyzeImport(data), 'keep');
+    const r = await applyImportPlan(analyzeImport(data), 'keep');
     assert.equal(r.addedNotes, 1);
     const notes = StorageService.getNotes();
     const added = notes.find((n) => n.guid === 'guid-A')!;
     assert.notEqual(added.id, 'note-in-1'); // colidiu → id novo
+  });
+
+  it('grava em lotes pequenos e avança o contador ao vivo', async () => {
+    // 20 notas novas → o contador deve andar em pedaços pequenos
+    const notas = Array.from({ length: 20 }, (_, i) =>
+      makeNote({
+        id: `note-in-${i}`,
+        guid: `guid-${i}`,
+        fields: { Frente: `frente ${i}`, Verso: `verso ${i}` },
+      })
+    );
+    const cards = notas.map((n) => makeCard({ id: `card-in-${n.id}`, noteId: n.id }));
+    const eventos: { part: string; done: number; total: number }[] = [];
+    await applyImportPlan(analyzeImport(collectionData({ notes: notas, cards })), 'overwrite', (p) =>
+      eventos.push({ ...p })
+    );
+
+    const partes = new Set(eventos.map((e) => e.part));
+    assert.ok(partes.has('notes'), 'progresso das notas');
+    assert.ok(partes.has('cards'), 'progresso dos cards');
+
+    // contador nunca anda de 0 e termina no total
+    for (const e of eventos) {
+      assert.ok(e.done > 0);
+      assert.ok(e.done <= e.total);
+    }
+    const cardsEventos = eventos.filter((e) => e.part === 'cards');
+    assert.equal(cardsEventos[cardsEventos.length - 1].done, 20);
+    // e os passos são pequenos (de 2 em 2 no deck do usuário)
+    assert.ok(cardsEventos.length >= 10, `esperava muitos passos, veio ${cardsEventos.length}`);
+    assert.ok(cardsEventos[0].done <= 2, 'primeiro lote de no máximo 2');
   });
 });
 
@@ -381,3 +412,5 @@ function seedLocalOneNote(cardId: string, fsrs: Partial<Card['fsrs']>): void {
   ]));
   localStorage.setItem('runora_decks', JSON.stringify([makeDeck('deck-loc', 'Japanese')]));
 }
+
+

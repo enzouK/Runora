@@ -149,12 +149,6 @@ export const ImportPreviewModal: React.FC<Props> = ({
           </div>
         )}
 
-        {!hasConflicts && hasAnythingNew && (
-          <p className="text-[13px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-            Nada repetido aqui — é só adicionar. O progresso de estudo dos seus cards não é tocado.
-          </p>
-        )}
-
         {/* Nothing new at all: just acknowledge (no apply, nothing changes) */}
         {nothingNew && (
           <button

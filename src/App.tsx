@@ -10,6 +10,10 @@ import {
   type ImportPlanSummary,
 } from './services/importPlan';
 import { ImportPreviewModal } from './components/import/ImportPreviewModal';
+import {
+  ImportProgressOverlay,
+  type ImportProgressState,
+} from './components/import/ImportProgressOverlay';
 import { ensureNoteGuids } from './services/noteIdentity';
 import { Header, MainNavTab } from './components/navbar/Header';
 import { DeckList } from './components/decks/DeckList';
@@ -174,14 +178,27 @@ export default function App() {
     { fileName: string; data: ImportableCollection; summary: ImportPlanSummary } | null
   >(null);
   const [importApplying, setImportApplying] = useState(false);
+  // Painel de progresso (Fase 3): fases + contador vivo de itens
+  const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
     try {
+      // 1) Lendo o arquivo (abrir o pacote pode demorar em arquivos grandes)
+      setImportProgress({ phase: 'reading', done: 0, total: 0 });
+      await new Promise((r) => setTimeout(r, 0));
       const data = await ExportImportService.readPackageData(file);
-      setImportPreview({ fileName: file.name, data, summary: analyzeImport(data).summary });
+
+      // 2) Comparando com a coleção local
+      setImportProgress({ phase: 'comparing', done: 0, total: 0 });
+      await new Promise((r) => setTimeout(r, 0));
+      const summary = analyzeImport(data).summary;
+
+      setImportProgress(null);
+      setImportPreview({ fileName: file.name, data, summary });
     } catch (err) {
+      setImportProgress(null);
       setToast(`Falha na importação: ${(err as Error).message}`);
       setTimeout(() => setToast(null), 5000);
     }
@@ -190,8 +207,15 @@ export default function App() {
   const handleApplyImport = async (mode: 'overwrite' | 'keep') => {
     if (!importPreview) return;
     setImportApplying(true);
+    setImportPreview(null);
+    // 3) Aplicando — em lotes pequenos, com o contador andando ao vivo
+    setImportProgress({ phase: 'applying', done: 0, total: 0 });
     try {
-      const result = await ExportImportService.applyCollection(importPreview.data, mode);
+      const result = await ExportImportService.applyCollection(
+        importPreview.data,
+        mode,
+        (p) => setImportProgress({ phase: 'applying', ...p })
+      );
       setToast(result.message);
       setTimeout(() => setToast(null), 6000);
     } catch (err) {
@@ -199,7 +223,7 @@ export default function App() {
       setTimeout(() => setToast(null), 6000);
     } finally {
       setImportApplying(false);
-      setImportPreview(null);
+      setImportProgress(null);
       refreshAll();
     }
   };
@@ -413,6 +437,9 @@ export default function App() {
           onCancel={() => setImportPreview(null)}
         />
       )}
+
+      {/* Progress panel while reading / comparing / applying (Fase 3) */}
+      <ImportProgressOverlay progress={importProgress} />
     </div>
   );
 }

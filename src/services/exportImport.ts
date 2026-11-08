@@ -9,7 +9,13 @@ import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
 import { detectFeatures } from './noteTypeFeatures';
 import { ensureNoteGuids, generateGuid } from './noteIdentity';
-import { analyzeImport, applyImportPlan, type ImportableCollection, type ImportConflictMode } from './importPlan';
+import {
+  analyzeImport,
+  applyImportPlan,
+  type ImportableCollection,
+  type ImportConflictMode,
+  type ImportApplyProgress,
+} from './importPlan';
 import { collectRevlogDifficulties, deriveImportedFsrsState } from './ankiFsrsState';
 import {
   decodeDeckConfigFsrs,
@@ -270,8 +276,8 @@ export class ExportImportService {
   ): Promise<{ success: boolean; message: string; count?: number }> {
     try {
       const data = await this.readPackageData(file);
+      const result = await applyImportPlan(analyzeImport(data), mode);
       await this.importCollectionMedia(data);
-      const result = applyImportPlan(analyzeImport(data), mode);
       return {
         success: true,
         message: result.message,
@@ -290,14 +296,20 @@ export class ExportImportService {
    * Applies a previously read package in the chosen conflict mode (static de
    * interface com o ImportPreviewModal): brings the media along and merges.
    * Re-analyzes against the CURRENT local data — between the plan preview
-   * and the user's choice, the collection may have changed.
+   * and the user's choice, the collection may have changed. Progress comes
+   * in small live chunks (notes → cards → media).
    */
   public static async applyCollection(
     data: ImportableCollection,
-    mode: ImportConflictMode
+    mode: ImportConflictMode,
+    onProgress?: (p: ImportApplyProgress) => void
   ): Promise<ReturnType<typeof applyImportPlan>> {
-    await this.importCollectionMedia(data);
-    return applyImportPlan(analyzeImport(data), mode);
+    // Soltar o processador antes de começar: a UI pinta o painel de progresso.
+    await new Promise((r) => setTimeout(r, 0));
+    const result = await applyImportPlan(analyzeImport(data), mode, onProgress);
+    // A mídia entra por último: depois que notas/cards já estão em casa.
+    await this.importCollectionMedia(data, onProgress);
+    return result;
   }
 
   /** Normalizes a Runora JSON export into the shape the plan service reads. */
@@ -331,11 +343,16 @@ export class ExportImportService {
    * Imports the media files of a package zip (Runora and Anki alike) into
    * the MediaStore. Runs at APPLY time: reading the plan must be cheap for
    * the user to cancel. Media names are unique per package, so this is
-   * idempotent on re-import.
+   * idempotent on re-import. Progress is emitted per file.
    */
-  private static async importCollectionMedia(data: ImportableCollection): Promise<number> {
+  private static async importCollectionMedia(
+    data: ImportableCollection,
+    onProgress?: (p: ImportApplyProgress) => void
+  ): Promise<number> {
     if (!data.zip) return 0;
-    const n = await this.importZipMedia(data.zip as JSZip);
+    const n = await this.importZipMedia(data.zip as JSZip, (done, total) =>
+      onProgress?.({ part: 'media', done, total })
+    );
     data.zip = undefined;
     return n;
   }
@@ -840,7 +857,10 @@ export class ExportImportService {
    *   {name, size, sha1}; numeric ZIP entries are individually zstd-compressed
    *   and map positionally to the list (verified against the sha1 hashes)
    */
-  private static async importZipMedia(zip: JSZip): Promise<number> {
+  private static async importZipMedia(
+    zip: JSZip,
+    onProgress?: (done: number, total: number) => void
+  ): Promise<number> {
     const mediaMeta = zip.file('media');
     if (!mediaMeta) return 0;
     let count = 0;
@@ -849,7 +869,10 @@ export class ExportImportService {
       const names = this.parseMediaMapOrdered(rawBytes);
       for (let i = 0; i < names.length; i++) {
         const entry = zip.file(String(i));
-        if (!entry) continue;
+        if (!entry) {
+          onProgress?.(count, names.length);
+          continue;
+        }
         let bytes = await entry.async('uint8array');
         // Individual media payloads may also be zstd-framed (new exporter)
         if (bytes[0] === 0x28 && bytes[1] === 0xb5 && bytes[2] === 0x2f && bytes[3] === 0xfd) {
@@ -857,6 +880,10 @@ export class ExportImportService {
         }
         await MediaStore.put(names[i], new Blob([bytes.buffer as ArrayBuffer]));
         count++;
+        onProgress?.(count, names.length);
+        // Soltar o processador entre arquivos: a tela não "trava" durante
+        // a entrada de muitas mídias.
+        await new Promise((r) => setTimeout(r, 0));
       }
     } catch (mediaErr) {
       console.warn('Media import failed:', mediaErr);

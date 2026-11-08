@@ -62,6 +62,18 @@ export interface ImportableCollection {
 
 export type ImportConflictMode = 'overwrite' | 'keep';
 
+/**
+ * Progresso da aplicação do plano, em partes: notas → cards → mídia.
+ * Emitido em pedaços pequenos (lotear de poucos em poucos + soltar o
+ * processador entre lotes) para a UI pintar o contador ao vivo e a tela
+ * nunca parecer congelada.
+ */
+export interface ImportApplyProgress {
+  part: 'notes' | 'cards' | 'media';
+  done: number;
+  total: number;
+}
+
 export interface ImportPlanSummary {
   /** Nomes dos decks que ainda não existem aqui. */
   newDeckNames: string[];
@@ -256,11 +268,15 @@ export function analyzeImport(data: ImportableCollection): ImportPlan {
  * Aplica o plano na coleção local, no modo escolhido.
  * 'overwrite': o conteúdo do pacote vence nos itens em comum e o card FSRS
  * fica com a versão mais recente; 'keep': os itens locais vencem.
+ *
+ * GRAVA EM LOTES PEQUENOS: entre cada lote solta o processador (yield) e
+ * emite o progresso — a UI acompanha ao vivo e a tela não congela.
  */
-export function applyImportPlan(
+export async function applyImportPlan(
   plan: ImportPlan,
-  mode: ImportConflictMode
-): ApplyImportResult {
+  mode: ImportConflictMode,
+  onProgress?: (p: ImportApplyProgress) => void
+): Promise<ApplyImportResult> {
   const { data, deckLinks, noteTypeLinks, noteLinks, cardLinks } = plan;
   const now = Date.now();
 
@@ -409,7 +425,13 @@ export function applyImportPlan(
   }
   if (addedNotes.length > 0 || updatedNoteIds.size > 0) {
     const remaining = localNotes.filter((n) => !updatedNoteIds.has(n.id));
-    StorageService.saveNotes([...remaining, ...updatedNotesById.values(), ...addedNotes]);
+    // Ordem de entrada: atualizadas primeiro, depois as novas.
+    const toWrite: Note[] = [...updatedNotesById.values(), ...addedNotes];
+    await saveInChunks(
+      toWrite,
+      (prefix) => StorageService.saveNotes([...remaining, ...prefix]),
+      (done, total) => onProgress?.({ part: 'notes', done, total })
+    );
   }
 
   // ── Cards ──
@@ -458,7 +480,12 @@ export function applyImportPlan(
   }
   if (addedCards.length > 0 || updatedCardIds.size > 0) {
     const remaining = localCards.filter((c) => !updatedCardIds.has(c.id));
-    StorageService.saveCards([...remaining, ...updatedCards, ...addedCards]);
+    const toWrite: Card[] = [...updatedCards, ...addedCards];
+    await saveInChunks(
+      toWrite,
+      (prefix) => StorageService.saveCards([...remaining, ...prefix]),
+      (done, total) => onProgress?.({ part: 'cards', done, total })
+    );
   }
 
   // ── Histórico de revisão (união, sem duplicar) ──
@@ -593,4 +620,35 @@ function notesContentDiffer(local: Note, incoming: Note): boolean {
 /** Uma revisão é identificada pelo instante + card — único em cada lado. */
 function revlogKey(e: RevlogEntry): string {
   return `${e.reviewTime}:${e.cardId}`;
+}
+
+/**
+ * Gravação em LOTES PEQUENOS com progresso ao vivo.
+ *
+ * O tamanho do lote se adapta para gerar ~100 atualizações de tela em
+ * qualquer coleção — com mínimo de 2 itens (para decks pequenos, tipo o
+ * do usuário com ~200 cards, o contador corre praticamente de 2 em 2) e
+ * sem enlouquecer coleções gigantes. Entre cada lote o processador é
+ * SOLTADO (setTimeout 0) — é isso que deixa o navegador pintar a tela
+ * e evita a impressão de app travado.
+ */
+async function saveInChunks<T>(
+  items: T[],
+  saveWithPrefix: (prefix: T[]) => void,
+  onProgress?: (done: number, total: number) => void
+): Promise<void> {
+  const total = items.length;
+  if (total === 0) return;
+  // ~100 atualizações, mínimo de 2: coleções pequenas correm no “de 2 em 2”,
+  // grandes se dividem em ~100 lotes.
+  const chunkSize = Math.max(2, Math.ceil(total / 100));
+  let done = 0;
+  for (let i = 0; i < total; i += chunkSize) {
+    const prefix = items.slice(0, Math.min(i + chunkSize, total));
+    saveWithPrefix(prefix);
+    done = prefix.length;
+    onProgress?.(done, total);
+    // Soltar o processador: dá espaço para a UI pintar o contador.
+    await new Promise((r) => setTimeout(r, 0));
+  }
 }
