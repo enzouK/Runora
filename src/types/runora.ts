@@ -78,6 +78,15 @@ export interface MediaAttachment {
 
 export interface Note {
   id: string;
+  /**
+   * Identidade universal da nota ("RG"): sobrevive a exportações e
+   * sincronizações entre dispositivos. Notas vindas do Anki carregam o
+   * GUID do próprio Anki; notas criadas no Runora recebem um GUID
+   * gerado na criação. Opcional só para bases antigas — o backfill
+   * (noteIdentity.ensureNoteGuids) preenche na primeira importação,
+   * exportação ou abertura do app depois de introduzido.
+   */
+  guid?: string;
   noteTypeId: string;
   deckId: string;
   fields: Record<string, string>; // fieldId -> HTML/Text content

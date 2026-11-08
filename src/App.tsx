@@ -4,6 +4,7 @@ import { Deck, NoteType } from './types/runora';
 import { StorageService } from './services/storage';
 import { AddonSystem, APP_VERSION } from './services/addonSystem';
 import { ExportImportService } from './services/exportImport';
+import { ensureNoteGuids } from './services/noteIdentity';
 import { Header, MainNavTab } from './components/navbar/Header';
 import { DeckList } from './components/decks/DeckList';
 import { DeckModal } from './components/decks/DeckModal';
@@ -75,6 +76,12 @@ export default function App() {
   }, [sync.running, sync.account]);
 
   useEffect(() => {
+    // Backfill de identidade: notas antigas da base (sem GUID) recebem um
+    // na primeira execução — a partir daqui toda nota tem seu "RG".
+    const localNotes = StorageService.getNotes();
+    const ensuredNotes = ensureNoteGuids(localNotes);
+    if (ensuredNotes !== localNotes) StorageService.saveNotes(ensuredNotes);
+
     refreshAll();
     // Addon hook: fired once when the app shell mounts. Await addon loading
     // first — on slow FS backends (Android) init() may not have finished when

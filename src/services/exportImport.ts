@@ -8,6 +8,7 @@ import { Card, Deck, FSRSParameters, Note, NoteType, Preset, RevlogEntry } from 
 import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
 import { detectFeatures } from './noteTypeFeatures';
+import { ensureNoteGuids, generateGuid } from './noteIdentity';
 import { collectRevlogDifficulties, deriveImportedFsrsState } from './ankiFsrsState';
 import {
   decodeDeckConfigFsrs,
@@ -63,6 +64,13 @@ export class ExportImportService {
    * (backwards-compatible full export).
    */
   public static collectExportedSubset(options?: CollectionExportOptions): ExportedSubset {
+    // Backfill: notas antigas (sem GUID) recebem um na primeira exportação,
+    // e o estado com GUID é persistido — a partir daqui todo o arquivo
+    // carrega identidade universal.
+    const currentNotes = StorageService.getNotes();
+    const ensuredNotes = ensureNoteGuids(currentNotes);
+    if (ensuredNotes !== currentNotes) StorageService.saveNotes(ensuredNotes);
+
     const deckIds = options?.deckIds;
     const isPartial = !!deckIds && deckIds.length > 0;
 
@@ -488,7 +496,7 @@ export class ExportImportService {
       }
 
       // ── Notes ──
-      const noteRows = this.queryAll(db, 'SELECT id, mid, flds, tags FROM notes');
+      const noteRows = this.queryAll(db, 'SELECT id, mid, flds, tags, guid FROM notes');
       const cardRows = this.queryAll(
         db,
         'SELECT id, nid, did, ord, type, queue, ivl, due, reps, lapses, data FROM cards'
@@ -543,7 +551,7 @@ export class ExportImportService {
         if (!deckIdByNoteId.has(Number(nid))) deckIdByNoteId.set(Number(nid), Number(did));
       }
 
-      const notes: Note[] = noteRows.map(([id, mid, flds, tags]) => {
+      const notes: Note[] = noteRows.map(([id, mid, flds, tags, ankiGuid]) => {
         const typeId = typeIdByMid.get(Number(mid)) || '';
         const nt = noteTypes.find((t) => t.id === typeId);
         const values = String(flds).split('');
@@ -556,6 +564,10 @@ export class ExportImportService {
         const deckId = (ankiDeckId !== undefined && deckIdByAnkiId.get(ankiDeckId)) || decks[0]?.id || 'deck-default';
         return {
           id: `note-apkg-${id}`,
+          // O GUID do Anki vira o "RG" da nota: uma reimportação do mesmo
+          // deck, mesmo vindo de uma exportação diferente, é reconhecida
+          // como a mesma nota (é o que o Anki faz internamente).
+          guid: String(ankiGuid || '').trim() || generateGuid(),
           noteTypeId: typeId,
           deckId,
           fields,
@@ -885,6 +897,11 @@ export class ExportImportService {
     if (!data.decks || !data.notes || !data.cards) {
       throw new Error('Arquivo de coleção inválido ou incompleto.');
     }
+
+    // Backfill: notas sem GUID (exportado de versões antigas ou criadas
+    // externamente) recebem um na importação — assim a coleção inteira
+    // passa a carregar identidade universal a partir daqui.
+    data.notes = ensureNoteGuids(data.notes);
 
     // Merge or replace
     StorageService.saveDecks(data.decks);

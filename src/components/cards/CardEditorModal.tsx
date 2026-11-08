@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Deck, Note, NoteType } from '../../types/runora';
 import { StorageService } from '../../services/storage';
+import { generateGuid } from '../../services/noteIdentity';
 import { AddonSystem } from '../../services/addonSystem';
 import { AudioService } from '../../services/audioService';
 import { RichMediaFieldEditor } from './RichMediaFieldEditor';
@@ -119,6 +120,9 @@ export const CardEditorModal: React.FC<CardEditorModalProps> = ({
     } else {
       noteToSave = {
         id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        // "RG" universal da nota: é o que permite reconhecê-la como a
+        // mesma nota em qualquer importação/sincronização (ver noteIdentity).
+        guid: generateGuid(),
         deckId: selectedDeckId,
         noteTypeId: selectedNoteTypeId,
         fields,
