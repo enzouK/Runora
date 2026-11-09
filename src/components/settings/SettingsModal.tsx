@@ -7,11 +7,12 @@ import {
   AlertCircle,
   Cloud,
   ChevronDown,
+  Download,
   SlidersHorizontal,
 } from 'lucide-react';
 import { FSRSParameters } from '../../types/runora';
 import { StorageService } from '../../services/storage';
-import { DriveSyncService } from '../../services/gdriveSync';
+import { DriveSyncService, type SyncProgressState } from '../../services/gdriveSync';
 import { ExportImportService } from '../../services/exportImport';
 import { DEFAULT_FSRS_PARAMETERS, FSRS_6_WEIGHT_COUNT } from '../../fsrs/constants';
 import { FSRS_WEIGHT_LABELS, parseFsrsWeights } from '../../fsrs/weights';
@@ -25,12 +26,15 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onRefresh: () => void;
+  /** Progresso do "Baixar do Drive" (painel do App). */
+  onDriveProgress?: (p: SyncProgressState | null) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   onRefresh,
+  onDriveProgress,
 }) => {
   useBodyScrollLock(isOpen);
   const [activeTab, setActiveTab] = useState<'fsrs'>('fsrs');
@@ -47,15 +51,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [clientId, setClientId] = useState<string>(() => localStorage.getItem('runora_gdrive_client_id') || '');
   const [driveAccount, setDriveAccount] = useState(() => DriveSyncService.getAccount());
   const [driveAutoSync, setDriveAutoSync] = useState<boolean>(() => DriveSyncService.getAutoSync());
+  /** Sincronizar ao abrir o aplicativo (opção separada do autosync). */
+  const [driveAutoSyncOnOpen, setDriveAutoSyncOnOpen] = useState<boolean>(() =>
+    DriveSyncService.getAutoSyncOnOpen()
+  );
+  /** Intervalo do autosync — em minutos ou horas, como o usuário preferir. */
+  const [driveIntervalUnit, setDriveIntervalUnit] = useState<'minutes' | 'hours'>(() => {
+    const min = DriveSyncService.getAutoSyncIntervalMinutes();
+    return min >= 60 && min % 60 === 0 ? 'hours' : 'minutes';
+  });
+  const [driveIntervalValue, setDriveIntervalValue] = useState<string>(() => {
+    const min = DriveSyncService.getAutoSyncIntervalMinutes();
+    return String(min >= 60 && min % 60 === 0 ? min / 60 : min);
+  });
   const [driveBusy, setDriveBusy] = useState(false);
   const [driveLastSync, setDriveLastSync] = useState(() => DriveSyncService.getLastSync());
   const [driveRemote, setDriveRemote] = useState<Awaited<ReturnType<typeof DriveSyncService.getRemoteInfo>>>(null);
+  const [drivePending, setDrivePending] = useState(() => DriveSyncService.getPendingConflict()?.count ?? 0);
+  /** Confirmação do "Baixar do Drive" (restaura o backup do Drive aqui). */
+  const [confirmRestoreDrive, setConfirmRestoreDrive] = useState(false);
 
   // Refresh Drive status info whenever the settings open while connected
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
+    setDriveAccount(DriveSyncService.getAccount());
     setDriveLastSync(DriveSyncService.getLastSync());
+    setDrivePending(DriveSyncService.getPendingConflict()?.count ?? 0);
     if (DriveSyncService.getAccount()) {
       DriveSyncService.getRemoteInfo()
         .then((r) => {
@@ -130,6 +152,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     DriveSyncService.disconnect();
     setDriveAccount(null);
     setStatusMsg({ type: 'success', text: 'Conta do Google Drive desconectada.' });
+  };
+
+  /** Liga/desliga o autosync (timer) e avisa o app para recriar o timer. */
+  const handleToggleAutoSync = (on: boolean) => {
+    setDriveAutoSync(on);
+    DriveSyncService.setAutoSync(on);
+    onRefresh();
+  };
+
+  /** Liga/desliga a sincronização ao abrir o aplicativo. */
+  const handleToggleAutoSyncOnOpen = (on: boolean) => {
+    setDriveAutoSyncOnOpen(on);
+    DriveSyncService.setAutoSyncOnOpen(on);
+    onRefresh();
+  };
+
+  /** Salva o intervalo do autosync (a tela mostra em minutos ou horas). */
+  const saveAutoSyncInterval = (value: string, unit: 'minutes' | 'hours') => {
+    const n = Math.max(1, Math.floor(Number(value) || 1));
+    const minutes = unit === 'hours' ? n * 60 : n;
+    DriveSyncService.setAutoSyncIntervalMinutes(minutes);
+    onRefresh(); // recria o timer do autosync com o novo intervalo
+  };
+
+  /** Baixa o último backup do Drive (volta atrás de uma exclusão, por exemplo). */
+  const handleRestoreDrive = async () => {
+    setDriveBusy(true);
+    setStatusMsg(null);
+    try {
+      const res = await DriveSyncService.restoreFromDrive({
+        onItemProgress: onDriveProgress,
+      });
+      setStatusMsg({ type: 'success', text: res.message });
+      setDriveLastSync(DriveSyncService.getLastSync());
+      DriveSyncService.getRemoteInfo()
+        .then((r) => setDriveRemote(r))
+        .catch(() => {});
+      onRefresh();
+    } catch (e) {
+      setStatusMsg({ type: 'error', text: (e as Error).message });
+    } finally {
+      setDriveBusy(false);
+      setConfirmRestoreDrive(false);
+      onDriveProgress?.(null);
+    }
   };
 
   const executeResetDefaultData = () => {
@@ -435,7 +502,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         : 'nenhum'}
                     </span>
                   </div>
+                  {drivePending > 0 && (
+                    <div className="flex items-center justify-between gap-3 px-3 py-2">
+                      <span className="text-[11px] text-zinc-500 dark:text-zinc-400">Itens em disputa</span>
+                      <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                        {drivePending} — toque em Sync
+                      </span>
+                    </div>
+                  )}
                 </div>
+
+                {/* Baixar o backup do Drive (volta atrás de uma exclusão) */}
+                {driveAccount && driveRemote && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRestoreDrive(true)}
+                    disabled={driveBusy}
+                    className="mt-2.5 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-[10px] bg-white dark:bg-zinc-900 border border-black/[0.08] dark:border-white/[0.12] text-[12px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Baixar do Drive
+                  </button>
+                )}
 
                 <details className="mt-2.5 text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
                   <summary className="cursor-pointer font-semibold text-zinc-600 dark:text-zinc-300 select-none">
@@ -504,17 +592,69 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <label className="flex items-center gap-2 mt-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    checked={driveAutoSync}
-                    onChange={(e) => {
-                      setDriveAutoSync(e.target.checked);
-                      DriveSyncService.setAutoSync(e.target.checked);
-                    }}
+                    checked={driveAutoSyncOnOpen}
+                    onChange={(e) => handleToggleAutoSyncOnOpen(e.target.checked)}
                     className="w-4 h-4 accent-ios-blue"
                   />
                   <span className="text-[12px] text-zinc-600 dark:text-zinc-300">
-                    Sincronizar automaticamente ao abrir o app
+                    Sincronizar ao abrir o aplicativo
                   </span>
                 </label>
+
+                <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={driveAutoSync}
+                    onChange={(e) => handleToggleAutoSync(e.target.checked)}
+                    className="w-4 h-4 accent-ios-blue"
+                  />
+                  <span className="text-[12px] text-zinc-600 dark:text-zinc-300">
+                    Sincronizar automaticamente
+                  </span>
+                </label>
+
+                {/* De quanto em quanto tempo o autosync roda (minutos ou horas) */}
+                <div
+                  className={`mt-2 flex items-center gap-2 ${
+                    driveAutoSync ? '' : 'opacity-40 pointer-events-none'
+                  }`}
+                >
+                  <span className="text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0">A cada</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={driveIntervalUnit === 'hours' ? 24 : 1440}
+                    value={driveIntervalValue}
+                    disabled={!driveAutoSync}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setDriveIntervalValue(raw);
+                      if (raw !== '') saveAutoSyncInterval(raw, driveIntervalUnit);
+                    }}
+                    className="w-16 px-2 py-1 rounded-[10px] bg-white dark:bg-zinc-900 border border-black/[0.08] dark:border-white/[0.12] text-[12px] text-zinc-700 dark:text-zinc-200 text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-ios-blue/40"
+                  />
+                  <IOSSelect
+                    value={driveIntervalUnit}
+                    options={[
+                      { value: 'minutes', label: 'Minutos' },
+                      { value: 'hours', label: 'Horas' },
+                    ]}
+                    onChange={(v) => {
+                      const unit = v === 'hours' ? 'hours' : 'minutes';
+                      const current = Math.max(1, Math.floor(Number(driveIntervalValue) || 1));
+                      // mantém a duração: 30 min → 1 h (arredondado), 2 h → 120 min
+                      const nextValue =
+                        unit === 'hours'
+                          ? String(Math.max(1, Math.round(current / 60)))
+                          : String(current * 60);
+                      setDriveIntervalUnit(unit);
+                      setDriveIntervalValue(nextValue);
+                      saveAutoSyncInterval(nextValue, unit);
+                    }}
+                    className="!py-1 !px-2.5 !text-[11px]"
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-between pt-3">
@@ -570,6 +710,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         confirmText="Resetar Tudo"
         cancelText="Cancelar"
         variant="danger"
+      />
+
+      <ConfirmationModal
+        isOpen={confirmRestoreDrive}
+        onClose={() => setConfirmRestoreDrive(false)}
+        onConfirm={handleRestoreDrive}
+        title="Baixar o backup do Drive?"
+        description={
+          driveRemote
+            ? `A coleção deste aparelho será substituída pelo último backup no Drive (${
+                new Date(driveRemote.meta.uploadedAt).toLocaleString('pt-BR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              }, de ${driveRemote.meta.deviceName}). O estado atual é guardado no backup local antes.`
+            : 'A coleção deste aparelho será substituída pelo último backup no Drive.'
+        }
+        confirmText="Baixar"
+        cancelText="Cancelar"
+        variant="warning"
       />
     </div>
   );

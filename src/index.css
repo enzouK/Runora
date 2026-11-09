@@ -155,6 +155,23 @@
   animation: runora-shimmer 1.4s linear infinite;
 }
 
+/* Barra "sem total conhecido" (download/envio): anda de um lado ao outro */
+@keyframes runora-indeterminate {
+  0% {
+    transform: translateX(-100%);
+    width: 40%;
+  }
+  100% {
+    transform: translateX(250%);
+    width: 40%;
+  }
+}
+
+.runora-progress-indeterminate {
+  width: 40%;
+  animation: runora-indeterminate 1.6s ease-in-out infinite;
+}
+
 /* Cloze Deletion Styling (FSRS / Runora) */
 .runora-cloze-front-placeholder {
   color: #007aff;

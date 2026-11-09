@@ -39,14 +39,19 @@ export const ImportPreviewModal: React.FC<Props> = ({
   useBodyScrollLock(!!summary);
   if (!summary) return null;
   const s = summary;
-  // Conflito = mesma nota (mesma identidade) com CONTEÚDO diferente em um
-  // dos lados — aí é preciso perguntar "Sobrescrever ou Manter".
-  const hasConflicts = s.conflictingNotesCount > 0;
+  // Disputa de conteúdo = mesma nota (mesma identidade) com CONTEÚDO diferente.
+  const hasContentConflicts = s.conflictingNotesCount > 0;
+  // Cards que já existem aqui mas com AGENDAMENTO (datas) diferente no arquivo.
+  const hasScheduleChanges = s.changedCardsCount > 0;
+  const hasConflicts = hasContentConflicts || hasScheduleChanges;
   const hasAnythingNew =
     s.newNotesCount > 0 ||
     s.newCardsCount > 0 ||
     s.newDeckNames.length > 0 ||
     s.newNoteTypeNames.length > 0 ||
+    s.newRevlogCount > 0 ||
+    s.changedDecksCount > 0 ||
+    s.globalFsrsChanged ||
     hasConflicts;
   const nothingNew = !hasAnythingNew;
 
@@ -109,7 +114,13 @@ export const ImportPreviewModal: React.FC<Props> = ({
             </span>
           </div>
 
-          {(s.newDeckNames.length > 0 || s.existingDecksCount > 0) && (
+          {(s.newDeckNames.length > 0 ||
+            s.existingDecksCount > 0 ||
+            s.changedCardsCount > 0 ||
+            s.changedDecksCount > 0 ||
+            s.globalFsrsChanged ||
+            s.newRevlogCount > 0 ||
+            typeof s.mediaCount === 'number') && (
             <div className="pt-1.5 border-t border-black/[0.05] dark:border-white/[0.06] text-[12px] text-zinc-500 dark:text-zinc-400 space-y-1">
               {s.newDeckNames.length > 0 && (
                 <div>
@@ -122,6 +133,24 @@ export const ImportPreviewModal: React.FC<Props> = ({
               )}
               {s.existingDecksCount > 0 && (
                 <div>{plural(s.existingDecksCount, 'deck já existente', 'decks já existentes')}.</div>
+              )}
+              {s.changedDecksCount > 0 && (
+                <div className="font-semibold text-zinc-700 dark:text-zinc-300">
+                  {plural(s.changedDecksCount, 'deck com opções diferentes', 'decks com opções diferentes')}.
+                </div>
+              )}
+              {s.changedCardsCount > 0 && (
+                <div className="font-semibold text-zinc-700 dark:text-zinc-300">
+                  {plural(s.changedCardsCount, 'card com data diferente', 'cards com datas diferentes')}.
+                </div>
+              )}
+              {s.globalFsrsChanged && (
+                <div className="font-semibold text-zinc-700 dark:text-zinc-300">
+                  Parâmetros FSRS diferentes.
+                </div>
+              )}
+              {s.newRevlogCount > 0 && (
+                <div>{plural(s.newRevlogCount, 'revisão nova', 'revisões novas')}.</div>
               )}
               {typeof s.mediaCount === 'number' && s.mediaCount > 0 && (
                 <div>{plural(s.mediaCount, 'arquivo de mídia', 'arquivos de mídia')} incluídos.</div>
@@ -140,11 +169,20 @@ export const ImportPreviewModal: React.FC<Props> = ({
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
             <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-semibold text-[13px]">
               <AlertTriangle className="w-4 h-4 shrink-0" />
-              Notas repetidas no arquivo
+              {hasContentConflicts ? 'Notas repetidas no arquivo' : 'Cards com datas diferentes'}
             </div>
             <p className="text-[13px] text-amber-800/90 dark:text-amber-300/90 leading-relaxed mt-1">
-              {plural(s.existingNotesCount, 'nota já está na sua coleção', 'notas já estão na sua coleção')}.
-              O que fazer com o conteúdo?
+              {hasContentConflicts && (
+                <>
+                  {plural(s.conflictingNotesCount, 'nota já está na sua coleção', 'notas já estão na sua coleção')}.{' '}
+                </>
+              )}
+              {hasScheduleChanges && (
+                <>
+                  {plural(s.changedCardsCount, 'card tem data diferente', 'cards têm datas diferentes')}.{' '}
+                </>
+              )}
+              O que fazer?
             </p>
           </div>
         )}
@@ -168,7 +206,7 @@ export const ImportPreviewModal: React.FC<Props> = ({
               onClick={() => onApply('overwrite')}
               disabled={applying}
               className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-ios-blue text-white font-semibold text-[15px] hover:bg-ios-blue/90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-wait"
-              title="O conteúdo do arquivo vence; o que só existe aqui continua. No progresso FSRS em disputa, fica a versão estudada mais recentemente."
+              title="O conteúdo do arquivo vence; o que só existe aqui continua. Nas datas dos cards, fica a versão estudada mais recentemente."
             >
               {applying && <Loader2 className="w-4 h-4 animate-spin" />}
               Sobrescrever
@@ -178,7 +216,7 @@ export const ImportPreviewModal: React.FC<Props> = ({
               onClick={() => onApply('keep')}
               disabled={applying}
               className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-black/[0.05] dark:bg-white/[0.08] text-zinc-800 dark:text-zinc-200 font-semibold text-[15px] hover:bg-black/[0.08] dark:hover:bg-white/[0.12] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-wait"
-              title="As notas que já existem aqui não são tocadas; só as novas entram."
+              title="As notas e os cards que já existem aqui não são tocados; só os novos entram."
             >
               Manter
             </button>

@@ -26,8 +26,10 @@ import { NoteTypeManager } from './components/notetypes/NoteTypeManager';
 import { AddonsView } from './components/addons/AddonsView';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { SyncConflictModal } from './components/sync/SyncConflictModal';
+import { SyncItemsConflictModal } from './components/sync/SyncItemsConflictModal';
+import { SyncProgressPanel } from './components/sync/SyncProgressPanel';
 import { useDriveSync } from './components/sync/useDriveSync';
-import { DriveSyncService } from './services/gdriveSync';
+import { DriveSyncService, type SyncProgressState } from './services/gdriveSync';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<MainNavTab>('decks');
@@ -43,7 +45,27 @@ export default function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  /** Mostra um aviso temporário (troca o anterior e reinicia o tempo). */
+  const showToast = useCallback((text: string, ms = 7000) => {
+    setToast(text);
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    if (ms <= 0) {
+      // fica até ser trocado por outra mensagem
+      toastTimer.current = null;
+      return;
+    }
+    toastTimer.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimer.current = null;
+    }, ms);
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+  }, []);
 
   const refreshAll = useCallback(() => {
     setDecks(StorageService.getDecks());
@@ -58,7 +80,8 @@ export default function App() {
   useEffect(() => {
     if (autoSyncRan.current) return;
     autoSyncRan.current = true;
-    if (DriveSyncService.getAutoSync() && DriveSyncService.getAccount()) {
+    // opção "Sincronizar ao abrir o aplicativo"
+    if (DriveSyncService.getAutoSyncOnOpen() && DriveSyncService.getAccount()) {
       void sync.runSync();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -66,24 +89,37 @@ export default function App() {
 
   useEffect(() => {
     if (!DriveSyncService.getAutoSync()) return;
+    // o intervalo é configurável nas Configurações (em minutos ou horas)
+    const minutes = DriveSyncService.getAutoSyncIntervalMinutes();
     const id = window.setInterval(() => {
       if (DriveSyncService.getAccount() && !DriveSyncService.isRunning()) {
         void sync.runSync();
       }
-    }, 5 * 60 * 1000);
+    }, minutes * 60 * 1000);
     return () => window.clearInterval(id);
+    // o timer é recriado quando o intervalo muda (refreshKey muda nas Configurações)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshKey]);
 
   // Header Sync button: runs a sync right away and reports the result as a toast
+  const [syncProgress, setSyncProgress] = useState<SyncProgressState | null>(null);
   const handleSyncClick = useCallback(() => {
-    void sync.runSync().then((res) => {
+    // mostra na hora que o sync começou (fica até o sync terminar)
+    showToast('Sincronizando…', 0);
+    void sync.runSync({ manual: true, onItemProgress: setSyncProgress }).then((res) => {
+      setSyncProgress(null);
       if (!res) return;
-      setToast(res.message);
-      window.setTimeout(() => setToast(null), 7000);
+      showToast(res.message, res.error ? 9000 : 7000);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sync.running, sync.account]);
+  }, [sync.running, sync.account, showToast]);
+
+  // O botão Sync fica amarelo quando há mudanças que não foram para o Drive:
+  // recalcula quando os dados mudam (nota editada, card estudado, import…).
+  useEffect(() => {
+    sync.refreshDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
 
   useEffect(() => {
     // Backfill de identidade: notas antigas da base (sem GUID) recebem um
@@ -108,12 +144,11 @@ export default function App() {
       const msg = detail?.message;
       if (typeof msg !== 'string' || !msg) return;
       const prefix = detail?.addonId ? `[${detail.addonId}] ` : '';
-      setToast(`${prefix}${msg}`);
-      window.setTimeout(() => setToast(null), 5000);
+      showToast(`${prefix}${msg}`, 5000);
     };
     window.addEventListener('runora:addon-toast', handler);
     return () => window.removeEventListener('runora:addon-toast', handler);
-  }, []);
+  }, [showToast]);
 
   // Global keyboard shortcuts (e.g. Ctrl+N to add card)
   useEffect(() => {
@@ -199,8 +234,7 @@ export default function App() {
       setImportPreview({ fileName: file.name, data, summary });
     } catch (err) {
       setImportProgress(null);
-      setToast(`Falha na importação: ${(err as Error).message}`);
-      setTimeout(() => setToast(null), 5000);
+      showToast(`Falha na importação: ${(err as Error).message}`, 6000);
     }
   };
 
@@ -216,11 +250,9 @@ export default function App() {
         mode,
         (p) => setImportProgress({ phase: 'applying', ...p })
       );
-      setToast(result.message);
-      setTimeout(() => setToast(null), 6000);
+      showToast(result.message, 6000);
     } catch (err) {
-      setToast(`Falha ao aplicar a importação: ${(err as Error).message}`);
-      setTimeout(() => setToast(null), 6000);
+      showToast(`Falha ao aplicar a importação: ${(err as Error).message}`, 7000);
     } finally {
       setImportApplying(false);
       setImportProgress(null);
@@ -263,6 +295,8 @@ export default function App() {
         onNewDeck={handleOpenCreateDeck}
         onSync={handleSyncClick}
         syncRunning={sync.running}
+        syncPending={sync.pending}
+        syncDirty={sync.dirty}
       />
 
       {/* Main Content Area */}
@@ -418,12 +452,19 @@ export default function App() {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         onRefresh={refreshAll}
+        onDriveProgress={setSyncProgress}
       />
 
       {/* Drive sync conflict (cloud-sync style): download last backup or keep this device */}
       <SyncConflictModal
         conflict={sync.conflict}
         onResolve={(choice) => sync.conflict?.resolve(choice)}
+      />
+
+      {/* Disputa item a item: o mesmo item mudou aqui e no Drive */}
+      <SyncItemsConflictModal
+        conflict={sync.itemsConflict?.conflict ?? null}
+        onResolve={(choice) => sync.itemsConflict?.resolve(choice)}
       />
 
       {/* Import plan preview: what will be added / is repeated, and the
@@ -440,6 +481,9 @@ export default function App() {
 
       {/* Progress panel while reading / comparing / applying (Fase 3) */}
       <ImportProgressOverlay progress={importProgress} />
+
+      {/* Progresso do sync (mesma cara do painel de importação) */}
+      <SyncProgressPanel progress={syncProgress} />
     </div>
   );
 }

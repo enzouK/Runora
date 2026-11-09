@@ -40,6 +40,15 @@ export interface RunoraCollectionExport {
   notes: Note[];
   cards: Card[];
   revlog: RevlogEntry[];
+  /**
+   * Configurações globais que seguem entre dispositivos (novo campo
+   * opcional — arquivos antigos continuam funcionando sem ele).
+   */
+  syncSettings?: {
+    prefs?: unknown;
+    theme?: string;
+    colorTheme?: string;
+  };
 }
 
 export interface CollectionExportOptions {
@@ -51,6 +60,11 @@ export interface CollectionExportOptions {
   includePresets?: boolean;
   /** "Include Media": brings the media files referenced by the notes. */
   includeMedia?: boolean;
+  /**
+   * Contador ao vivo dos itens que entram no pacote (notas, cards, mídia).
+   * `done`/`total` contam ITENS — não bytes.
+   */
+  onProgress?: (p: { part: 'notes' | 'cards' | 'media'; done: number; total: number }) => void;
 }
 
 export interface ExportedSubset {
@@ -150,6 +164,12 @@ export class ExportImportService {
       notes: subset.notes,
       cards: subset.cards,
       revlog: subset.revlog,
+      // Configurações globais (para o sync entre dispositivos)
+      syncSettings: {
+        prefs: { rolloverHour: StorageService.getRolloverHour() },
+        theme: StorageService.getTheme(),
+        colorTheme: StorageService.getColorTheme(),
+      },
     };
     const exportNotes = subset.notes;
     const includeAllMedia = !isPartial;
@@ -183,12 +203,16 @@ export class ExportImportService {
         : [];
     const mediaMap: Record<string, string> = {};
     let mediaIndex = 0;
+    // contador ao vivo dos arquivos de mídia que entram no pacote
+    options?.onProgress?.({ part: 'media', done: 0, total: mediaNames.length });
     for (const name of mediaNames) {
       const blob = await MediaStore.get(name);
-      if (!blob) continue;
-      mediaMap[String(mediaIndex)] = name;
-      zip.file(String(mediaIndex), blob);
-      mediaIndex++;
+      if (blob) {
+        mediaMap[String(mediaIndex)] = name;
+        zip.file(String(mediaIndex), blob);
+        mediaIndex++;
+      }
+      options?.onProgress?.({ part: 'media', done: mediaIndex, total: mediaNames.length });
     }
     zip.file('media', JSON.stringify(mediaMap));
 
@@ -334,9 +358,24 @@ export class ExportImportService {
       presets: data.presets,
       revlog: data.revlog,
       fsrsParameters: data.fsrsParameters,
+      settings: data.syncSettings,
       mediaCount,
       zip,
     };
+  }
+
+  /**
+   * Imports the media files of a package (Runora and Anki alike) into the
+   * MediaStore. Public entry point for callers that read a package first and
+   * import the media later (e.g. the Drive sync, which compares before
+   * applying anything). Media names are unique per package, so this is
+   * idempotent on re-import.
+   */
+  public static async importMediaFrom(
+    data: ImportableCollection,
+    onProgress?: (p: ImportApplyProgress) => void
+  ): Promise<number> {
+    return this.importCollectionMedia(data, onProgress);
   }
 
   /**

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Library, Puzzle, RefreshCw, Search, Settings } from 'lucide-react';
+import { AlertCircle, Layers, Library, Puzzle, RefreshCw, Search, Settings } from 'lucide-react';
 import runoraTextLight from '../../assets/runora-text-allblack.png';
 import runoraTextDark from '../../assets/runora-text-allwhite.png';
 import runoraIconWhite from '../../assets/runora-icon-white.png';
@@ -15,6 +15,10 @@ interface HeaderProps {
   /** Runs a Google Drive sync immediately (button next to the Addons tab). */
   onSync: () => void;
   syncRunning: boolean;
+  /** Quantos itens estão em disputa esperando decisão (badge no botão). */
+  syncPending?: number;
+  /** Há mudanças aqui que ainda não foram para o Drive (botão amarelo). */
+  syncDirty?: boolean;
 }
 
 const TABS: { id: MainNavTab; label: string; icon: React.ReactNode }[] = [
@@ -24,7 +28,15 @@ const TABS: { id: MainNavTab; label: string; icon: React.ReactNode }[] = [
   { id: 'addons', label: 'Addons', icon: <Puzzle className="w-3.5 h-3.5" /> },
 ];
 
-export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSettings, onSync, syncRunning }) => {
+export const Header: React.FC<HeaderProps> = ({
+  activeTab,
+  onTabChange,
+  onOpenSettings,
+  onSync,
+  syncRunning,
+  syncPending = 0,
+  syncDirty = false,
+}) => {
   return (
     <header className="sticky top-0 z-40 w-full bg-ios-bg/85 dark:bg-ios-bg-dark/80 backdrop-blur-xl border-b border-black/[0.07] dark:border-white/[0.08]">
       <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
@@ -82,11 +94,30 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onTabChange, onOpenSe
             type="button"
             onClick={onSync}
             disabled={syncRunning}
-            title="Sincronizar agora com o Google Drive"
-            className="flex items-center gap-1.5 px-3 py-[7px] rounded-[10px] text-[13px] font-semibold text-ios-blue bg-ios-blue/10 hover:bg-ios-blue/20 transition-all active:scale-[0.97] disabled:opacity-50"
+            title={
+              syncPending > 0
+                ? `${syncPending} ${syncPending === 1 ? 'item mudou' : 'itens mudaram'} nos dois lados — toque para resolver`
+                : syncDirty
+                  ? 'Você tem mudanças que ainda não foram para o Drive — toque para sincronizar'
+                  : 'Sincronizar agora com o Google Drive'
+            }
+            className={`relative flex items-center gap-1.5 px-3 py-[7px] rounded-[10px] text-[13px] font-semibold transition-all active:scale-[0.97] disabled:opacity-50 ${
+              syncDirty
+                ? 'text-amber-600 dark:text-amber-400 bg-amber-500/15 hover:bg-amber-500/25'
+                : 'text-ios-blue bg-ios-blue/10 hover:bg-ios-blue/20'
+            }`}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncRunning ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Sync</span>
+            <span className="hidden sm:inline">{syncRunning ? 'Sincronizando…' : 'Sync'}</span>
+            {syncPending > 0 ? (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white dark:border-zinc-900">
+                {syncPending > 99 ? '99+' : syncPending}
+              </span>
+            ) : syncDirty ? (
+              <span className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] rounded-full bg-amber-500 flex items-center justify-center border-2 border-white dark:border-zinc-900">
+                <AlertCircle className="w-3 h-3 text-white" />
+              </span>
+            ) : null}
           </button>
         </div>
 

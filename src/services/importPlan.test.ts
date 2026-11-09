@@ -322,17 +322,196 @@ describe('applyImportPlan', () => {
     assert.equal(after.filter((x) => x.reviewTime === 2000).length, 1);
   });
 
-  it('FSRS global só é substituído quando a coleção local está vazia', async () => {
+  it('FSRS global: em keep fica o de cá; em overwrite entra o do arquivo', async () => {
     seedLocalOneNote('card-local-1', {});
     const withFsrs = collectionData({
       fsrsParameters: { requestRetention: 0.8, maximumInterval: 100, w: new Array(19).fill(0.5), enableFuzz: false },
     });
-    await applyImportPlan(analyzeImport(withFsrs), 'keep');
+
+    // o plano avisa que os parâmetros são diferentes
+    const plan = analyzeImport(withFsrs);
+    assert.equal(plan.summary.globalFsrsChanged, true);
+
+    // keep: preserva o de cá
+    await applyImportPlan(plan, 'keep');
     assert.notEqual(StorageService.getFSRSSettings().requestRetention, 0.8); // preservou
 
-    localStorage.clear(); // coleção vazia agora
+    // overwrite: entra o do arquivo
+    await applyImportPlan(analyzeImport(withFsrs), 'overwrite');
+    assert.equal(StorageService.getFSRSSettings().requestRetention, 0.8);
+
+    // coleção vazia: restauração simples (entra em qualquer modo)
+    localStorage.clear();
     await applyImportPlan(analyzeImport(withFsrs), 'keep');
-    assert.equal(StorageService.getFSRSSettings().requestRetention, 0.8); // restaurou
+    assert.equal(StorageService.getFSRSSettings().requestRetention, 0.8);
+  });
+
+  it('opções do deck (parâmetros FSRS do deck) diferentes entram no plano', async () => {
+    seedLocalOneNote('card-local-1', {});
+    const localDeck = StorageService.getDecks().find((d) => d.name === 'Japanese')!;
+    localDeck.fsrsParams = { requestRetention: 0.9, w: [1, 2, 3] };
+    StorageService.saveDecks([localDeck]);
+
+    const incoming = collectionData({
+      decks: [
+        {
+          ...makeDeck('deck-in', 'Japanese'),
+          fsrsParams: { requestRetention: 0.7, w: [9, 9, 9] },
+        },
+      ],
+    });
+    const plan = analyzeImport(incoming);
+    assert.equal(plan.summary.changedDecksCount, 1);
+
+    await applyImportPlan(plan, 'overwrite');
+    const deck = StorageService.getDecks().find((d) => d.name === 'Japanese')!;
+    assert.equal(deck.fsrsParams?.requestRetention, 0.7);
+  });
+
+  it('preset com o mesmo nome (id diferente) não vira duplicado', async () => {
+    localStorage.setItem('runora_presets', JSON.stringify([
+      {
+        id: 'preset-local',
+        name: 'Meu Preset',
+        dailyLimits: { newCardsPerDay: 10, maxReviewsPerDay: 100 },
+        schedulerConfig: {
+          learningSteps: '1m 10m',
+          insertionOrder: 'sequential',
+          relearningSteps: '10m',
+          leechThreshold: 8,
+          leechAction: 'suspend',
+        },
+        displayOrder: {
+          newGatherOrder: 'deck',
+          newSortOrder: 'template',
+          newReviewOrder: 'mix',
+          learnReviewOrder: 'mix',
+          reviewSortOrder: 'dueRandom',
+        },
+        audioConfig: { disableAutoplay: false },
+        fsrsParams: { requestRetention: 0.9, maximumInterval: 36500 },
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]));
+    localStorage.setItem('runora_notes', JSON.stringify([
+      makeNote({ id: 'note-local-1', guid: 'guid-A', deckId: 'deck-loc' }),
+    ]));
+    localStorage.setItem('runora_cards', JSON.stringify([
+      makeCard({ id: 'card-local-1', noteId: 'note-local-1', deckId: 'deck-loc' }),
+    ]));
+    localStorage.setItem('runora_decks', JSON.stringify([
+      { ...makeDeck('deck-loc', 'Japanese'), presetId: 'preset-local' },
+    ]));
+
+    const incoming = collectionData({
+      decks: [{ ...makeDeck('deck-in', 'Japanese'), presetId: 'preset-remoto' }],
+      presets: [
+        {
+          id: 'preset-remoto',
+          name: 'Meu Preset', // mesmo nome, id de outro dispositivo
+          dailyLimits: { newCardsPerDay: 10, maxReviewsPerDay: 100 },
+          schedulerConfig: {
+            learningSteps: '1m 10m',
+            insertionOrder: 'sequential',
+            relearningSteps: '10m',
+            leechThreshold: 8,
+            leechAction: 'suspend',
+          },
+          displayOrder: {
+            newGatherOrder: 'deck',
+            newSortOrder: 'template',
+            newReviewOrder: 'mix',
+            learnReviewOrder: 'mix',
+            reviewSortOrder: 'dueRandom',
+          },
+          audioConfig: { disableAutoplay: false },
+          fsrsParams: { requestRetention: 0.9, maximumInterval: 36500 },
+          createdAt: 5,
+          updatedAt: 5,
+        },
+      ],
+    });
+
+    const plan = analyzeImport(incoming);
+    assert.equal(plan.presetLinks.get('preset-remoto'), 'preset-local'); // casou pelo nome
+    await applyImportPlan(plan, 'overwrite');
+
+    const presets = StorageService.getPresets();
+    assert.equal(presets.filter((p) => p.name === 'Meu Preset').length, 1); // não duplicou
+    const deck = StorageService.getDecks().find((d) => d.name === 'Japanese')!;
+    assert.equal(deck.presetId, 'preset-local'); // o deck aponta para o preset de casa
+  });
+
+  it('deck com as mesmas opções não conta como mudança', () => {
+    seedLocalOneNote('card-local-1', {});
+    const plan = analyzeImport(collectionData());
+    assert.equal(plan.summary.changedDecksCount, 0);
+    assert.equal(plan.summary.globalFsrsChanged, false);
+  });
+
+  it('deck igual com cards com datas diferentes: o plano precisa avisar que vai mudar', async () => {
+    seedLocalOneNote('card-local-1', { stability: 3, lastReview: 1_000 });
+    const data = collectionData({
+      cards: [
+        makeCard({
+          id: 'card-in-1',
+          noteId: 'note-in-1',
+          due: 999_000,
+          fsrs: dummyFsrs({ stability: 8, lastReview: 5_000 }),
+        }),
+      ],
+    });
+    const plan = analyzeImport(data);
+    // nada é novo e o conteúdo é igual — mas o AGENDAMENTO é diferente
+    assert.equal(plan.summary.newNotesCount, 0);
+    assert.equal(plan.summary.newCardsCount, 0);
+    assert.equal(plan.summary.conflictingNotesCount, 0);
+    assert.equal(plan.summary.changedCardsCount, 1); // <- o que faltava
+
+    // e a aplicação realmente traz a data do arquivo
+    const r = await applyImportPlan(plan, 'overwrite');
+    assert.equal(r.updatedCards, 1);
+    const card = StorageService.getCards().find((c) => c.id === 'card-local-1')!;
+    assert.equal(card.due, 999_000);
+    assert.equal(card.fsrs.stability, 8);
+  });
+
+  it('cards com o mesmo agendamento não contam como mudança', () => {
+    seedLocalOneNote('card-local-1', { stability: 3, lastReview: 1_000 });
+    const data = collectionData({
+      cards: [
+        makeCard({
+          id: 'card-in-1',
+          noteId: 'note-in-1',
+          fsrs: dummyFsrs({ stability: 3, lastReview: 1_000 }),
+        }),
+      ],
+    });
+    const plan = analyzeImport(data);
+    assert.equal(plan.summary.changedCardsCount, 0);
+  });
+
+  it('revlog novo (cards estudados no outro device) também é mudança a fazer', () => {
+    seedLocalOneNote('card-local-1', { stability: 3, lastReview: 1_000 });
+    const data = collectionData({
+      revlog: [
+        {
+          id: 'r1',
+          cardId: 'card-in-1',
+          noteId: 'note-in-1',
+          rating: 3 as const,
+          reviewTime: 7000,
+          elapsedDays: 0,
+          scheduledDays: 1,
+          state: 2 as const,
+          stability: 1,
+          difficulty: 5,
+        },
+      ],
+    });
+    const plan = analyzeImport(data);
+    assert.equal(plan.summary.newRevlogCount, 1);
   });
 
   it('id em choque de conteúdo diferente recebe id novo (nada é sobrescrito por engano)', async () => {

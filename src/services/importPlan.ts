@@ -50,6 +50,12 @@ export interface ImportableCollection {
   revlog?: RevlogEntry[];
   /** Parâmetros FSRS globais embutidos no pacote (só backups do Runora). */
   fsrsParameters?: FSRSParameters;
+  /** Configurações globais do dispositivo que gerou o pacote. */
+  settings?: {
+    prefs?: unknown;
+    theme?: string;
+    colorTheme?: string;
+  };
   /** Número de arquivos de mídia que o pacote carrega (informativo). */
   mediaCount?: number;
   /**
@@ -86,6 +92,19 @@ export interface ImportPlanSummary {
   conflictingNotesCount: number;
   newCardsCount: number;
   existingCardsCount: number;
+  /**
+   * Cards que já existem aqui mas cujo AGENDAMENTO (datas/estado FSRS) é
+   * diferente no arquivo — é o que acontece quando o deck foi estudado em
+   * outro dispositivo (ou ficou parado) e o arquivo traz as datas novas.
+   */
+  changedCardsCount: number;
+  /**
+   * Decks que já existem aqui mas cujas OPÇÕES (parâmetros FSRS do deck,
+   * limites, preset) são diferentes no arquivo.
+   */
+  changedDecksCount: number;
+  /** Os parâmetros FSRS globais do arquivo são diferentes dos daqui. */
+  globalFsrsChanged: boolean;
   /** Novas entradas de histórico de revisão (backups do Runora). */
   newRevlogCount: number;
   mediaCount?: number;
@@ -102,6 +121,8 @@ export interface ImportPlan {
   noteLinks: Map<string, string>;
   /** Incoming `${noteId}::${templateOrd}` → id do card local correspondente. */
   cardLinks: Map<string, string>;
+  /** Incoming preset id → id do preset local casado pelo nome. */
+  presetLinks: Map<string, string>;
 }
 
 export interface ApplyImportResult {
@@ -145,12 +166,40 @@ export function analyzeImport(data: ImportableCollection): ImportPlan {
   const deckLinks = new Map<string, string | null>();
   const newDeckNames: string[] = [];
   let existingDecksCount = 0;
+  const localDeckById = new Map(localDecks.map((d) => [d.id, d]));
   for (const deck of data.decks) {
     const matched = deckIdByLocalName.get(deck.name.trim()) ?? null;
     deckLinks.set(deck.id, matched);
     if (matched) existingDecksCount++;
     else newDeckNames.push(deck.name);
   }
+
+  // ── Presets casados pelo nome (o id interno muda entre dispositivos) ──
+  const localPresets = StorageService.getPresets();
+  const localPresetByName = new Map(localPresets.map((p) => [p.name.trim(), p]));
+  const presetLinks = new Map<string, string>();
+  for (const preset of data.presets ?? []) {
+    const matched = localPresetByName.get(preset.name.trim());
+    presetLinks.set(preset.id, matched?.id ?? preset.id);
+  }
+
+  // ── Opções dos decks: mudam junto com o deck (inclusive os parâmetros FSRS
+  //    do próprio deck) — isso precisa aparecer no plano, senão a importação
+  //    pareceria "nada a fazer" quando o deck é o mesmo mas as opções não. ──
+  const localPresetName = new Map(localPresets.map((p) => [p.id, p.name.trim()]));
+  const incomingPresetName = new Map(
+    (data.presets ?? []).map((p) => [p.id, p.name.trim()])
+  );
+  let changedDecksCount = 0;
+  for (const deck of data.decks) {
+    const localDeck = localDeckById.get(deckLinks.get(deck.id) ?? '');
+    if (!localDeck) continue;
+    if (deckOptionsDiffer(localDeck, deck, localPresetName, incomingPresetName)) changedDecksCount++;
+  }
+
+  // ── Parâmetros FSRS globais ──
+  const globalFsrsChanged =
+    !!data.fsrsParameters && !sameFsrsParams(data.fsrsParameters, StorageService.getFSRSSettings());
 
   // ── Tipos de nota casados por nome (+ cloze) ──
   const typeIdByLocalName = new Map(
@@ -222,6 +271,8 @@ export function analyzeImport(data: ImportableCollection): ImportPlan {
   const cardLinks = new Map<string, string>();
   let newCardsCount = 0;
   let existingCardsCount = 0;
+  let changedCardsCount = 0;
+  const localCardById = new Map(localCards.map((c) => [c.id, c]));
   for (const card of data.cards) {
     const matchedNote = noteLinks.get(card.noteId);
     if (!matchedNote) {
@@ -232,6 +283,12 @@ export function analyzeImport(data: ImportableCollection): ImportPlan {
     if (matchedCard) {
       cardLinks.set(`${card.noteId}::${card.templateOrd}`, matchedCard);
       existingCardsCount++;
+      // O card já existe: o conteúdo é o mesmo, mas o AGENDAMENTO (datas,
+      // estado FSRS) pode ser outro — é o caso de um deck estudado em outro
+      // dispositivo. Isso precisa aparecer no plano, senão a importação
+      // pareceria "nada a fazer".
+      const local = localCardById.get(matchedCard);
+      if (local && cardScheduleDiffers(local, card)) changedCardsCount++;
     } else {
       newCardsCount++;
     }
@@ -253,11 +310,14 @@ export function analyzeImport(data: ImportableCollection): ImportPlan {
     conflictingNotesCount,
     newCardsCount,
     existingCardsCount,
+    changedCardsCount,
+    changedDecksCount,
+    globalFsrsChanged,
     newRevlogCount,
     mediaCount: data.mediaCount,
   };
 
-  return { data, summary, deckLinks, noteTypeLinks, noteLinks, cardLinks };
+  return { data, summary, deckLinks, noteTypeLinks, noteLinks, cardLinks, presetLinks };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -277,7 +337,7 @@ export async function applyImportPlan(
   mode: ImportConflictMode,
   onProgress?: (p: ImportApplyProgress) => void
 ): Promise<ApplyImportResult> {
-  const { data, deckLinks, noteTypeLinks, noteLinks, cardLinks } = plan;
+  const { data, deckLinks, noteTypeLinks, noteLinks, cardLinks, presetLinks } = plan;
   const now = Date.now();
 
   // ── Decks ──
@@ -296,7 +356,10 @@ export async function applyImportPlan(
         const local = decksChanged.get(matched)!;
         const candidate: Deck = {
           ...local,
-          presetId: incoming.presetId ?? local.presetId,
+          // o preset é o de casa casado pelo nome (o id do arquivo pode não existir aqui)
+          presetId: incoming.presetId
+            ? (presetLinks.get(incoming.presetId) ?? local.presetId)
+            : local.presetId,
           dailyLimitsOverride: incoming.dailyLimitsOverride ?? local.dailyLimitsOverride,
           fsrsOverride: incoming.fsrsOverride ?? local.fsrsOverride,
           fsrsParams: incoming.fsrsParams ?? local.fsrsParams,
@@ -322,26 +385,23 @@ export async function applyImportPlan(
     StorageService.saveDecks([...decksChanged.values(), ...addedDecks]);
   }
 
-  // ── Presets (união por id; em 'overwrite' o vindo do pacote atualiza) ──
+  // ── Presets (casados pelo NOME — o id interno muda entre dispositivos;
+  //    em 'overwrite' o do pacote atualiza o de casa) ──
   if (data.presets?.length) {
     const localPresets = StorageService.getPresets();
-    const presetsDirty = data.presets.some(
-      (ip) => !localPresets.some((p) => p.id === ip.id)
-    );
+    const localPresetByName = new Map(localPresets.map((p) => [p.name.trim(), p]));
     const mergedLocal =
       mode === 'keep'
         ? localPresets
         : localPresets.map((p) => {
-            const incoming = data.presets!.find((ip) => ip.id === p.id);
+            const incoming = data.presets!.find((ip) => ip.name.trim() === p.name.trim());
             // O preset "Padrão" de fábrica nunca é substituído.
-            if (!incoming || p.id === StorageService.DEFAULT_PRESET_ID ||
-                JSON.stringify(incoming) === JSON.stringify(p)) {
-              return p;
-            }
+            if (!incoming || p.id === StorageService.DEFAULT_PRESET_ID) return p;
+            if (JSON.stringify(incoming) === JSON.stringify(p)) return p;
             return { ...incoming, id: p.id, createdAt: p.createdAt, updatedAt: now };
           });
-    const incomingNew = data.presets.filter((ip) => !localPresets.some((p) => p.id === ip.id));
-    if (presetsDirty || incomingNew.length > 0 || mergedLocal.some((p, i) => p !== localPresets[i])) {
+    const incomingNew = data.presets.filter((ip) => !localPresetByName.has(ip.name.trim()));
+    if (mergedLocal.some((p, i) => p !== localPresets[i]) || incomingNew.length > 0) {
       StorageService.savePresets([...mergedLocal, ...incomingNew]);
     }
   }
@@ -458,8 +518,10 @@ export async function applyImportPlan(
     if (mode === 'keep') continue;
     const local = localCards.find((c) => c.id === matchedCard)!;
     // FSRS: fica a versão mais recente — a que foi estudada por último.
-    const incomingNewer = isFsrsNewer(incoming, local);
-    const winner = incomingNewer ? incoming : local;
+    // Empate (mesma última revisão): o arquivo vence, já que o usuário
+    // pediu para sobrescrever.
+    const localWins = isFsrsNewer(local, incoming);
+    const winner = localWins ? local : incoming;
     const merged: Card = {
       id: local.id,
       noteId: resolvedNoteId,
@@ -500,11 +562,18 @@ export async function applyImportPlan(
     }
   }
 
-  // ── FSRS global: só substitui quando a coleção local está vazia ──
+  // ── FSRS global ──
+  // Coleção vazia: restauração simples (entra o do arquivo, qualquer que seja
+  // o modo). Coleção com conteúdo: só em 'overwrite' e só se for diferente —
+  // o plano avisa antes, então o usuário decide.
   let appliedGlobalFsrs = false;
-  if (data.fsrsParameters && localNotes.length === 0 && localCards.length === 0) {
-    StorageService.saveFSRSSettings(data.fsrsParameters);
-    appliedGlobalFsrs = true;
+  if (data.fsrsParameters) {
+    const collectionEmpty = localNotes.length === 0 && localCards.length === 0;
+    const differs = !sameFsrsParams(data.fsrsParameters, StorageService.getFSRSSettings());
+    if (collectionEmpty || (mode === 'overwrite' && differs)) {
+      StorageService.saveFSRSSettings(data.fsrsParameters);
+      appliedGlobalFsrs = true;
+    }
   }
 
   const message = buildApplyMessage({
@@ -539,6 +608,82 @@ function isFsrsNewer(a: Card, b: Card): boolean {
   // Empate em "última revisão" (ou nenhum dos dois estudados): o que tiver
   // mais repetições levou mais vida; ainda empatado, fica o local.
   return (a.fsrs?.reps ?? 0) > (b.fsrs?.reps ?? 0);
+}
+
+/**
+ * O AGENDAMENTO do card é diferente entre as duas versões? (datas, estado
+ * FSRS, suspensão e posição na fila) — o conteúdo da nota é outra história.
+ */
+function cardScheduleDiffers(local: Card, incoming: Card): boolean {
+  const num = (v: number | undefined | null) => v ?? null;
+  if (num(local.due) !== num(incoming.due)) return true;
+  if (num(local.position) !== num(incoming.position)) return true;
+  if (num(local.learningStep) !== num(incoming.learningStep)) return true;
+  if (!!local.suspended !== !!incoming.suspended) return true;
+  const a = local.fsrs;
+  const b = incoming.fsrs;
+  if (!a || !b) return !!a !== !!b;
+  return (
+    num(a.stability) !== num(b.stability) ||
+    num(a.difficulty) !== num(b.difficulty) ||
+    num(a.elapsedDays) !== num(b.elapsedDays) ||
+    num(a.scheduledDays) !== num(b.scheduledDays) ||
+    num(a.reps) !== num(b.reps) ||
+    num(a.lapses) !== num(b.lapses) ||
+    num(a.state) !== num(b.state) ||
+    num(a.lastReview) !== num(b.lastReview)
+  );
+}
+
+/**
+ * As OPÇÕES do deck são diferentes? (parâmetros FSRS do deck, limites e o
+ * preset usado). Só o que o arquivo TRAZ é comparado — o que não vem mantém
+ * o valor de cá (é a mesma regra da aplicação).
+ *
+ * O preset é comparado pelo NOME: o id interno muda de dispositivo para
+ * dispositivo, o nome não.
+ */
+function deckOptionsDiffer(
+  local: Deck,
+  incoming: Deck,
+  localPresetName: Map<string, string>,
+  incomingPresetName: Map<string, string>
+): boolean {
+  if (incoming.presetId) {
+    const localPreset = local.presetId ? (localPresetName.get(local.presetId) ?? '') : '';
+    const incomingPreset = incomingPresetName.get(incoming.presetId) ?? '';
+    if (localPreset !== incomingPreset) return true;
+  }
+  if (
+    incoming.fsrsParams !== undefined &&
+    JSON.stringify(local.fsrsParams ?? null) !== JSON.stringify(incoming.fsrsParams ?? null)
+  ) {
+    return true;
+  }
+  if (
+    incoming.fsrsOverride !== undefined &&
+    JSON.stringify(local.fsrsOverride ?? null) !== JSON.stringify(incoming.fsrsOverride ?? null)
+  ) {
+    return true;
+  }
+  if (
+    incoming.dailyLimitsOverride !== undefined &&
+    JSON.stringify(local.dailyLimitsOverride ?? null) !==
+      JSON.stringify(incoming.dailyLimitsOverride ?? null)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Os dois conjuntos de parâmetros FSRS são equivalentes? */
+function sameFsrsParams(a: FSRSParameters, b: FSRSParameters): boolean {
+  return (
+    a.requestRetention === b.requestRetention &&
+    a.maximumInterval === b.maximumInterval &&
+    !!a.enableFuzz === !!b.enableFuzz &&
+    JSON.stringify(a.w ?? []) === JSON.stringify(b.w ?? [])
+  );
 }
 
 function buildApplyMessage(c: {

@@ -15,6 +15,7 @@ const STORAGE_KEYS = {
   SETTINGS: 'runora_fsrs_settings',
   SEED_VERSION: 'runora_seed_version',
   DELETED_DEFAULTS: 'runora_deleted_defaults',
+  DELETED_AT: 'runora_deleted_at',
   PREFS: 'runora_prefs',
   PRESETS: 'runora_presets',
   THEME: 'runora_theme',
@@ -67,6 +68,20 @@ export class StorageService {
     const tombstones = this.getTombstones();
     tombstones[kind] = Array.from(new Set([...tombstones[kind], ...ids]));
     this.saveTombstones(tombstones);
+  }
+
+  /**
+   * Timestamp of the most recent local deletion. Deleting items does NOT
+   * change the `updatedAt` of anything that remains, so the sync engine
+   * (which gates its deep comparison on the max updatedAt) would miss it.
+   */
+  public static getLastDeletedAt(): number {
+    const n = Number(localStorage.getItem(STORAGE_KEYS.DELETED_AT) ?? '');
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private static bumpDeletedAt(): void {
+    localStorage.setItem(STORAGE_KEYS.DELETED_AT, String(Date.now()));
   }
 
   /**
@@ -490,6 +505,7 @@ export class StorageService {
     const cards = this.getCards().filter((c) => c.noteId !== noteId);
     this.saveNotes(notes);
     this.saveCards(cards);
+    this.bumpDeletedAt();
     this.addTombstone('notes', [noteId]);
     if (cardsToDelete.length > 0) this.addTombstone('cards', cardsToDelete);
   }
@@ -523,6 +539,7 @@ export class StorageService {
     this.saveNotes(notes);
     this.saveCards(cards);
 
+    this.bumpDeletedAt();
     // Remember user deletions so seed version bumps never resurrect them
     this.addTombstone('decks', [...deckIdsToDelete]);
     if (notesToDelete.length > 0) this.addTombstone('notes', notesToDelete);
@@ -951,6 +968,7 @@ export class StorageService {
   public static deletePreset(presetId: string): void {
     if (presetId === this.DEFAULT_PRESET_ID) return; // the factory preset is permanent
     this.savePresets(this.getPresets().filter((p) => p.id !== presetId));
+    this.bumpDeletedAt();
     const decks = this.getDecks().map((d) =>
       d.presetId === presetId
         ? { ...d, presetId: this.DEFAULT_PRESET_ID, updatedAt: Date.now() }

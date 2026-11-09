@@ -27,15 +27,57 @@ import pkg from '../../package.json';
 import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
 import { ExportImportService } from './exportImport';
+import type { ImportableCollection } from './importPlan';
+import {
+  applyRemoteItems,
+  applyRemoteItemsProgressive,
+  mergeRemoteRevlog,
+  summarizeApply,
+  type RemoteSyncData,
+} from './syncApply';
+import {
+  collectionSyncContent,
+  computeSnapshot,
+  diffSnapshots,
+  getSyncBase,
+  localSyncContent,
+  setSyncBase,
+  type SyncItemInfo,
+  type SyncDiff,
+  type SyncSnapshot,
+} from './syncItems';
+import {
+  DEFAULT_AUTO_SYNC_MINUTES,
+  MAX_AUTO_SYNC_MINUTES,
+  MIN_AUTO_SYNC_MINUTES,
+  getAutoSyncEnabled,
+  getAutoSyncIntervalMinutes,
+  getAutoSyncOnOpen,
+  setAutoSyncEnabled,
+  setAutoSyncIntervalMinutes,
+  setAutoSyncOnOpen,
+} from './autoSyncSettings';
+
+export {
+  DEFAULT_AUTO_SYNC_MINUTES,
+  MAX_AUTO_SYNC_MINUTES,
+  MIN_AUTO_SYNC_MINUTES,
+};
 
 const LS = {
   CLIENT_ID: 'runora_gdrive_client_id',
   TOKEN: 'runora_gdrive_token',
   DEVICE_ID: 'runora_device_id',
   LAST_SYNC: 'runora_last_sync',
-  AUTO_SYNC: 'runora_auto_sync',
   RUNNING: 'runora_sync_running',
 };
+
+/**
+ * Tempo máximo que um sync pode ficar "rodando" localmente. Se o app foi
+ * fechado/recarregado no meio do sync, o aviso fica preso e trava os próximos
+ * syncs — depois disso, o aviso é considerado antigo e descartado.
+ */
+const LOCAL_RUNNING_TTL_MS = 10 * 60 * 1000;
 
 /**
  * Built-in OAuth Client ID — the Google Cloud project of Runora, created by the
@@ -124,8 +166,48 @@ export type SyncAction = 'upload' | 'download' | 'none' | 'cancelled';
 export interface SyncResult {
   action: SyncAction;
   message: string;
+  /** true quando a sincronização falhou (a mensagem é o erro). */
+  error?: boolean;
 }
 export type ConflictChoice = 'download' | 'keep' | 'abort';
+
+/** Escolha do usuário numa disputa item a item. */
+export type SyncItemsChoice = 'local' | 'remote' | 'abort';
+
+/** Etapa do sync/restauração para o painel de progresso (mesma cara do import). */
+export interface SyncProgressState {
+  phase: 'preparing' | 'download' | 'comparing' | 'applying' | 'upload';
+  /** Nome do dispositivo dono do backup (fase download). */
+  deviceName?: string;
+  /** Contador ao vivo da fase 'applying' (e da mídia na preparação). */
+  part?: 'notes' | 'cards' | 'decks' | 'deletes' | 'settings' | 'media';
+  done?: number;
+  total?: number;
+  /**
+   * Quantos itens (decks/notas/cards/mídia) estão sendo baixados ou enviados.
+   * O contador conta ITENS — nunca bytes.
+   */
+  counts?: {
+    decks?: number;
+    notes?: number;
+    cards?: number;
+    media?: number;
+  };
+}
+
+export interface SyncItemsConflict {
+  /** Itens alterados nos dois lados. */
+  items: SyncItemInfo[];
+  /** Nome do dispositivo que está no Drive. */
+  remoteDeviceName: string;
+}
+
+/** Conflito esperando decisão (badge no botão Sync). */
+export interface PendingConflict {
+  count: number;
+  at: number;
+  deviceName: string;
+}
 
 /** Thrown when another device holds a fresh sync lock in Drive. */
 export class LockBusyError extends Error {
@@ -190,19 +272,6 @@ async function saveLocalBackup(key: string, blob: Blob): Promise<void> {
   }
 }
 
-async function getLatestLocalBackup(): Promise<{ key: string; blob: Blob } | null> {
-  const keys = (await backupKeys()).sort();
-  if (keys.length === 0) return null;
-  const last = keys[keys.length - 1];
-  const db = await openBackupDb();
-  const blob = await new Promise<Blob | null>((resolve, reject) => {
-    const req = db.transaction(BACKUP_STORE, 'readonly').objectStore(BACKUP_STORE).get(last);
-    req.onsuccess = () => resolve((req.result as Blob) ?? null);
-    req.onerror = () => reject(req.error);
-  });
-  return blob ? { key: last, blob } : null;
-}
-
 /** Keys of local safety backups (oldest → newest), for UI/debugging. */
 export async function listLocalBackups(): Promise<string[]> {
   return (await backupKeys()).sort();
@@ -241,8 +310,18 @@ function loadGis(): Promise<void> {
       s.src = 'https://accounts.google.com/gsi/client';
       s.async = true;
       s.defer = true;
-      s.onload = () => resolve();
+      // o script pode nunca carregar (sem internet) — não trava o app
+      const timer = setTimeout(() => {
+        gisLoading = null;
+        s.remove();
+        reject(new Error('O login do Google demorou demais para carregar. Verifique a internet.'));
+      }, GIS_LOAD_TIMEOUT_MS);
+      s.onload = () => {
+        clearTimeout(timer);
+        resolve();
+      };
       s.onerror = () => {
+        clearTimeout(timer);
         gisLoading = null;
         reject(new Error('Não foi possível carregar o login do Google (verifique a conexão com a internet).'));
       };
@@ -254,14 +333,49 @@ function loadGis(): Promise<void> {
 
 /* ── Drive REST helpers ──────────────────────────────────────────────────── */
 
+/** Tempo máximo de uma chamada ao Google (evita o sync travar para sempre). */
+const API_TIMEOUT_MS = 30_000;
+
+/** Tempo máximo para carregar o script de login do Google. */
+const GIS_LOAD_TIMEOUT_MS = 20_000;
+
+/**
+ * fetch com limite de tempo (AbortController — funciona em qualquer WebView,
+ * mesmo os mais antigos que não conhecem AbortSignal.timeout).
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') {
+      throw new Error('O Google Drive não respondeu a tempo. Verifique a internet e tente de novo.');
+    }
+    throw new Error(
+      `Não foi possível falar com o Google Drive: ${(e as Error)?.message ?? 'sem internet?'}`
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function api(token: string, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`https://www.googleapis.com${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...((init?.headers as Record<string, string> | undefined) ?? {}),
+  const res = await fetchWithTimeout(
+    `https://www.googleapis.com${path}`,
+    {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...((init?.headers as Record<string, string> | undefined) ?? {}),
+      },
     },
-  });
+    API_TIMEOUT_MS
+  );
   if (res.status === 401) {
     localStorage.removeItem(LS.TOKEN);
     throw new Error('Sessão do Google expirada. Reconecte a conta na aba Sync.');
@@ -333,6 +447,7 @@ async function findFile(token: string, name: string): Promise<DriveFileInfo | nu
   return data.files?.[0] ?? null;
 }
 
+/** Baixa um arquivo do Drive. */
 async function downloadFile(token: string, id: string): Promise<Blob> {
   return (await api(token, `/drive/v3/files/${id}?alt=media`)).blob();
 }
@@ -347,29 +462,38 @@ async function uploadResumable(
   const url = existingId
     ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=resumable`
     : `https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable`;
-  const initRes = await fetch(url, {
-    method: existingId ? 'PATCH' : 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json; charset=UTF-8',
-      'X-Upload-Content-Type': blob.type || 'application/octet-stream',
-      'X-Upload-Content-Length': String(blob.size),
+  const initRes = await fetchWithTimeout(
+    url,
+    {
+      method: existingId ? 'PATCH' : 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': blob.type || 'application/octet-stream',
+        'X-Upload-Content-Length': String(blob.size),
+      },
+      body: JSON.stringify(existingId ? {} : { name, parents: [await ensureFolder(token)] }),
     },
-    body: JSON.stringify(existingId ? {} : { name, parents: [await ensureFolder(token)] }),
-  });
+    API_TIMEOUT_MS
+  );
   if (!initRes.ok) {
     throw new Error(`Drive: falha ao iniciar upload (${initRes.status})`);
   }
   const location = initRes.headers.get('Location');
   if (!location) throw new Error('Drive: resposta de upload resumable sem Location.');
-  const putRes = await fetch(location, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': blob.type || 'application/octet-stream',
-      'Content-Length': String(blob.size),
+  // o envio do arquivo pode demorar mais que uma chamada normal
+  const putRes = await fetchWithTimeout(
+    location,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': blob.type || 'application/octet-stream',
+        'Content-Length': String(blob.size),
+      },
+      body: blob,
     },
-    body: blob,
-  });
+    API_TIMEOUT_MS * 4
+  );
   if (!putRes.ok) {
     throw new Error(`Drive: falha no envio do arquivo (${putRes.status})`);
   }
@@ -476,11 +600,32 @@ export class DriveSyncService {
   }
 
   public static getAutoSync(): boolean {
-    return localStorage.getItem(LS.AUTO_SYNC) !== '0'; // default on
+    return getAutoSyncEnabled();
   }
 
   public static setAutoSync(on: boolean): void {
-    localStorage.setItem(LS.AUTO_SYNC, on ? '1' : '0');
+    setAutoSyncEnabled(on);
+  }
+
+  /** Sincronizar ao abrir o aplicativo (opção separada do autosync). */
+  public static getAutoSyncOnOpen(): boolean {
+    return getAutoSyncOnOpen();
+  }
+
+  public static setAutoSyncOnOpen(on: boolean): void {
+    setAutoSyncOnOpen(on);
+  }
+
+  /**
+   * De quanto em quanto tempo o autosync roda — em MINUTOS.
+   * O usuário pode escolher em minutos ou em horas (a UI converte).
+   */
+  public static getAutoSyncIntervalMinutes(): number {
+    return getAutoSyncIntervalMinutes();
+  }
+
+  public static setAutoSyncIntervalMinutes(minutes: number): void {
+    setAutoSyncIntervalMinutes(minutes);
   }
 
   public static getDeviceId(): string {
@@ -512,8 +657,24 @@ export class DriveSyncService {
     localStorage.setItem(LS.LAST_SYNC, JSON.stringify(v));
   }
 
+  /**
+   * Há um sync rodando agora? O aviso expira depois de 10 minutos: se o app
+   * foi fechado no meio do sync, o aviso preso não trava mais os próximos.
+   */
   public static isRunning(): boolean {
-    return localStorage.getItem(LS.RUNNING) === '1';
+    const raw = localStorage.getItem(LS.RUNNING);
+    if (!raw) return false;
+    const startedAt = Number(raw);
+    if (!Number.isFinite(startedAt) || Date.now() - startedAt > LOCAL_RUNNING_TTL_MS) {
+      localStorage.removeItem(LS.RUNNING);
+      return false;
+    }
+    return true;
+  }
+
+  /** Marca o início de um sync (guarda o horário). */
+  private static markRunning(): void {
+    localStorage.setItem(LS.RUNNING, String(Date.now()));
   }
 
   /* ── auth ── */
@@ -614,24 +775,47 @@ export class DriveSyncService {
     StorageService.getCards().forEach((c) => bump(c.updatedAt));
     StorageService.getPresets().forEach((p) => bump(p.updatedAt));
     StorageService.getRevlog().forEach((r) => bump(r.reviewTime));
+    // Excluir itens não altera o updatedAt de nada que sobra na coleção —
+    // sem este marcador, deletar um deck/nota/preset não acendia o botão
+    // amarelo nem era detectado como mudança local.
+    bump(StorageService.getLastDeletedAt());
     return m;
   }
 
   /* ── sync orchestration ── */
 
+  /**
+   * Sincroniza com o Drive, ITEM A ITEM (estilo Anki):
+   * - mudou só aqui      → a versão daqui sobe para o Drive
+   * - mudou só no Drive  → a versão do Drive entra aqui
+   * - mudou nos dois     → uma única pergunta, só sobre os itens em disputa
+   *
+   * No sync automático (abertura do app / timer), uma disputa NÃO abre
+   * popup: ela vira um badge pendente no botão Sync. No sync manual, a
+   * pergunta aparece na hora.
+   */
   public static async syncNow(opts?: {
+    /** Disputa geral (primeira sincronização entre dispositivos). */
     onConflict?: (meta: SyncMeta) => Promise<ConflictChoice>;
+    /** Disputa item a item (sync manual). */
+    onItemsConflict?: (conflict: SyncItemsConflict) => Promise<SyncItemsChoice>;
     onProgress?: (msg: string) => void;
+    /** Painel de progresso ao vivo (fases + contador de itens; null = fim). */
+    onItemProgress?: (p: SyncProgressState | null) => void;
+    /** true = sync manual (pode perguntar); false = automático (badge). */
+    manual?: boolean;
   }): Promise<SyncResult> {
     if (this.isRunning()) {
       return { action: 'cancelled', message: 'Uma sincronização já está em andamento neste dispositivo.' };
     }
-    localStorage.setItem(LS.RUNNING, '1');
+    this.markRunning();
     const progress = opts?.onProgress ?? (() => {});
+    const itemProgress = opts?.onItemProgress ?? (() => {});
     try {
       const token = await this.ensureToken();
 
       progress('Verificando trava de sincronização no Drive…');
+      itemProgress({ phase: 'download' });
       await acquireLock(token);
       try {
         const metaFile = await findFile(token, DRIVE_FILES.META);
@@ -640,45 +824,487 @@ export class DriveSyncService {
           : null;
 
         const lastSync = this.getLastSync();
-        const localMod = this.computeLocalModifiedAt();
-        const lastAt = lastSync?.at ?? 0;
-        const lastRemote = lastSync?.remoteUploadedAt ?? 0;
+        const base = getSyncBase();
+        const localSnapshot = computeSnapshot(
+          localSyncContent(),
+          this.getDeviceId(),
+          getDeviceName()
+        );
 
         if (!remoteMeta) {
-          // first sync ever: just upload
-          return await this.uploadBackup(token, progress);
+          // primeiro sync deste dispositivo: sobe o estado local
+          itemProgress({ phase: 'preparing' });
+          return await this.uploadBackup(token, progress, itemProgress);
         }
 
-        if (remoteMeta.uploadedAt <= lastRemote) {
-          // remote is the version we already synced
-          if (localMod > lastAt) return await this.uploadBackup(token, progress);
-          return { action: 'none', message: 'Tudo sincronizado — nenhuma mudança neste dispositivo desde o último sync.' };
-        }
+        const remoteChanged = remoteMeta.uploadedAt > (lastSync?.remoteUploadedAt ?? 0);
+        const localChanged = this.hasLocalChanges(base, localSnapshot);
 
-        // remote backup is newer than anything we have synced
-        if (localMod > lastAt) {
-          const choice = (await opts?.onConflict?.(remoteMeta)) ?? 'abort';
-          if (choice === 'download') return await this.downloadBackup(token, remoteMeta, progress);
-          if (choice === 'keep') {
-            progress('Mantendo os dados deste dispositivo — o backup no Drive será substituído…');
-            return await this.uploadBackup(token, progress);
+        if (!remoteChanged) {
+          // Disputa pendente: não sobe nada para o Drive antes da decisão.
+          const pending = this.getPendingConflict();
+          if (pending) {
+            itemProgress(null);
+            return {
+              action: 'none',
+              message:
+                pending.count === 1
+                  ? '1 item em disputa — resolva na aba Sync.'
+                  : `${pending.count} itens em disputa — resolva na aba Sync.`,
+            };
           }
-          return { action: 'cancelled', message: 'Sincronização cancelada. Nada foi alterado.' };
+          if (localChanged) {
+            itemProgress({ phase: 'preparing' });
+            return await this.uploadBackup(token, progress, itemProgress);
+          }
+          itemProgress(null);
+          return { action: 'none', message: 'Tudo sincronizado — nenhuma mudança desde o último sync.' };
         }
-        return await this.downloadBackup(token, remoteMeta, progress);
+
+        // ── O Drive tem coisa nova: baixa o pacote e compara item a item ──
+        progress(`Baixando dados de "${remoteMeta.deviceName}"…`);
+        // o painel já mostra quantos ITENS estão vindo (do metadado do Drive)
+        itemProgress({
+          phase: 'download',
+          deviceName: remoteMeta.deviceName,
+          counts: remoteMeta.counts,
+        });
+        const remoteData = await this.downloadCollection(
+          token,
+          remoteMeta,
+          progress,
+          itemProgress
+        );
+        const remoteSnapshot = computeSnapshot(
+          collectionSyncContent({
+            decks: remoteData.decks,
+            noteTypes: remoteData.noteTypes,
+            notes: remoteData.notes,
+            cards: remoteData.cards,
+            presets: remoteData.presets,
+            fsrsParameters: remoteData.fsrsParameters,
+            settings: remoteData.settings,
+          }),
+          remoteMeta.deviceId,
+          remoteMeta.deviceName
+        );
+        itemProgress({ phase: 'comparing' });
+
+        const diff = diffSnapshots(base, localSnapshot, remoteSnapshot);
+        const conflicts = diff.conflicts;
+
+        // ── Primeira sincronização entre dispositivos (sem base) ──
+        if (!base) {
+          if (opts?.manual) {
+            // Sync manual: a pergunta geral (o Drive tem a coleção toda).
+            const choice = (await opts?.onConflict?.(remoteMeta)) ?? 'abort';
+            if (choice === 'download') {
+              // O Drive vence nos itens que ele traz; o que só existe aqui fica.
+              const keys = new Set<string>([
+                ...diff.remoteOnly.map((i) => i.key),
+                ...diff.remoteDeleted.map((i) => i.key),
+                ...conflicts.map((i) => i.key),
+              ]);
+              return await this.mergeAndUpload(token, remoteData, remoteMeta, progress, keys, itemProgress);
+            }
+            if (choice === 'keep') {
+              itemProgress({ phase: 'preparing' });
+              return await this.uploadBackup(token, progress, itemProgress);
+            }
+            return { action: 'cancelled', message: 'Sincronização cancelada. Nada foi alterado.' };
+          }
+          // Sync automático: mescla o que não está em disputa e sinaliza o resto.
+          const safeKeys = new Set<string>([
+            ...diff.remoteOnly.map((i) => i.key),
+            ...diff.remoteDeleted.map((i) => i.key),
+          ]);
+          if (conflicts.length === 0) {
+            // Sem disputa: o estado mesclado sobe para o Drive.
+            return await this.mergeAndUpload(token, remoteData, remoteMeta, progress, safeKeys, itemProgress);
+          }
+          const applied = await this.applyRemote(remoteData, safeKeys, itemProgress);
+          this.updateBase(base, localSnapshot, remoteSnapshot, diff, safeKeys);
+          this.setPendingConflict({
+            count: conflicts.length,
+            at: Date.now(),
+            deviceName: remoteMeta.deviceName,
+          });
+          const parts: string[] = [];
+          parts.push(
+            conflicts.length === 1
+              ? '1 item mudou aqui e no Drive — resolva na aba Sync.'
+              : `${conflicts.length} itens mudaram aqui e no Drive — resolva na aba Sync.`
+          );
+          const resumo = summarizeApply(applied);
+          if (resumo !== 'nada a atualizar') parts.push(`Do Drive: ${resumo}.`);
+          return {
+            action: 'none',
+            message: parts.join(' '),
+          };
+        }
+
+        // ── Disputa: manual pergunta, automático deixa pendente ──
+        let choice: SyncItemsChoice = 'remote';
+        if (conflicts.length === 0) {
+          // A disputa anterior já não existe (o usuário arrumou aqui) → limpa o aviso.
+          this.setPendingConflict(null);
+        }
+        if (conflicts.length > 0) {
+          if (!opts?.manual) {
+            // Auto-sync: aplica o que não está em disputa e sinaliza o resto
+            const safeKeys = new Set<string>([
+              ...diff.remoteOnly.map((i) => i.key),
+              ...diff.remoteDeleted.map((i) => i.key),
+            ]);
+            const applied = await this.applyRemote(remoteData, safeKeys, itemProgress);
+            this.updateBase(base, localSnapshot, remoteSnapshot, diff, safeKeys);
+            this.setPendingConflict({
+              count: conflicts.length,
+              at: Date.now(),
+              deviceName: remoteMeta.deviceName,
+            });
+            const msg =
+              conflicts.length === 1
+                ? '1 item mudou aqui e no Drive — resolva na aba Sync.'
+                : `${conflicts.length} itens mudaram aqui e no Drive — resolva na aba Sync.`;
+            return {
+              action: 'none',
+              message:
+                applied.notes + applied.cards > 0
+                  ? `${msg} Atualizado do Drive: ${summarizeApply(applied)}.`
+                  : msg,
+            };
+          }
+          choice =
+            (await opts?.onItemsConflict?.({
+              items: conflicts,
+              remoteDeviceName: remoteMeta.deviceName,
+            })) ?? 'abort';
+          if (choice === 'abort') {
+            return { action: 'cancelled', message: 'Sincronização cancelada. Nada foi alterado.' };
+          }
+        }
+
+        // ── Aplica o que veio do Drive (e a disputa, se o Drive venceu) ──
+        const applyKeys = new Set<string>([
+          ...diff.remoteOnly.map((i) => i.key),
+          ...diff.remoteDeleted.map((i) => i.key),
+        ]);
+        if (choice === 'remote') {
+          for (const c of conflicts) applyKeys.add(c.key);
+        }
+        const result = await this.mergeAndUpload(
+          token,
+          remoteData,
+          remoteMeta,
+          progress,
+          applyKeys,
+          itemProgress
+        );
+        return result;
       } finally {
         await releaseLock(token);
       }
     } finally {
+      itemProgress(null);
       localStorage.removeItem(LS.RUNNING);
     }
   }
 
+  /** Aplica os itens remotos no dispositivo e devolve o resumo. */
+  private static async applyRemote(
+    remoteData: RemoteSyncData,
+    keys: Set<string>,
+    itemProgress: (p: SyncProgressState | null) => void = () => {}
+  ) {
+    const applied = await applyRemoteItemsProgressive(remoteData, keys, (p) =>
+      itemProgress({ phase: 'applying', ...p })
+    );
+    mergeRemoteRevlog(remoteData.revlog ?? [], remoteData);
+    return applied;
+  }
+
+  /**
+   * Aplica o que veio do Drive e sobe o estado mesclado de volta — assim os
+   * dois dispositivos passam a ter o mesmo conteúdo.
+   */
+  private static async mergeAndUpload(
+    token: string,
+    remoteData: RemoteSyncData,
+    remoteMeta: SyncMeta,
+    progress: (m: string) => void,
+    applyKeys: Set<string>,
+    itemProgress: (p: SyncProgressState | null) => void = () => {}
+  ): Promise<SyncResult> {
+    progress('Aplicando as novidades do Drive…');
+    const applied = await this.applyRemote(remoteData, applyKeys, itemProgress);
+    mergeRemoteRevlog(remoteData.revlog ?? [], remoteData);
+    const resumo = summarizeApply(applied);
+    itemProgress({ phase: 'preparing' });
+    const upload = await this.uploadBackup(token, progress, itemProgress);
+    return {
+      action: 'download',
+      message: `Sincronizado com "${remoteMeta.deviceName}". ${resumo}.`,
+    };
+  }
+
+  /**
+   * Baixa o último backup do Drive e SUBSTITUI a coleção local por ele.
+   *
+   * É o caminho para voltar atrás: se você deletou um deck/card por engano,
+   * aqui a coleção volta ao estado que estava no Drive. Antes de mexer, o
+   * estado atual é guardado no backup local (o mesmo que o sync usa).
+   */
+  public static async restoreFromDrive(opts?: {
+    onProgress?: (msg: string) => void;
+    onItemProgress?: (p: SyncProgressState | null) => void;
+  }): Promise<SyncResult> {
+    if (this.isRunning()) {
+      return {
+        action: 'cancelled',
+        message: 'Uma sincronização já está em andamento neste dispositivo.',
+      };
+    }
+    this.markRunning();
+    const progress = opts?.onProgress ?? (() => {});
+    const itemProgress = opts?.onItemProgress ?? (() => {});
+    try {
+      const token = await this.ensureToken();
+      itemProgress({ phase: 'download' });
+
+      const metaFile = await findFile(token, DRIVE_FILES.META);
+      if (!metaFile) throw new Error('Não há backup no Google Drive ainda.');
+      const remoteMeta = JSON.parse(
+        await (await downloadFile(token, metaFile.id)).text()
+      ) as SyncMeta;
+      itemProgress({
+        phase: 'download',
+        deviceName: remoteMeta.deviceName,
+        counts: remoteMeta.counts,
+      });
+
+      // baixa o pacote (guarda o estado atual no backup local antes)
+      const data = await this.downloadCollection(token, remoteMeta, progress, itemProgress);
+
+      const remoteData: RemoteSyncData = {
+        decks: data.decks,
+        noteTypes: data.noteTypes,
+        notes: data.notes,
+        cards: data.cards,
+        presets: data.presets,
+        revlog: data.revlog,
+        fsrsParameters: data.fsrsParameters,
+        settings: {
+          fsrs: data.fsrsParameters,
+          prefs: data.settings?.prefs,
+          theme: data.settings?.theme,
+          colorTheme: data.settings?.colorTheme,
+        },
+      };
+
+      // ── O que está no Drive entra (sobrescrevendo o que está aqui) ──
+      const driveSnapshot = computeSnapshot(
+        collectionSyncContent({
+          decks: remoteData.decks,
+          noteTypes: remoteData.noteTypes,
+          notes: remoteData.notes,
+          cards: remoteData.cards,
+          presets: remoteData.presets,
+          fsrsParameters: remoteData.fsrsParameters,
+          settings: remoteData.settings,
+        }),
+        remoteMeta.deviceId,
+        remoteMeta.deviceName
+      );
+      itemProgress({ phase: 'applying' });
+      const applied = await applyRemoteItemsProgressive(
+        remoteData,
+        new Set(Object.keys(driveSnapshot.items)),
+        (p) => itemProgress({ phase: 'applying', ...p })
+      );
+      mergeRemoteRevlog(remoteData.revlog ?? [], remoteData);
+
+      // ── O que só existe aqui (ex.: o deck que você deletou) some ──
+      const deleted = this.deleteLocalOnlyItems(driveSnapshot);
+
+      // ── O estado local agora É o do Drive ──
+      setSyncBase(
+        computeSnapshot(localSyncContent(), this.getDeviceId(), getDeviceName())
+      );
+      this.setLastSync({ at: Date.now(), remoteUploadedAt: remoteMeta.uploadedAt });
+      this.setPendingConflict(null);
+
+      const resumo = summarizeApply({ ...applied, deleted });
+      return {
+        action: 'download',
+        message: `Backup do Drive baixado: ${resumo}.`,
+      };
+    } finally {
+      itemProgress(null);
+      localStorage.removeItem(LS.RUNNING);
+    }
+  }
+
+  /**
+   * Apaga aqui o que só existe localmente (o Drive é a verdade agora).
+   * Devolve quantos itens foram removidos.
+   */
+  private static deleteLocalOnlyItems(drive: SyncSnapshot): number {
+    const driveKeys = new Set(Object.keys(drive.items));
+    const localSnapshot = computeSnapshot(
+      localSyncContent(),
+      this.getDeviceId(),
+      getDeviceName()
+    );
+    const localOnly = Object.keys(localSnapshot.items).filter((k) => !driveKeys.has(k));
+    let deleted = 0;
+
+    // decks (apaga também as notas/cards dos subdecks)
+    for (const key of localOnly.filter((k) => k.startsWith('deck:'))) {
+      const name = key.slice('deck:'.length);
+      const deck = StorageService.getDecks().find((d) => d.name.trim() === name.trim());
+      if (deck) {
+        StorageService.deleteDeck(deck.id);
+        deleted++;
+      }
+    }
+    // notas (os cards delas vão junto)
+    for (const key of localOnly.filter((k) => k.startsWith('note:'))) {
+      const guid = key.slice('note:'.length);
+      const note = StorageService.getNotes().find((n) => (n.guid ?? '').trim() === guid);
+      if (note) {
+        StorageService.deleteNote(note.id);
+        deleted++;
+      }
+    }
+    // tipos de nota (só quando nenhuma nota usa)
+    const usedTypes = new Set(StorageService.getNotes().map((n) => n.noteTypeId));
+    for (const key of localOnly.filter((k) => k.startsWith('notetype:'))) {
+      const name = key.slice('notetype:'.length);
+      const type = StorageService.getNoteTypes().find((t) => t.name.trim() === name.trim());
+      if (type && !usedTypes.has(type.id)) {
+        StorageService.saveNoteTypes(
+          StorageService.getNoteTypes().filter((t) => t.id !== type.id)
+        );
+        deleted++;
+      }
+    }
+    // presets (o de fábrica é permanente)
+    for (const key of localOnly.filter((k) => k.startsWith('preset:'))) {
+      const name = key.slice('preset:'.length);
+      const preset = StorageService.getPresets().find((p) => p.name.trim() === name.trim());
+      if (preset && preset.id !== StorageService.DEFAULT_PRESET_ID) {
+        StorageService.deletePreset(preset.id);
+        deleted++;
+      }
+    }
+    return deleted;
+  }
+
+  /** Houve mudança local desde o último sync? */
+  private static hasLocalChanges(base: SyncSnapshot | null, local: SyncSnapshot): boolean {
+    if (!base) return this.computeLocalModifiedAt() > 0;
+    const keys = new Set([...Object.keys(base.items), ...Object.keys(local.items)]);
+    for (const key of keys) {
+      if (base.items[key]?.hash !== local.items[key]?.hash) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Há mudanças aqui que ainda NÃO foram enviadas ao Drive?
+   * (a base é o estado comum do último sync — o que já foi para o Drive)
+   *
+   * É o que acende o botão Sync em amarelo.
+   */
+  public static hasPendingLocalChanges(): boolean {
+    const base = getSyncBase();
+    if (!base) return this.computeLocalModifiedAt() > 0;
+    // atalho: nada foi tocado depois do último sync → não há o que enviar
+    if (this.computeLocalModifiedAt() <= base.updatedAt) return false;
+    const local = computeSnapshot(
+      localSyncContent(),
+      this.getDeviceId(),
+      getDeviceName()
+    );
+    return this.hasLocalChanges(base, local);
+  }
+
+  /**
+   * Atualiza a base (estado comum) com o que já foi aplicado do Drive.
+   * Os itens em disputa ficam como estão — a disputa continua valendo.
+   */
+  private static updateBase(
+    base: SyncSnapshot | null,
+    local: SyncSnapshot,
+    remote: SyncSnapshot,
+    diff: SyncDiff,
+    appliedKeys: Set<string>
+  ): void {
+    const items = { ...(base?.items ?? {}) };
+    if (!base) {
+      // Primeira mesclagem: o que só existe aqui já é comum (não mudou no Drive).
+      for (const info of diff.localOnly) {
+        const state = local.items[info.key];
+        if (state) items[info.key] = state;
+      }
+    }
+    for (const key of appliedKeys) {
+      const state = remote.items[key];
+      if (state) items[key] = state;
+      else delete items[key];
+    }
+    setSyncBase({ ...(base ?? local), items });
+  }
+
+  /* ── conflito pendente (badge) ── */
+
+  private static getPendingKey(): string {
+    return 'runora_sync_pending';
+  }
+
+  public static getPendingConflict(): PendingConflict | null {
+    try {
+      const raw = localStorage.getItem(this.getPendingKey());
+      return raw ? (JSON.parse(raw) as PendingConflict) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  public static setPendingConflict(pending: PendingConflict | null): void {
+    if (!pending) localStorage.removeItem(this.getPendingKey());
+    else localStorage.setItem(this.getPendingKey(), JSON.stringify(pending));
+  }
+
   /* ── upload / download ── */
 
-  private static async uploadBackup(token: string, progress: (m: string) => void): Promise<SyncResult> {
+  private static async uploadBackup(
+    token: string,
+    progress: (m: string) => void,
+    itemProgress: (p: SyncProgressState | null) => void = () => {}
+  ): Promise<SyncResult> {
     progress('Exportando coleção completa + mídia…');
-    const { blob } = await ExportImportService.buildCollectionPackage();
+
+    // totais de ITENS da coleção local (o que está sendo enviado)
+    const localCounts = {
+      decks: StorageService.getDecks().length,
+      notes: StorageService.getNotes().length,
+      cards: StorageService.getCards().length,
+    };
+
+    // fase de preparação: o pacote é montado (contador ao vivo dos itens)
+    itemProgress({ phase: 'preparing', counts: localCounts });
+    const { blob } = await ExportImportService.buildCollectionPackage({
+      onProgress: (p) =>
+        itemProgress({
+          phase: 'preparing',
+          part: p.part,
+          done: p.done,
+          total: p.total,
+          counts: localCounts,
+        }),
+    });
 
     const meta: SyncMeta = {
       app: 'runora',
@@ -697,6 +1323,8 @@ export class DriveSyncService {
       },
     };
 
+    // fase de envio: mostra quantos itens estão indo para o Drive
+    itemProgress({ phase: 'upload', counts: meta.counts });
     progress(`Enviando backup (${formatBytes(blob.size)}) para o Google Drive…`);
     const existing = await findFile(token, DRIVE_FILES.COLPKG);
     await uploadResumable(token, DRIVE_FILES.COLPKG, blob, existing?.id);
@@ -710,6 +1338,11 @@ export class DriveSyncService {
     );
 
     this.setLastSync({ at: Date.now(), remoteUploadedAt: meta.uploadedAt });
+    // A base (estado comum do último sync) passa a ser o estado atual.
+    setSyncBase(
+      computeSnapshot(localSyncContent(), this.getDeviceId(), getDeviceName())
+    );
+    this.setPendingConflict(null);
     return {
       action: 'upload',
       message:
@@ -718,56 +1351,45 @@ export class DriveSyncService {
     };
   }
 
-  private static async downloadBackup(
+  /**
+   * Baixa o pacote do Drive e o lê (sem aplicar nada ainda) — a comparação
+   * item a item acontece com o conteúdo em memória.
+   */
+  private static async downloadCollection(
     token: string,
     remoteMeta: SyncMeta,
-    progress: (m: string) => void
-  ): Promise<SyncResult> {
+    progress: (m: string) => void,
+    itemProgress: (p: SyncProgressState | null) => void = () => {}
+  ): Promise<ImportableCollection> {
     const pkg = await findFile(token, DRIVE_FILES.COLPKG);
     if (!pkg) {
       throw new Error('Há metadados no Drive, mas o arquivo de backup (.colpkg) não foi encontrado.');
     }
-    progress(`Baixando backup de "${remoteMeta.deviceName}" (${formatBytes(Number(pkg.size || 0))})…`);
+    progress(`Baixando dados de "${remoteMeta.deviceName}" (${formatBytes(Number(pkg.size || 0))})…`);
     const blob = await downloadFile(token, pkg.id);
 
-    progress('Guardando um backup local de segurança antes de mesclar…');
+    // Segurança: guarda o estado atual antes de mexer nele
     try {
       const current = await ExportImportService.buildCollectionPackage();
-      await saveLocalBackup(`antes-de-baixar-${Date.now()}`, current.blob);
+      await saveLocalBackup(`antes-do-sync-${Date.now()}`, current.blob);
     } catch (e) {
       console.warn('Não foi possível salvar o backup local (seguindo mesmo assim):', e);
     }
 
-    // Merges by the same plan the interactive import uses ("download" style):
-    // this device keeps everything that only exists here, the backup wins on
-    // items it carries, and FSRS stays with the most recently studied card.
-    progress('Mesclando o backup baixado com os dados deste dispositivo…');
     const file = new File([blob], DRIVE_FILES.COLPKG, { type: 'application/octet-stream' });
-    const res = await ExportImportService.importPackage(file);
-    if (!res.success) {
-      // rollback from the local backup taken above
-      try {
-        const backup = await getLatestLocalBackup();
-        if (backup) {
-          await ExportImportService.importPackage(
-            new File([backup.blob], DRIVE_FILES.COLPKG, { type: 'application/octet-stream' })
-          );
-        }
-      } catch (e) {
-        console.error('Rollback do backup local falhou:', e);
-      }
-      throw new Error(res.message || 'Falha ao aplicar o backup baixado do Drive.');
-    }
-
-    this.setLastSync({
-      at: Math.max(Date.now(), remoteMeta.uploadedAt),
-      remoteUploadedAt: remoteMeta.uploadedAt,
-    });
-    return {
-      action: 'download',
-      message:
-        `Backup de "${remoteMeta.deviceName}" restaurado neste dispositivo. ${res.message} ` +
-        'O estado anterior deste dispositivo foi guardado como backup local de segurança.',
-    };
+    const data = await ExportImportService.readPackageData(file);
+    // A mídia do outro dispositivo entra junto (nomes únicos, reimportar é seguro)
+    progress('Importando os arquivos de mídia do Drive…');
+    await ExportImportService.importMediaFrom(data, (p) =>
+      itemProgress({
+        phase: 'download',
+        deviceName: remoteMeta.deviceName,
+        part: p.part,
+        done: p.done,
+        total: p.total,
+        counts: remoteMeta.counts,
+      })
+    );
+    return data;
   }
 }
