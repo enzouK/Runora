@@ -60,6 +60,13 @@ import {
   type SyncSideBase,
 } from './syncExtras';
 import {
+  buildDelta,
+  applyDelta,
+  type SyncDelta,
+  DELTA_FILES as DELTA_FILE_CONSTS,
+  type DeltaMeta,
+} from './syncDelta';
+import {
   computeAddonState,
   exportAddonPackage,
   exportAddonPackageBlob,
@@ -147,6 +154,12 @@ export const DRIVE_FILES = {
   ADDONS_INDEX: 'runora-sync-addons.json',
   /** Fase 5: as extensões completas (código + config). */
   ADDONS_ZIP: 'runora-sync-addons.zip',
+  /** Fase 7: sync incremental (delta). */
+  DELTA_META: 'runora-sync-delta-meta.json',
+  DELTA_PAYLOAD: 'runora-sync-delta.json',
+  DELTA_MEDIA_MANIFEST: 'runora-sync-media-manifest.json',
+  /** Pasta para arquivos de mídia do sync incremental. */
+  MEDIA_FOLDER: 'runora-sync-media/',
 } as const;
 
 /** All sync files live inside this folder at the root of the user's Drive. */
@@ -1776,6 +1789,147 @@ export class DriveSyncService {
         `Backup enviado ao Drive: ${meta.counts.decks} decks, ${meta.counts.notes} notas, ` +
         `${meta.counts.cards} cards, ${meta.counts.media} arquivos de mídia (${formatBytes(blob.size)}).`,
     };
+  }
+
+  // ============================================================
+  // Fase 7: Upload incremental (delta) — envia só o que mudou
+  // ============================================================
+
+  /** Chave para o último USN sincronizado com o Drive. */
+  private static getLastSyncedUsnKey(): string {
+    return `runora_sync_last_usn_${this.getDeviceId()}`;
+  }
+
+  /** Retorna o último USN que foi sincronizado com o Drive. */
+  private static getLastSyncedUsn(): number {
+    const raw = localStorage.getItem(this.getLastSyncedUsnKey());
+    return raw ? Number(raw) : 0;
+  }
+
+  /** Define o último USN sincronizado com o Drive. */
+  private static setLastSyncedUsn(usn: number): void {
+    localStorage.setItem(this.getLastSyncedUsnKey(), String(usn));
+  }
+
+  /**
+   * Upload incremental: envia apenas as mudanças desde o último USN sincronizado.
+   * Retorna o novo USN head se houver mudanças, ou null se nada mudou.
+   */
+  private static async uploadIncremental(
+    token: string,
+    progress: (m: string) => void,
+    itemProgress: (p: SyncProgressState | null) => void = () => {}
+  ): Promise<number | null> {
+    const lastSyncedUsn = this.getLastSyncedUsn();
+    const currentUsn = StorageService.getCurrentUsn();
+
+    if (currentUsn <= lastSyncedUsn) {
+      progress('Nenhuma mudança desde o último sync incremental.');
+      return null;
+    }
+
+    progress(`Preparando delta incremental (USN ${lastSyncedUsn} → ${currentUsn})…`);
+
+    // Coleta mudanças desde lastSyncedUsn
+    const [decks, noteTypes, notes, cards, revlog, presets, tombstones] = await Promise.all([
+      StorageService.getDecksSince(lastSyncedUsn),
+      StorageService.getNoteTypesSince(lastSyncedUsn),
+      StorageService.getNotesSince(lastSyncedUsn),
+      StorageService.getCardsSince(lastSyncedUsn),
+      StorageService.getRevlogSince(lastSyncedUsn),
+      StorageService.getPresetsSince(lastSyncedUsn),
+      StorageService.getAllSyncTombstonesSince(lastSyncedUsn),
+    ]);
+
+    // Se não há mudanças reais (só USN avançou mas entidades são as mesmas), não sobe delta
+    const totalChanges = decks.length + noteTypes.length + notes.length + cards.length + revlog.length + presets.length + tombstones.length;
+    if (totalChanges === 0) {
+      this.setLastSyncedUsn(currentUsn);
+      progress('Nenhuma mudança real — USN apenas avançado.');
+      return currentUsn;
+    }
+
+    // Media manifest: lista arquivos de mídia referenciados pelas notas novas/modificadas
+    const mediaNames = new Set<string>();
+    for (const note of notes) {
+      for (const m of note.media ?? []) mediaNames.add(m.name);
+    }
+    const mediaManifest: Record<string, string> = {};
+    for (const name of mediaNames) {
+      const blob = await MediaStore.get(name);
+      if (blob) {
+        // SHA256 simples para o manifest
+        const buffer = await blob.arrayBuffer();
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+        mediaManifest[hashHex] = name;
+      }
+    }
+
+    // Build delta payload
+    const delta = buildDelta(
+      lastSyncedUsn,
+      currentUsn,
+      this.getDeviceId(),
+      getDeviceName(),
+      { decks, noteTypes, notes, cards, revlog, presets, tombstones, mediaManifest }
+    );
+
+    // Upload delta payload
+    itemProgress({ phase: 'preparing', counts: { decks: decks.length, notes: notes.length, cards: cards.length } });
+    const deltaBlob = new Blob([JSON.stringify(delta, null, 2)], { type: 'application/json' });
+    progress(`Enviando delta (${formatBytes(deltaBlob.size)}) para o Drive…`);
+    itemProgress({ phase: 'upload', counts: { decks: decks.length, notes: notes.length, cards: cards.length } });
+
+    const existingDelta = await findFile(token, DRIVE_FILES.DELTA_PAYLOAD);
+    await uploadResumable(token, DRIVE_FILES.DELTA_PAYLOAD, deltaBlob, existingDelta?.id);
+
+    // Upload media manifest
+    const manifestBlob = new Blob([JSON.stringify(mediaManifest, null, 2)], { type: 'application/json' });
+    const existingManifest = await findFile(token, DRIVE_FILES.DELTA_MEDIA_MANIFEST);
+    await uploadResumable(token, DRIVE_FILES.DELTA_MEDIA_MANIFEST, manifestBlob, existingManifest?.id);
+
+    // Upload media files referenced in manifest (only new ones)
+    for (const [hash, name] of Object.entries(mediaManifest)) {
+      const blob = await MediaStore.get(name);
+      if (blob) {
+        const existingMedia = await findFile(token, `${DRIVE_FILES.MEDIA_FOLDER}${hash}`);
+        if (!existingMedia) {
+          await uploadResumable(token, `${DRIVE_FILES.MEDIA_FOLDER}${hash}`, blob);
+        }
+      }
+    }
+
+    // Update delta meta
+    const deltaMeta: DeltaMeta = {
+      app: 'runora',
+      version: 1,
+      baseUsn: lastSyncedUsn,
+      headUsn: currentUsn,
+      syncedAt: Date.now(),
+      deviceId: this.getDeviceId(),
+      deviceName: getDeviceName(),
+      counts: {
+        decks: decks.length,
+        noteTypes: noteTypes.length,
+        notes: notes.length,
+        cards: cards.length,
+        revlog: revlog.length,
+        presets: presets.length,
+        tombstones: tombstones.length,
+        mediaFiles: Object.keys(mediaManifest).length,
+      },
+    };
+    const metaBlob = new Blob([JSON.stringify(deltaMeta, null, 2)], { type: 'application/json' });
+    const existingMeta = await findFile(token, DRIVE_FILES.DELTA_META);
+    await uploadMultipart(token, DRIVE_FILES.DELTA_META, metaBlob, existingMeta?.id);
+
+    // Update last synced USN
+    this.setLastSyncedUsn(currentUsn);
+
+    progress(`Delta enviado: ${decks.length} decks, ${notes.length} notas, ${cards.length} cards, ${tombstones.length} deletados.`);
+    return currentUsn;
   }
 
   /**
