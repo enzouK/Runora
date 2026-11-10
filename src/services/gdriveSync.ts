@@ -102,7 +102,7 @@ const LS = {
  * fechado/recarregado no meio do sync, o aviso fica preso e trava os próximos
  * syncs — depois disso, o aviso é considerado antigo e descartado.
  */
-const LOCAL_RUNNING_TTL_MS = 10 * 60 * 1000;
+const LOCAL_RUNNING_TTL_MS = 2 * 60 * 1000;
 
 /**
  * Built-in OAuth Client ID — the Google Cloud project of Runora, created by the
