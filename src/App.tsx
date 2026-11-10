@@ -14,6 +14,7 @@ import {
   ImportProgressOverlay,
   type ImportProgressState,
 } from './components/import/ImportProgressOverlay';
+import { useDayRolloverRefresh } from './components/common/useDayRolloverRefresh';
 import { ensureNoteGuids } from './services/noteIdentity';
 import { Header, MainNavTab } from './components/navbar/Header';
 import { DeckList } from './components/decks/DeckList';
@@ -174,13 +175,14 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
+        refreshAll();
         setEditingNoteId(null);
         setIsAddCardModalOpen(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [refreshAll]);
 
   // Global study summary across all decks (iOS Health-style strip)
   const totals = useMemo(() => {
@@ -198,29 +200,34 @@ export default function App() {
   }, [decks, refreshKey]);
 
   const handleOpenAddCard = () => {
+    refreshAll();
     setEditingNoteId(null);
     setIsAddCardModalOpen(true);
   };
 
   const handleOpenCreateDeck = () => {
+    refreshAll();
     setEditingDeck(null);
     setParentDeckNameForSubdeck(undefined);
     setIsDeckModalOpen(true);
   };
 
   const handleCreateSubdeck = (parentName: string) => {
+    refreshAll();
     setEditingDeck(null);
     setParentDeckNameForSubdeck(parentName);
     setIsDeckModalOpen(true);
   };
 
   const handleEditDeck = (deck: Deck) => {
+    refreshAll();
     setEditingDeck(deck);
     setParentDeckNameForSubdeck(undefined);
     setIsDeckModalOpen(true);
   };
 
   const handleEditNoteFromBrowser = (noteId: string) => {
+    refreshAll();
     setEditingNoteId(noteId);
     setIsAddCardModalOpen(true);
   };
@@ -279,6 +286,22 @@ export default function App() {
     }
   };
 
+  // Fase 6 — a tela é re-lida sem que você mexa em nada em três momentos:
+  // troca de aba, abrir/fechar uma janela (diálogo) e a virada do dia de
+  // estudo (a hora configurada nas Configurações gerais). Nada de timer
+  // rodando à toa: re-ler é barato e acontece justamente quando a tela
+  // pode ter ficado velha. (O relê segue em sync/importação — ver useDayRolloverRefresh.)
+  useDayRolloverRefresh(refreshAll);
+
+  // troca de aba: além de trocar, re-lê os dados (contadores podem ter mudado)
+  const trocarAba = useCallback(
+    (tab: MainNavTab) => {
+      setActiveTab(tab);
+      refreshAll();
+    },
+    [refreshAll]
+  );
+
   // If in review mode, render StudyView exclusively
   if (activeStudyDeck) {
     return (
@@ -308,9 +331,12 @@ export default function App() {
       {/* Top iOS Header */}
       <Header
         activeTab={activeTab}
-        onTabChange={(tab) => setActiveTab(tab)}
+        onTabChange={trocarAba}
         onOpenAddCard={handleOpenAddCard}
-        onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onOpenSettings={() => {
+          setIsSettingsModalOpen(true);
+          refreshAll();
+        }}
         onNewDeck={handleOpenCreateDeck}
         onSync={handleSyncClick}
         syncRunning={sync.running}
@@ -410,7 +436,11 @@ export default function App() {
               </label>
               <button
                 type="button"
-                onClick={() => setIsExportModalOpen(true)}
+                onClick={() => {
+                  // abrir janela também re-lê (Fase 6)
+                  refreshAll();
+                  setIsExportModalOpen(true);
+                }}
                 className="flex items-center justify-center gap-2 py-3 rounded-[16px] bg-ios-card dark:bg-ios-card-dark border border-black/[0.06] dark:border-white/[0.06] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.08)] text-[13px] font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-all active:scale-[0.98]"
               >
                 <Upload className="w-4 h-4 text-ios-blue" />
@@ -442,7 +472,11 @@ export default function App() {
       {/* Card & Note Editor Modal */}
       <CardEditorModal
         isOpen={isAddCardModalOpen}
-        onClose={() => setIsAddCardModalOpen(false)}
+        onClose={() => {
+          // ao fechar a janela, o que está por trás é re-lido
+          setIsAddCardModalOpen(false);
+          refreshAll();
+        }}
         onSaved={refreshAll}
         editNoteId={editingNoteId}
       />
@@ -450,14 +484,23 @@ export default function App() {
       {/* Deck Creator / Editor Modal */}
       <DeckModal
         isOpen={isDeckModalOpen}
-        onClose={() => setIsDeckModalOpen(false)}
+        onClose={() => {
+          setIsDeckModalOpen(false);
+          refreshAll();
+        }}
         onSaved={refreshAll}
         editDeck={editingDeck}
         parentDeckName={parentDeckNameForSubdeck}
       />
 
       {/* Export picker (Runora-style deck selection + include options) */}
-      <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} />
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => {
+          setIsExportModalOpen(false);
+          refreshAll();
+        }}
+      />
 
       {/* Transient toast (import result, etc.) */}
       {toast && (
@@ -469,7 +512,10 @@ export default function App() {
       {/* Settings & FSRS Modal */}
       <SettingsModal
         isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
+        onClose={() => {
+          setIsSettingsModalOpen(false);
+          refreshAll();
+        }}
         onRefresh={refreshAll}
         onDriveProgress={setSyncProgress}
       />
@@ -494,7 +540,10 @@ export default function App() {
           fileName={importPreview.fileName}
           applying={importApplying}
           onApply={handleApplyImport}
-          onCancel={() => setImportPreview(null)}
+          onCancel={() => {
+            setImportPreview(null);
+            refreshAll();
+          }}
         />
       )}
 
