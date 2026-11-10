@@ -551,7 +551,10 @@ export default function App() {
       <ImportProgressOverlay progress={importProgress} />
 
       {/* Progresso do sync (mesma cara do painel de importação) */}
-      <SyncProgressPanel progress={syncProgress} />
+      {/* Esconde quando há conflito aberto — o painel tem z-index maior e bloqueia o modal */}
+      {(sync.conflict === null && sync.itemsConflict === null) && (
+        <SyncProgressPanel progress={syncProgress} />
+      )}
     </div>
   );
 }
