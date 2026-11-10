@@ -38,7 +38,7 @@ export const SyncConflictModal: React.FC<Props> = ({ conflict, onResolve }) => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="sync-conflict-title"
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
       // mousedown (not click): a text-selection drag released over the backdrop must not close
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onResolve('abort');

@@ -117,14 +117,24 @@ export function useDriveSync(onDataChanged: () => void) {
       setRunning(true);
       setStatus(null);
       try {
+        // Wrappers para limpar o estado de conflito ASSIM QUE o usuário escolhe,
+        // para que o painel de progresso volte a aparecer durante o download/upload
+        // que acontece APÓS a escolha (antes o estado só limpava no finally, no fim do sync).
+        const onConflict = (meta: SyncMeta): Promise<ConflictChoice> =>
+          new Promise<ConflictChoice>((resolve) => {
+            setConflict({ meta, resolve: (choice) => { setConflict(null); resolve(choice); } });
+          });
+        const onItemsConflict = (c: SyncItemsConflict): Promise<SyncItemsChoice> =>
+          new Promise<SyncItemsChoice>((resolve) => {
+            setItemsConflict({ conflict: c, resolve: (choice) => { setItemsConflict(null); resolve(choice); } });
+          });
+
         const res = await DriveSyncService.syncNow({
           manual: opts?.manual ?? false,
           onProgress: (m) => setStatus({ type: 'info', text: m }),
           onItemProgress: opts?.onItemProgress,
-          onConflict: (meta) =>
-            new Promise<ConflictChoice>((resolve) => setConflict({ meta, resolve })),
-          onItemsConflict: (c) =>
-            new Promise<SyncItemsChoice>((resolve) => setItemsConflict({ conflict: c, resolve })),
+          onConflict,
+          onItemsConflict,
         });
         setStatus({
           type: res.action === 'cancelled' ? 'info' : 'success',
