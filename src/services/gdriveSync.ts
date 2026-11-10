@@ -24,6 +24,7 @@
  * Electron .exe and the Android WebView.
  */
 import pkg from '../../package.json';
+import { Deck, NoteType, Note, Card, RevlogEntry, Preset } from '../types/runora';
 import { StorageService } from './storage';
 import { MediaStore } from './mediaStore';
 import { ExportImportService } from './exportImport';
@@ -62,6 +63,7 @@ import {
 import {
   buildDelta,
   applyDelta,
+  isValidDelta,
   type SyncDelta,
   DELTA_FILES as DELTA_FILE_CONSTS,
   type DeltaMeta,
@@ -1973,4 +1975,136 @@ export class DriveSyncService {
     );
     return data;
   }
-}
+
+  // ============================================================
+  // Fase 7: Download incremental (aplica delta do Drive)
+  // ============================================================
+
+  /**
+   * Download incremental: baixa e aplica o delta do Drive.
+   * Retorna o novo USN head se houver mudanças, ou null se nada mudou.
+   */
+  private static async downloadIncremental(
+    token: string,
+    progress: (m: string) => void,
+    itemProgress: (p: SyncProgressState | null) => void = () => {}
+  ): Promise<number | null> {
+    const lastSyncedUsn = this.getLastSyncedUsn();
+
+    // Lê o delta meta do Drive
+    const metaFile = await findFile(token, DRIVE_FILES.DELTA_META);
+    if (!metaFile) {
+      progress('Nenhum delta incremental no Drive — fará sync completo se necessário.');
+      return null;
+    }
+
+    const deltaMeta: DeltaMeta = JSON.parse(await (await downloadFile(token, metaFile.id)).text());
+    const remoteHeadUsn = deltaMeta.headUsn;
+
+    if (remoteHeadUsn <= lastSyncedUsn) {
+      progress('Drive não tem mudanças incrementais desde o último sync.');
+      return null;
+    }
+
+    progress(`Baixando delta incremental (USN ${lastSyncedUsn} → ${remoteHeadUsn}) de "${deltaMeta.deviceName}"…`);
+
+    // Baixa o delta payload
+    const payloadFile = await findFile(token, DRIVE_FILES.DELTA_PAYLOAD);
+    if (!payloadFile) {
+      throw new Error('Delta meta existe mas payload não encontrado no Drive.');
+    }
+    itemProgress({ phase: 'download', counts: deltaMeta.counts });
+    const deltaBlob = await downloadFile(token, payloadFile.id);
+    const delta: SyncDelta = JSON.parse(await deltaBlob.text());
+
+    if (!isValidDelta(delta)) {
+      throw new Error('Delta inválido ou corrompido no Drive.');
+    }
+
+    // Verifica consistência
+    if (delta.currentUsn !== remoteHeadUsn) {
+      throw new Error('Inconsistência: delta.currentUsn ≠ deltaMeta.headUsn');
+    }
+
+    // Baixa manifest de mídia
+    const manifestFile = await findFile(token, DRIVE_FILES.DELTA_MEDIA_MANIFEST);
+    let mediaManifest: Record<string, string> = {};
+    if (manifestFile) {
+      mediaManifest = JSON.parse(await (await downloadFile(token, manifestFile.id)).text());
+    }
+
+    // Baixa arquivos de mídia novos (que não temos localmente)
+    const mediaFolder = DRIVE_FILES.MEDIA_FOLDER;
+    for (const [hash, name] of Object.entries(mediaManifest)) {
+      const localBlob = await MediaStore.get(name);
+      if (!localBlob) {
+        const remoteMediaFile = await findFile(token, `${mediaFolder}${hash}`);
+        if (remoteMediaFile) {
+          progress(`Baixando mídia: ${name}`);
+          const mediaBlob = await downloadFile(token, remoteMediaFile.id);
+          await MediaStore.put(name, new File([mediaBlob], name, { type: mediaBlob.type || 'application/octet-stream' }));
+        }
+      }
+    }
+
+    // Aplica o delta localmente
+    progress('Aplicando delta localmente…');
+    itemProgress({ phase: 'applying', counts: deltaMeta.counts });
+
+    const newHeadUsn = applyDelta(delta,
+      // applyEntity: cria/atualiza entidade no storage local
+      (entity, type) => {
+        switch (type) {
+          case 'deck':
+            StorageService.upsertDeck(entity as Deck);
+            break;
+          case 'notetype':
+            StorageService.upsertNoteType(entity as NoteType);
+            break;
+          case 'note':
+            StorageService.upsertNote(entity as Note);
+            break;
+          case 'card':
+            StorageService.upsertCard(entity as Card);
+            break;
+          case 'revlog':
+            StorageService.saveRevlog(entity as RevlogEntry);
+            break;
+          case 'preset':
+            StorageService.upsertPreset(entity as Preset);
+            break;
+        }
+      },
+      // applyTombstone: processa deletados
+      (tombstone) => {
+        switch (tombstone.type) {
+          case 'deck':
+            StorageService.deleteDeck(tombstone.id);
+            break;
+          case 'notetype':
+            StorageService.deleteNoteType(tombstone.id);
+            break;
+          case 'note':
+            StorageService.deleteNote(tombstone.id);
+            break;
+          case 'card':
+            StorageService.deleteCard(tombstone.id);
+            break;
+          case 'revlog':
+            // Revlog não tem delete individual — ignora (limpeza via sync completo se necessário)
+            break;
+          case 'preset':
+            StorageService.deletePreset(tombstone.id);
+            break;
+        }
+      }
+    );
+
+    // Atualiza último USN sincronizado
+    this.setLastSyncedUsn(newHeadUsn);
+
+    progress(`Delta aplicado: ${delta.decks.length} decks, ${delta.notes.length} notas, ${delta.cards.length} cards, ${delta.tombstones.length} deletados.`);
+    return newHeadUsn;
+  }
+
+  }

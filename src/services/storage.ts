@@ -1274,6 +1274,62 @@ export class StorageService {
     this.addSyncTombstone('presets', { type: 'preset', id: presetId, usn, deletedAt });
   }
 
+  // ============================================================
+  // Fase 7: Upsert/Delete helpers para sync incremental
+  // ============================================================
+
+  public static upsertDeck(deck: Deck): void {
+    const decks = this.getDecks();
+    const idx = decks.findIndex((d) => d.id === deck.id);
+    if (idx >= 0) decks[idx] = { ...deck, updatedAt: Date.now() };
+    else decks.push({ ...deck, updatedAt: Date.now() });
+    this.saveDecks(decks);
+  }
+
+  public static upsertNoteType(noteType: NoteType): void {
+    const noteTypes = this.getNoteTypes();
+    const idx = noteTypes.findIndex((nt) => nt.id === noteType.id);
+    if (idx >= 0) noteTypes[idx] = { ...noteType, updatedAt: Date.now() };
+    else noteTypes.push({ ...noteType, updatedAt: Date.now() });
+    this.saveNoteTypes(noteTypes);
+  }
+
+  public static upsertNote(note: Note): void {
+    const notes = this.getNotes();
+    const idx = notes.findIndex((n) => n.id === note.id);
+    if (idx >= 0) notes[idx] = { ...note, updatedAt: Date.now() };
+    else notes.push({ ...note, updatedAt: Date.now() });
+    this.saveNotes(notes);
+  }
+
+  public static upsertCard(card: Card): void {
+    const cards = this.getCards();
+    const idx = cards.findIndex((c) => c.id === card.id);
+    if (idx >= 0) cards[idx] = { ...card, updatedAt: Date.now() };
+    else cards.push({ ...card, updatedAt: Date.now() });
+    this.saveCards(cards);
+  }
+
+  public static deleteCard(cardId: string): void {
+    this.saveCards(this.getCards().filter((c) => c.id !== cardId));
+    this.bumpDeletedAt();
+    this.addTombstone('cards', [cardId]);
+    // Sync tombstone (Phase 7)
+    const usn = this.getCurrentUsn();
+    const deletedAt = Date.now();
+    this.addSyncTombstone('cards', { type: 'card', id: cardId, usn, deletedAt });
+  }
+
+  public static deleteNoteType(noteTypeId: string): void {
+    this.saveNoteTypes(this.getNoteTypes().filter((nt) => nt.id !== noteTypeId));
+    this.bumpDeletedAt();
+    this.addTombstone('notetypes', [noteTypeId]);
+    // Sync tombstone (Phase 7)
+    const usn = this.getCurrentUsn();
+    const deletedAt = Date.now();
+    this.addSyncTombstone('notetypes', { type: 'notetype', id: noteTypeId, usn, deletedAt });
+  }
+
   /** Create an empty preset with the app defaults (like Runora's "Add" preset option). */
   public static createPreset(name: string): Preset {
     const preset: Preset = {
