@@ -66,6 +66,8 @@ export interface NoteType {
   furiganaEnabled: boolean;        // Ativa {{furigana:Campo}} no template
   createdAt: number;
   updatedAt: number;
+  /** Update Sequence Number — incrementa a cada mudança. Usado no sync incremental. Opcional para dados legados (preenchido pelo backfill). */
+  usn?: number;
 }
 
 export interface MediaAttachment {
@@ -94,6 +96,8 @@ export interface Note {
   tags: string[];
   createdAt: number;
   updatedAt: number;
+  /** Update Sequence Number — incrementa a cada mudança. Usado no sync incremental. Opcional para dados legados. */
+  usn?: number;
 }
 
 export interface Card {
@@ -108,6 +112,8 @@ export interface Card {
   suspended?: boolean;           // Suspended cards never appear in queues/counts (leech/manual)
   createdAt: number;
   updatedAt: number;
+  /** Update Sequence Number — incrementa a cada mudança. Usado no sync incremental. Opcional para dados legados. */
+  usn?: number;
 }
 
 export interface DailyLimits {
@@ -186,6 +192,8 @@ export interface Deck {
   audioConfig?: AudioConfig;       // Runora-style Audio options (autoplay)
   createdAt: number;
   updatedAt: number;
+  /** Update Sequence Number — incrementa a cada mudança. Usado no sync incremental. Opcional para dados legados. */
+  usn?: number;
 }
 
 /**
@@ -212,6 +220,8 @@ export interface Preset {
   fsrsParams: FSRSScope;         // Runora "desired retention" + max. days per interval (+ optional FSRS weights)
   createdAt: number;
   updatedAt: number;
+  /** Update Sequence Number — incrementa a cada mudança. Usado no sync incremental. Opcional para dados legados. */
+  usn?: number;
 }
 
 /**
@@ -232,6 +242,8 @@ export interface RevlogEntry {
   state: CardState;
   stability: number;
   difficulty: number;
+  /** Update Sequence Number — incrementa a cada mudança. Usado no sync incremental. Opcional para dados legados. */
+  usn?: number;
 }
 
 export interface DeckCounts {
@@ -248,4 +260,30 @@ export interface FSRSPrediction {
   stability: number;
   difficulty: number;
   state: CardState;
+}
+
+/**
+ * Tombstones — marcadores de exclusão para sync incremental.
+ * Quando um item é deletado, criamos um tombstone com o USN da exclusão.
+ * Isso permite que outros dispositivos saibam que o item foi removido.
+ */
+export interface Tombstone {
+  /** Tipo da entidade deletada. */
+  type: 'deck' | 'notetype' | 'note' | 'card' | 'revlog' | 'preset';
+  /** ID da entidade deletada (o `id` original). */
+  id: string;
+  /** GUID da nota (apenas para notas — ajuda a casar entre dispositivos). */
+  guid?: string;
+  /** USN da exclusão. */
+  usn: number;
+  /** Timestamp da exclusão. */
+  deletedAt: number;
+}
+
+/** Tipo união de todas as entidades sincronizáveis (para helpers genéricos). */
+export type SyncableEntity = Deck | NoteType | Note | Card | RevlogEntry | Preset;
+
+/** Verifica se um objeto tem USN (é uma entidade sincronizável). */
+export function hasUsn(obj: unknown): obj is SyncableEntity {
+  return typeof obj === 'object' && obj !== null && 'usn' in obj && typeof (obj as Record<string, unknown>).usn === 'number';
 }

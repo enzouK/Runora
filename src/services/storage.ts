@@ -1,4 +1,4 @@
-import { Card, DailyLimits, Deck, DeckCounts, DisplayOrderConfig, FSRSParameters, FSRSScope, InsertionOrder, LeechAction, MixOrder, NewGatherOrder, NewSortOrder, Note, NoteType, Preset, ReviewSortOrder, RevlogEntry } from '../types/runora';
+import { Card, DailyLimits, Deck, DeckCounts, DisplayOrderConfig, FSRSParameters, FSRSScope, InsertionOrder, LeechAction, MixOrder, NewGatherOrder, NewSortOrder, Note, NoteType, Preset, ReviewSortOrder, RevlogEntry, Tombstone } from '../types/runora';
 import { ClozeService } from './clozeService';
 import { INITIAL_CARDS, INITIAL_DECKS, INITIAL_NOTE_TYPES, INITIAL_NOTES } from './sampleData';
 import { DEFAULT_FSRS_PARAMETERS, FSRS_WEIGHT_COUNT_MIN } from '../fsrs/constants';
@@ -20,6 +20,9 @@ const STORAGE_KEYS = {
   PRESETS: 'runora_presets',
   THEME: 'runora_theme',
   COLOR_THEME: 'runora_color_theme',
+  // Phase 7: Sync incremental (Anki-style)
+  USN_COUNTER: 'runora_usn_counter',      // Contador global de USN (incrementa a cada write)
+  SYNC_TOMBSTONES: 'runora_sync_tombstones', // Tombstones para sync incremental (deletados)
 };
 
 /**
@@ -60,6 +63,15 @@ interface Tombstones {
   cards: string[];
 }
 
+interface SyncTombstones {
+  decks: Tombstone[];
+  notetypes: Tombstone[];
+  notes: Tombstone[];
+  cards: Tombstone[];
+  revlog: Tombstone[];
+  presets: Tombstone[];
+}
+
 const EMPTY_TOMBSTONES: Tombstones = { decks: [], notetypes: [], notes: [], cards: [] };
 
 export class StorageService {
@@ -95,6 +107,170 @@ export class StorageService {
 
   private static bumpDeletedAt(): void {
     localStorage.setItem(STORAGE_KEYS.DELETED_AT, String(Date.now()));
+  }
+
+  // ============================================================
+  // Phase 7: USN (Update Sequence Number) — sync incremental
+  // ============================================================
+
+  /** Contador global de USN — incrementa a cada write (create/update/delete). */
+  private static getUsnCounter(): number {
+    const raw = localStorage.getItem(STORAGE_KEYS.USN_COUNTER);
+    return raw ? Number(raw) : 0;
+  }
+
+  private static setUsnCounter(value: number): void {
+    localStorage.setItem(STORAGE_KEYS.USN_COUNTER, String(value));
+  }
+
+  /** Retorna o próximo USN e incrementa o contador. */
+  public static nextUsn(): number {
+    const next = this.getUsnCounter() + 1;
+    this.setUsnCounter(next);
+    return next;
+  }
+
+  /** Retorna o USN atual (sem incrementar). */
+  public static getCurrentUsn(): number {
+    return this.getUsnCounter();
+  }
+
+  // ---- Sync Tombstones (para itens deletados no sync incremental) ----
+  // Estrutura: { decks: Tombstone[], notetypes: Tombstone[], notes: Tombstone[], cards: Tombstone[], revlog: Tombstone[], presets: Tombstone[] }
+
+  private static getSyncTombstones(): SyncTombstones {
+    const raw = localStorage.getItem(STORAGE_KEYS.SYNC_TOMBSTONES);
+    if (!raw) return { decks: [], notetypes: [], notes: [], cards: [], revlog: [], presets: [] };
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return { decks: [], notetypes: [], notes: [], cards: [], revlog: [], presets: [] };
+    }
+  }
+
+  private static saveSyncTombstones(tombstones: SyncTombstones): void {
+    localStorage.setItem(STORAGE_KEYS.SYNC_TOMBSTONES, JSON.stringify(tombstones));
+  }
+
+  private static addSyncTombstone(type: keyof SyncTombstones, tombstone: Tombstone): void {
+    const tombstones = this.getSyncTombstones();
+    tombstones[type].push(tombstone);
+    this.saveSyncTombstones(tombstones);
+  }
+
+  /** Retorna e limpa tombstones do tipo especificado com USN > sinceUsn. */
+  public static takeSyncTombstones(type: keyof SyncTombstones, sinceUsn: number): Tombstone[] {
+    const tombstones = this.getSyncTombstones();
+    const result = tombstones[type].filter((t) => t.usn > sinceUsn);
+    if (result.length > 0) {
+      tombstones[type] = tombstones[type].filter((t) => t.usn <= sinceUsn);
+      this.saveSyncTombstones(tombstones);
+    }
+    return result;
+  }
+
+  /** Limpa todos os tombstones com USN <= sinceUsn (já foram sincronizados). */
+  public static clearSyncTombstonesUpTo(sinceUsn: number): void {
+    const tombstones = this.getSyncTombstones();
+    let changed = false;
+    for (const key of Object.keys(tombstones) as Array<keyof SyncTombstones>) {
+      const before = tombstones[key].length;
+      tombstones[key] = tombstones[key].filter((t) => t.usn > sinceUsn);
+      if (tombstones[key].length !== before) changed = true;
+    }
+    if (changed) this.saveSyncTombstones(tombstones);
+  }
+
+  // ============================================================
+  // Phase 7: Helpers para obter mudanças desde um USN (sync incremental)
+  // ============================================================
+
+  /** Retorna decks com USN > sinceUsn. */
+  public static getDecksSince(sinceUsn: number): Deck[] {
+    return this.getDecks().filter((d) => (d.usn ?? 0) > sinceUsn);
+  }
+
+  /** Retorna note types com USN > sinceUsn. */
+  public static getNoteTypesSince(sinceUsn: number): NoteType[] {
+    return this.getNoteTypes().filter((nt) => (nt.usn ?? 0) > sinceUsn);
+  }
+
+  /** Retorna notas com USN > sinceUsn. */
+  public static getNotesSince(sinceUsn: number): Note[] {
+    return this.getNotes().filter((n) => (n.usn ?? 0) > sinceUsn);
+  }
+
+  /** Retorna cards com USN > sinceUsn. */
+  public static getCardsSince(sinceUsn: number): Card[] {
+    return this.getCards().filter((c) => (c.usn ?? 0) > sinceUsn);
+  }
+
+  /** Retorna revlog entries com USN > sinceUsn. */
+  public static getRevlogSince(sinceUsn: number): RevlogEntry[] {
+    return this.getRevlog().filter((r) => (r.usn ?? 0) > sinceUsn);
+  }
+
+  /** Retorna presets com USN > sinceUsn. */
+  public static getPresetsSince(sinceUsn: number): Preset[] {
+    return this.getPresets().filter((p) => (p.usn ?? 0) > sinceUsn);
+  }
+
+  /** Retorna todos os tombstones de sync com USN > sinceUsn. */
+  public static getAllSyncTombstonesSince(sinceUsn: number): Tombstone[] {
+    const tombstones = this.getSyncTombstones();
+    const all: Tombstone[] = [];
+    for (const key of Object.keys(tombstones) as Array<keyof SyncTombstones>) {
+      all.push(...tombstones[key].filter((t) => t.usn > sinceUsn));
+    }
+    return all.sort((a, b) => a.usn - b.usn);
+  }
+
+  /**
+   * Backfill: garante que todas as entidades existentes tenham USN.
+   * Deve ser chamado uma vez na inicialização ou migração.
+   * Retorna o número de entidades atualizadas.
+   */
+  public static backfillUsn(): number {
+    let updated = 0;
+    const now = Date.now();
+
+    const decks = this.getDecks().map((d) => {
+      if (!d.usn) { updated++; return { ...d, usn: this.nextUsn(), updatedAt: now }; }
+      return d;
+    });
+    if (decks.some((d) => !d.usn)) this.saveDecks(decks);
+
+    const noteTypes = this.getNoteTypes().map((nt) => {
+      if (!nt.usn) { updated++; return { ...nt, usn: this.nextUsn(), updatedAt: now }; }
+      return nt;
+    });
+    if (noteTypes.some((nt) => !nt.usn)) this.saveNoteTypes(noteTypes);
+
+    const notes = this.getNotes().map((n) => {
+      if (!n.usn) { updated++; return { ...n, usn: this.nextUsn(), updatedAt: now }; }
+      return n;
+    });
+    if (notes.some((n) => !n.usn)) this.saveNotes(notes);
+
+    const cards = this.getCards().map((c) => {
+      if (!c.usn) { updated++; return { ...c, usn: this.nextUsn(), updatedAt: now }; }
+      return c;
+    });
+    if (cards.some((c) => !c.usn)) this.saveCards(cards);
+
+    const revlog = this.getRevlog().map((r) => {
+      if (!r.usn) { updated++; return { ...r, usn: this.nextUsn() }; }
+      return r;
+    });
+    if (revlog.some((r) => !r.usn)) this.saveRevlogAll(revlog);
+
+    const presets = this.getPresets().map((p) => {
+      if (!p.usn) { updated++; return { ...p, usn: this.nextUsn(), updatedAt: now }; }
+      return p;
+    });
+    if (presets.some((p) => !p.usn)) this.savePresets(presets);
+
+    return updated;
   }
 
   /**
@@ -190,7 +366,15 @@ export class StorageService {
   }
 
   public static saveDecks(decks: Deck[]): void {
-    localStorage.setItem(STORAGE_KEYS.DECKS, JSON.stringify(decks));
+    const now = Date.now();
+    const usn = this.nextUsn();
+    const withUsn = decks.map((d) => {
+      if (d.usn) return d;
+      const createdAt = d.createdAt ?? now;
+      const updatedAt = d.updatedAt ?? now;
+      return { ...d, usn, createdAt, updatedAt };
+    });
+    localStorage.setItem(STORAGE_KEYS.DECKS, JSON.stringify(withUsn));
   }
 
   public static getNoteTypes(): NoteType[] {
@@ -226,7 +410,15 @@ export class StorageService {
   }
 
   public static saveNoteTypes(noteTypes: NoteType[]): void {
-    localStorage.setItem(STORAGE_KEYS.NOTETYPES, JSON.stringify(noteTypes));
+    const now = Date.now();
+    const usn = this.nextUsn();
+    const withUsn = noteTypes.map((nt) => {
+      if (nt.usn) return nt;
+      const createdAt = nt.createdAt ?? now;
+      const updatedAt = nt.updatedAt ?? now;
+      return { ...nt, usn, createdAt, updatedAt };
+    });
+    localStorage.setItem(STORAGE_KEYS.NOTETYPES, JSON.stringify(withUsn));
   }
 
   public static getNotes(): Note[] {
@@ -251,7 +443,16 @@ export class StorageService {
   }
 
   public static saveNotes(notes: Note[]): void {
-    localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(notes));
+    const now = Date.now();
+    const usn = this.nextUsn();
+    const withUsn = notes.map((n) => {
+      if (n.usn) return n;
+      // Preserve existing timestamps; only set to now if genuinely new (no createdAt)
+      const createdAt = n.createdAt ?? now;
+      const updatedAt = n.updatedAt ?? now;
+      return { ...n, usn, createdAt, updatedAt };
+    });
+    localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(withUsn));
   }
 
   public static getCards(): Card[] {
@@ -276,7 +477,15 @@ export class StorageService {
   }
 
   public static saveCards(cards: Card[]): void {
-    localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(cards));
+    const now = Date.now();
+    const usn = this.nextUsn();
+    const withUsn = cards.map((c) => {
+      if (c.usn) return c;
+      const createdAt = c.createdAt ?? now;
+      const updatedAt = c.updatedAt ?? now;
+      return { ...c, usn, createdAt, updatedAt };
+    });
+    localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(withUsn));
   }
 
   public static getRevlog(): RevlogEntry[] {
@@ -291,13 +500,17 @@ export class StorageService {
 
   public static saveRevlog(entry: RevlogEntry): void {
     const list = this.getRevlog();
-    list.push(entry);
+    const usn = this.nextUsn();
+    const withUsn = entry.usn ? entry : { ...entry, usn };
+    list.push(withUsn);
     localStorage.setItem(STORAGE_KEYS.REVLOG, JSON.stringify(list));
   }
 
   /** Replaces the whole review history (bulk imports build the union first). */
   public static saveRevlogAll(entries: RevlogEntry[]): void {
-    localStorage.setItem(STORAGE_KEYS.REVLOG, JSON.stringify(entries));
+    const usn = this.nextUsn();
+    const withUsn = entries.map((e) => (e.usn ? e : { ...e, usn }));
+    localStorage.setItem(STORAGE_KEYS.REVLOG, JSON.stringify(withUsn));
   }
 
   public static getFSRSSettings(): FSRSParameters {
@@ -516,6 +729,7 @@ export class StorageService {
    * Delete a note and its corresponding cards
    */
   public static deleteNote(noteId: string): void {
+    const note = this.getNotes().find((n) => n.id === noteId);
     const cardsToDelete = this.getCards().filter((c) => c.noteId === noteId).map((c) => c.id);
     const notes = this.getNotes().filter((n) => n.id !== noteId);
     const cards = this.getCards().filter((c) => c.noteId !== noteId);
@@ -524,6 +738,18 @@ export class StorageService {
     this.bumpDeletedAt();
     this.addTombstone('notes', [noteId]);
     if (cardsToDelete.length > 0) this.addTombstone('cards', cardsToDelete);
+
+    // Sync tombstones (Phase 7)
+    const usn = this.getCurrentUsn(); // USN já foi incrementado pelos saves acima
+    const deletedAt = Date.now();
+    if (note) {
+      this.addSyncTombstone('notes', { type: 'note', id: noteId, guid: note.guid, usn, deletedAt });
+    }
+    if (cardsToDelete.length > 0) {
+      for (const cardId of cardsToDelete) {
+        this.addSyncTombstone('cards', { type: 'card', id: cardId, usn, deletedAt });
+      }
+    }
   }
 
   /**
@@ -560,6 +786,20 @@ export class StorageService {
     this.addTombstone('decks', [...deckIdsToDelete]);
     if (notesToDelete.length > 0) this.addTombstone('notes', notesToDelete);
     if (cardsToDelete.length > 0) this.addTombstone('cards', cardsToDelete);
+
+    // Sync tombstones (Phase 7)
+    const usn = this.getCurrentUsn();
+    const deletedAt = Date.now();
+    for (const did of deckIdsToDelete) {
+      this.addSyncTombstone('decks', { type: 'deck', id: did, usn, deletedAt });
+    }
+    for (const noteId of notesToDelete) {
+      const note = this.getNotes().find((n) => n.id === noteId);
+      this.addSyncTombstone('notes', { type: 'note', id: noteId, guid: note?.guid, usn, deletedAt });
+    }
+    for (const cardId of cardsToDelete) {
+      this.addSyncTombstone('cards', { type: 'card', id: cardId, usn, deletedAt });
+    }
   }
 
   // ---- Runora-style Daily Limits ----
@@ -993,7 +1233,15 @@ export class StorageService {
   }
 
   public static savePresets(presets: Preset[]): void {
-    localStorage.setItem(STORAGE_KEYS.PRESETS, JSON.stringify(presets));
+    const now = Date.now();
+    const usn = this.nextUsn();
+    const withUsn = presets.map((p) => {
+      if (p.usn) return p;
+      const createdAt = p.createdAt ?? now;
+      const updatedAt = p.updatedAt ?? now;
+      return { ...p, usn, createdAt, updatedAt };
+    });
+    localStorage.setItem(STORAGE_KEYS.PRESETS, JSON.stringify(withUsn));
   }
 
   public static getPresetById(presetId: string | null | undefined): Preset | null {
@@ -1019,6 +1267,11 @@ export class StorageService {
         : d
     );
     this.saveDecks(decks);
+
+    // Sync tombstone (Phase 7)
+    const usn = this.getCurrentUsn();
+    const deletedAt = Date.now();
+    this.addSyncTombstone('presets', { type: 'preset', id: presetId, usn, deletedAt });
   }
 
   /** Create an empty preset with the app defaults (like Runora's "Add" preset option). */
