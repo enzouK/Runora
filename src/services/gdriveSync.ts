@@ -40,12 +40,34 @@ import {
   computeSnapshot,
   diffSnapshots,
   getSyncBase,
+  hashValue,
   localSyncContent,
   setSyncBase,
+  SETTINGS_KEYS,
   type SyncItemInfo,
   type SyncDiff,
   type SyncSnapshot,
 } from './syncItems';
+import {
+  applyExtrasPayload,
+  buildExtrasPayload,
+  decideSyncSide,
+  hashExtras,
+  refreshThemeInDom,
+  type SyncAddonsIndex,
+  type SyncExtrasFile,
+  type SyncExtrasPayload,
+  type SyncSideBase,
+} from './syncExtras';
+import {
+  computeAddonState,
+  exportAddonPackage,
+  exportAddonPackageBlob,
+  importAddonPackage,
+  listAddons,
+  removeAddon,
+  setAddonEnabled,
+} from './addonStorage';
 import {
   DEFAULT_AUTO_SYNC_MINUTES,
   MAX_AUTO_SYNC_MINUTES,
@@ -70,6 +92,9 @@ const LS = {
   DEVICE_ID: 'runora_device_id',
   LAST_SYNC: 'runora_last_sync',
   RUNNING: 'runora_sync_running',
+  /** Fase 5: base (estado comum) dos extras e das extensões. */
+  EXTRAS_BASE: 'runora_sync_extras_base',
+  ADDONS_BASE: 'runora_sync_addons_base',
 };
 
 /**
@@ -116,6 +141,12 @@ export const DRIVE_FILES = {
   COLPKG: 'runora-sync.colpkg',
   META: 'runora-sync-meta.json',
   LOCK: 'runora-sync.lock.json',
+  /** Fase 5: preferências + temas. */
+  EXTRAS: 'runora-sync-extras.json',
+  /** Fase 5: índice das extensões. */
+  ADDONS_INDEX: 'runora-sync-addons.json',
+  /** Fase 5: as extensões completas (código + config). */
+  ADDONS_ZIP: 'runora-sync-addons.zip',
 } as const;
 
 /** All sync files live inside this folder at the root of the user's Drive. */
@@ -180,19 +211,29 @@ export interface SyncProgressState {
   /** Nome do dispositivo dono do backup (fase download). */
   deviceName?: string;
   /** Contador ao vivo da fase 'applying' (e da mídia na preparação). */
-  part?: 'notes' | 'cards' | 'decks' | 'deletes' | 'settings' | 'media';
+  part?: 'notes' | 'cards' | 'decks' | 'deletes' | 'settings' | 'media' | 'addons';
   done?: number;
   total?: number;
   /**
-   * Quantos itens (decks/notas/cards/mídia) estão sendo baixados ou enviados.
-   * O contador conta ITENS — nunca bytes.
+   * Quantos itens (decks/notas/cards/mídia/extensões) estão sendo baixados
+   * ou enviados. O contador conta ITENS — nunca bytes.
    */
   counts?: {
     decks?: number;
     notes?: number;
     cards?: number;
     media?: number;
+    addons?: number;
+    settings?: number;
   };
+}
+
+/** Resultado da parte "coleção" do sync (antes dos extras da Fase 5). */
+interface SyncCollectionOutcome extends SyncResult {
+  /** O tema daqui foi mantido (disputa resolvida com "ficar com o daqui"). */
+  keepLocalTheme?: boolean;
+  /** As preferências daqui foram mantidas. */
+  keepLocalPrefs?: boolean;
 }
 
 export interface SyncItemsConflict {
@@ -815,9 +856,10 @@ export class DriveSyncService {
       const token = await this.ensureToken();
 
       progress('Verificando trava de sincronização no Drive…');
-      itemProgress({ phase: 'download' });
+      itemProgress({ phase: 'comparing' });
       await acquireLock(token);
       try {
+        const outcome = await (async (): Promise<SyncCollectionOutcome> => {
         const metaFile = await findFile(token, DRIVE_FILES.META);
         const remoteMeta = metaFile
           ? (JSON.parse(await (await downloadFile(token, metaFile.id)).text()) as SyncMeta)
@@ -844,7 +886,6 @@ export class DriveSyncService {
           // Disputa pendente: não sobe nada para o Drive antes da decisão.
           const pending = this.getPendingConflict();
           if (pending) {
-            itemProgress(null);
             return {
               action: 'none',
               message:
@@ -857,7 +898,8 @@ export class DriveSyncService {
             itemProgress({ phase: 'preparing' });
             return await this.uploadBackup(token, progress, itemProgress);
           }
-          itemProgress(null);
+          // o painel fica de pé: as preferências/extensões ainda serão
+          // comparadas nas próximas etapas (Fase 5)
           return { action: 'none', message: 'Tudo sincronizado — nenhuma mudança desde o último sync.' };
         }
 
@@ -909,7 +951,9 @@ export class DriveSyncService {
             }
             if (choice === 'keep') {
               itemProgress({ phase: 'preparing' });
-              return await this.uploadBackup(token, progress, itemProgress);
+              const kept = await this.uploadBackup(token, progress, itemProgress);
+              // o usuário ficou com a versão daqui — as preferências daqui valem
+              return { ...kept, keepLocalTheme: true, keepLocalPrefs: true };
             }
             return { action: 'cancelled', message: 'Sincronização cancelada. Nada foi alterado.' };
           }
@@ -940,6 +984,9 @@ export class DriveSyncService {
           return {
             action: 'none',
             message: parts.join(' '),
+            // tema/preferências ficaram em disputa → os extras não mexem neles
+            keepLocalTheme: true,
+            keepLocalPrefs: true,
           };
         }
 
@@ -973,6 +1020,9 @@ export class DriveSyncService {
                 applied.notes + applied.cards > 0
                   ? `${msg} Atualizado do Drive: ${summarizeApply(applied)}.`
                   : msg,
+              // tema/preferências ficaram em disputa → os extras não mexem neles
+              keepLocalTheme: true,
+              keepLocalPrefs: true,
             };
           }
           choice =
@@ -1001,14 +1051,346 @@ export class DriveSyncService {
           applyKeys,
           itemProgress
         );
-        return result;
+        return {
+          ...result,
+          // se a disputa foi resolvida com "ficar com o daqui", os extras
+          // (preferências/temas) não podem sobrescrever a escolha
+          keepLocalTheme:
+            choice === 'local' && conflicts.some((c) => c.key === SETTINGS_KEYS.theme),
+          keepLocalPrefs:
+            choice === 'local' && conflicts.some((c) => c.key === SETTINGS_KEYS.prefs),
+        };
+        })();
+        if (outcome.action === 'cancelled') return outcome;
+
+        // ── Fase 5: preferências, temas e extensões também vão para o Drive ──
+        const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {
+          keepTheme: outcome.keepLocalTheme,
+          keepPrefs: outcome.keepLocalPrefs,
+        });
+        return extrasMsg ? { ...outcome, message: `${outcome.message} ${extrasMsg}` } : outcome;
       } finally {
         await releaseLock(token);
       }
     } finally {
       itemProgress(null);
       localStorage.removeItem(LS.RUNNING);
+      // aviso para quem observa (o badge do botão Sync precisa recalcular:
+      // um sync pode ter apagado a pendência pelas costas)
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        try {
+          window.dispatchEvent(new CustomEvent('runora:synced'));
+        } catch {
+          // ignora: ambientes sem CustomEvent
+        }
+      }
     }
+  }
+
+  /* ── Fase 5: preferências, temas e extensões no Drive ─────────────────── */
+
+  /**
+   * Sincroniza os "extras" do Drive: preferências + temas (runora-sync-extras.json)
+   * e as extensões (runora-sync-addons.json + .zip).
+   *
+   * A regra é a mesma do sync item a item: quem mudou em relação à base
+   * comum leva. Num aparelho novo (sem base), o Drive ganha — assim o
+   * aparelho fica igual ao outro com um clique só.
+   */
+  private static async syncExtrasAndAddons(
+    token: string,
+    progress: (m: string) => void,
+    itemProgress: (p: SyncProgressState | null) => void,
+    opts?: { keepTheme?: boolean; keepPrefs?: boolean }
+  ): Promise<string | null> {
+    const parts: string[] = [];
+
+    // ── 1) preferências + temas ──
+    try {
+      itemProgress({ phase: 'comparing' });
+      const local = buildExtrasPayload();
+      const localHash = hashExtras(local);
+      const base = this.getSideBase(LS.EXTRAS_BASE);
+      const file = await findFile(token, DRIVE_FILES.EXTRAS);
+      let remote: SyncExtrasFile | null = null;
+      if (file) {
+        try {
+          remote = JSON.parse(await (await downloadFile(token, file.id)).text()) as SyncExtrasFile;
+        } catch {
+          remote = null;
+        }
+      }
+      const remotePayload: SyncExtrasPayload | null = remote
+        ? {
+            prefs: remote.prefs ?? {},
+            theme: remote.theme,
+            colorTheme: remote.colorTheme,
+          }
+        : null;
+      const remoteHash = remotePayload ? hashExtras(remotePayload) : null;
+
+      const side = decideSyncSide(base?.hash ?? null, localHash, remoteHash);
+      if (side === 'remote' && remotePayload) {
+        itemProgress({ phase: 'applying', part: 'settings', done: 2, total: 2, counts: { settings: 2 } });
+        applyExtrasPayload(remotePayload, { keepTheme: opts?.keepTheme, keepPrefs: opts?.keepPrefs });
+        refreshThemeInDom(); // o tema muda a tela na hora
+        // o tema/preferências agora são os mesmos dos dois lados → a base
+        // precisa saber disso (senão o próximo sync acha que mudou aqui)
+        this.refreshBaseSettings();
+        this.setSideBase(LS.EXTRAS_BASE, {
+          hash: remoteHash!,
+          uploadedAt: remote?.uploadedAt ?? Date.now(),
+        });
+        parts.push('Preferências e temas do Drive aplicados.');
+      } else if (side === 'local') {
+        itemProgress({ phase: 'upload', counts: { settings: 2 } });
+        await this.uploadExtras(token, local);
+        this.setSideBase(LS.EXTRAS_BASE, { hash: localHash, uploadedAt: Date.now() });
+        parts.push('Preferências e temas enviados ao Drive.');
+      }
+    } catch (e) {
+      console.warn('Não foi possível sincronizar as preferências:', e);
+    }
+
+    // ── 2) extensões ──
+    try {
+      itemProgress({ phase: 'comparing' });
+      const localState = await computeAddonState();
+      const base = this.getSideBase(LS.ADDONS_BASE);
+      const indexFile = await findFile(token, DRIVE_FILES.ADDONS_INDEX);
+      let remoteIndex: SyncAddonsIndex | null = null;
+      if (indexFile) {
+        try {
+          remoteIndex = JSON.parse(
+            await (await downloadFile(token, indexFile.id)).text()
+          ) as SyncAddonsIndex;
+        } catch {
+          remoteIndex = null;
+        }
+      }
+      const remoteHash = remoteIndex?.hash ?? null;
+
+      const side = decideSyncSide(base?.hash ?? null, localState.hash, remoteHash);
+      if (side === 'remote' && remoteIndex) {
+        const r = await this.installRemoteAddons(token, remoteIndex, progress, itemProgress);
+        if (r.ok) {
+          this.setSideBase(LS.ADDONS_BASE, {
+            hash: remoteHash!,
+            uploadedAt: remoteIndex.uploadedAt ?? Date.now(),
+          });
+        }
+        if (r.installed > 0) {
+          parts.push(
+            r.installed === 1
+              ? '1 extensão do Drive instalada.'
+              : `${r.installed} extensões do Drive instaladas.`
+          );
+        }
+        if (r.removed > 0) {
+          parts.push(
+            r.removed === 1
+              ? '1 extensão removida (não existe mais no Drive).'
+              : `${r.removed} extensões removidas (não existem mais no Drive).`
+          );
+        }
+      } else if (side === 'local') {
+        const uploaded = await this.uploadAddons(token, localState, progress, itemProgress);
+        this.setSideBase(LS.ADDONS_BASE, { hash: localState.hash, uploadedAt: Date.now() });
+        if (uploaded > 0) {
+          parts.push(
+            uploaded === 1
+              ? '1 extensão enviada ao Drive.'
+              : `${uploaded} extensões enviadas ao Drive.`
+          );
+        } else if (localState.addons.length === 0) {
+          parts.push('Extensões removidas (não há mais nenhuma aqui).');
+        }
+      }
+    } catch (e) {
+      console.warn('Não foi possível sincronizar as extensões:', e);
+    }
+
+    return parts.length > 0 ? parts.join(' ') : null;
+  }
+
+  /** Base (hash + quando) de um arquivo do Drive (extras ou extensões). */
+  private static getSideBase(key: string): SyncSideBase | null {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as SyncSideBase;
+      if (!parsed || typeof parsed.hash !== 'string') return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private static setSideBase(key: string, base: SyncSideBase): void {
+    localStorage.setItem(key, JSON.stringify(base));
+  }
+
+  /**
+   * Depois de aplicar tema/preferências que vieram do Drive, a "base" da
+   * coleção precisa refletir o novo estado — senão o próximo sync acha que
+   * mudou aqui e reenvia a coleção inteira à toa.
+   */
+  private static refreshBaseSettings(): void {
+    const base = getSyncBase();
+    if (!base) return;
+    const local = computeSnapshot(
+      localSyncContent(),
+      this.getDeviceId(),
+      getDeviceName()
+    );
+    const items = { ...base.items };
+    for (const key of [SETTINGS_KEYS.prefs, SETTINGS_KEYS.theme]) {
+      const state = local.items[key];
+      if (state) items[key] = state;
+    }
+    setSyncBase({ ...base, items });
+  }
+
+  /** Sobe as preferências + temas para o Drive. */
+  private static async uploadExtras(token: string, payload: SyncExtrasPayload): Promise<void> {
+    const file: SyncExtrasFile = {
+      app: 'runora',
+      version: 1,
+      uploadedAt: Date.now(),
+      deviceId: this.getDeviceId(),
+      deviceName: getDeviceName(),
+      ...payload,
+    };
+    const existing = await findFile(token, DRIVE_FILES.EXTRAS);
+    await uploadMultipart(
+      token,
+      DRIVE_FILES.EXTRAS,
+      new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }),
+      existing?.id
+    );
+  }
+
+  /** Sobe as extensões (índice + zip) para o Drive. */
+  private static async uploadAddons(
+    token: string,
+    state: { addons: SyncAddonsIndex['addons']; hash: string },
+    progress: (m: string) => void,
+    itemProgress: (p: SyncProgressState | null) => void
+  ): Promise<number> {
+    // o zip vai primeiro; o índice (que aponta para o zip) é o último
+    if (state.addons.length > 0) {
+      progress('Enviando as extensões para o Drive…');
+      itemProgress({ phase: 'upload', counts: { addons: state.addons.length } });
+
+      const pkg = await exportAddonPackage();
+      if (pkg) {
+        const zipBlob = new Blob([pkg.bytes.slice()], { type: 'application/zip' });
+        const existingZip = await findFile(token, DRIVE_FILES.ADDONS_ZIP);
+        await uploadResumable(token, DRIVE_FILES.ADDONS_ZIP, zipBlob, existingZip?.id);
+      }
+    } else {
+      // conjunto vazio subindo: a exclusão (índice vazio) também é um envio
+      itemProgress({ phase: 'upload', counts: {} });
+    }
+
+    const index: SyncAddonsIndex = {
+      app: 'runora',
+      version: 1,
+      uploadedAt: Date.now(),
+      deviceId: this.getDeviceId(),
+      deviceName: getDeviceName(),
+      addons: state.addons,
+      hash: state.hash,
+    };
+    const existingIndex = await findFile(token, DRIVE_FILES.ADDONS_INDEX);
+    await uploadMultipart(
+      token,
+      DRIVE_FILES.ADDONS_INDEX,
+      new Blob([JSON.stringify(index, null, 2)], { type: 'application/json' }),
+      existingIndex?.id
+    );
+
+    // sem nenhuma extensão: o índice vazio já avisa o outro aparelho
+    return state.addons.length;
+  }
+
+  /**
+   * Baixa as extensões do Drive e instala (guarda as atuais em backup local
+   * antes de qualquer substituição).
+   *
+   * O Drive manda no conjunto todo: as extensões que existem aqui e não lá
+   * são removidas — assim o aparelho fica igual ao outro.
+   */
+  private static async installRemoteAddons(
+    token: string,
+    index: SyncAddonsIndex,
+    progress: (m: string) => void,
+    itemProgress: (p: SyncProgressState | null) => void
+  ): Promise<{ installed: number; removed: number; ok: boolean }> {
+    const remoteIds = new Set(index.addons.map((a) => a.id));
+
+    // Segurança: as extensões atuais ficam guardadas antes de trocar
+    try {
+      const backup = await exportAddonPackageBlob();
+      if (backup) await saveLocalBackup(`addons-antes-do-sync-${Date.now()}`, backup);
+    } catch (e) {
+      console.warn('Não foi possível salvar o backup das extensões (seguindo mesmo assim):', e);
+    }
+
+    let installed = 0;
+
+    if (index.addons.length > 0) {
+      progress('Baixando as extensões do Drive…');
+      itemProgress({ phase: 'download', counts: { addons: index.addons.length } });
+
+      const zipFile = await findFile(token, DRIVE_FILES.ADDONS_ZIP);
+      if (!zipFile) return { installed: 0, removed: 0, ok: false };
+      const bytes = new Uint8Array(await (await downloadFile(token, zipFile.id)).arrayBuffer());
+
+      const res = await importAddonPackage(bytes);
+      if (!res.ok) {
+        console.warn('Não foi possível instalar as extensões do Drive:', res.message);
+        return { installed: 0, removed: 0, ok: false };
+      }
+      installed = res.count;
+
+      // o estado ligado/desligado vem no índice
+      for (let i = 0; i < index.addons.length; i++) {
+        const addon = index.addons[i];
+        try {
+          itemProgress({
+            phase: 'applying',
+            part: 'addons',
+            done: i + 1,
+            total: index.addons.length,
+            counts: { addons: index.addons.length },
+          });
+          await setAddonEnabled(addon.id, addon.enabled);
+        } catch {
+          // ignora: o addon pode não ter sido instalado
+        }
+      }
+    }
+
+    // as extensões que só existem aqui saem (o Drive manda no conjunto)
+    let removed = 0;
+    try {
+      for (const addon of await listAddons()) {
+        if (remoteIds.has(addon.id)) continue;
+        await removeAddon(addon.id);
+        removed++;
+      }
+    } catch (e) {
+      console.warn('Não foi possível remover as extensões que não estão no Drive:', e);
+    }
+
+    try {
+      const { AddonSystem } = await import('./addonSystem');
+      await AddonSystem.refresh();
+    } catch {
+      // ignora: em ambiente sem addons
+    }
+    return { installed, removed, ok: true };
   }
 
   /** Aplica os itens remotos no dispositivo e devolve o resumo. */
@@ -1201,6 +1583,28 @@ export class DriveSyncService {
     return deleted;
   }
 
+  public static hasPendingLocalChanges(): boolean {
+    const base = getSyncBase();
+    if (!base) return this.computeLocalModifiedAt() > 0;
+    // atalho: nada foi tocado depois do último sync → não há o que enviar
+    if (this.computeLocalModifiedAt() <= base.updatedAt) {
+      // …exceto o que muda SEM tocar a coleção: preferências, tema e FSRS
+      // (são itens do snapshot, mas não têm updatedAt de item).
+      if (this.hasExtrasLocalChanges()) return true;
+      return this.hasSettingsItemChanges(base);
+    }
+    const local = computeSnapshot(
+      localSyncContent(),
+      this.getDeviceId(),
+      getDeviceName()
+    );
+    if (this.hasLocalChanges(base, local)) return true;
+    // a coleção pode ter sido tocada sem mudar de verdade (reordenar, etc.):
+    // as configurações ainda podem ter mudado junto
+    if (this.hasExtrasLocalChanges()) return true;
+    return false;
+  }
+
   /** Houve mudança local desde o último sync? */
   private static hasLocalChanges(base: SyncSnapshot | null, local: SyncSnapshot): boolean {
     if (!base) return this.computeLocalModifiedAt() > 0;
@@ -1212,22 +1616,45 @@ export class DriveSyncService {
   }
 
   /**
-   * Há mudanças aqui que ainda NÃO foram enviadas ao Drive?
-   * (a base é o estado comum do último sync — o que já foi para o Drive)
-   *
-   * É o que acende o botão Sync em amarelo.
+   * As preferências + tema deste aparelho mudaram desde o último sync?
+   * (mesma comparação que o sync das preferências faz, mas barata — sem I/O)
    */
-  public static hasPendingLocalChanges(): boolean {
-    const base = getSyncBase();
-    if (!base) return this.computeLocalModifiedAt() > 0;
-    // atalho: nada foi tocado depois do último sync → não há o que enviar
-    if (this.computeLocalModifiedAt() <= base.updatedAt) return false;
-    const local = computeSnapshot(
-      localSyncContent(),
-      this.getDeviceId(),
-      getDeviceName()
-    );
-    return this.hasLocalChanges(base, local);
+  public static hasExtrasLocalChanges(): boolean {
+    const base = this.getSideBase(LS.EXTRAS_BASE);
+    if (!base) return false;
+    return hashExtras(buildExtrasPayload()) !== base.hash;
+  }
+
+  /**
+   * FSRS / rollover / tema são itens do snapshot, mas mudar o valor NÃO
+   * atualiza o updatedAt da coleção — este atalho compara só o hash deles.
+   */
+  private static hasSettingsItemChanges(base: SyncSnapshot): boolean {
+    const check = (key: string, value: unknown) => {
+      const stored = base.items[key]?.hash;
+      return stored !== undefined && stored !== hashValue(value);
+    };
+    if (check(SETTINGS_KEYS.fsrs, StorageService.getFSRSSettings())) return true;
+    if (check(SETTINGS_KEYS.prefs, { rolloverHour: StorageService.getRolloverHour() })) return true;
+    if (
+      check(SETTINGS_KEYS.theme, {
+        theme: StorageService.getTheme(),
+        colorTheme: StorageService.getColorTheme(),
+      })
+    )
+      return true;
+    return false;
+  }
+
+  /**
+   * As extensões instaladas/config desligadas mudaram desde o último sync?
+   * (o estado delas mora em arquivos — do lado de fora da coleção; I/O suave)
+   */
+  public static async hasPendingAddonChanges(): Promise<boolean> {
+    const base = this.getSideBase(LS.ADDONS_BASE);
+    if (!base) return false;
+    const { hash } = await computeAddonState();
+    return hash !== base.hash;
   }
 
   /**

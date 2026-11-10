@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ConflictChoice,
   DriveSyncService,
@@ -63,10 +63,39 @@ export function useDriveSync(onDataChanged: () => void) {
   /**
    * Há mudanças aqui que ainda não foram para o Drive? (acende o botão
    * Sync em amarelo). Sem conta conectada não faz sentido mostrar.
+   *
+   * Configurações e extensões não mexem na coleção — o estado delas entra
+   * junto (extensões por I/O, por isso assíncrono).
    */
-  const refreshDirty = useCallback(() => {
-    setDirty(!!DriveSyncService.getAccount() && DriveSyncService.hasPendingLocalChanges());
+  const refreshDirty = useCallback(async () => {
+    if (!DriveSyncService.getAccount()) {
+      setDirty(false);
+      return;
+    }
+    let next = DriveSyncService.hasPendingLocalChanges();
+    if (!next) {
+      try {
+        next = await DriveSyncService.hasPendingAddonChanges();
+      } catch {
+        // sem extensões acessíveis → mantém o que a coleção disse
+      }
+    }
+    setDirty(next);
   }, []);
+
+  // configurar preferências/tema/FSRS ou mexer nas extensões não muda os
+  // dados da coleção: sem isto o botão amarelo não reacendia na hora
+  useEffect(() => {
+    const onChange = () => void refreshDirty();
+    window.addEventListener('runora:settings-changed', onChange);
+    window.addEventListener('runora:addons-changed', onChange);
+    window.addEventListener('runora:synced', onChange);
+    return () => {
+      window.removeEventListener('runora:settings-changed', onChange);
+      window.removeEventListener('runora:addons-changed', onChange);
+      window.removeEventListener('runora:synced', onChange);
+    };
+  }, [refreshDirty]);
 
   /**
    * Roda a sincronização.
@@ -103,7 +132,7 @@ export function useDriveSync(onDataChanged: () => void) {
         });
         setLastSync(DriveSyncService.getLastSync());
         refreshPending();
-        refreshDirty();
+        void refreshDirty();
         await refreshRemote();
         if (res.action === 'download') onDataChanged();
         return res;
@@ -113,7 +142,7 @@ export function useDriveSync(onDataChanged: () => void) {
         refreshRemote().catch(() => {});
         // a sessão pode ter expirado (o token é apagado) → volta ao estado normal
         setAccount(DriveSyncService.getAccount());
-        refreshDirty();
+        void refreshDirty();
         // o erro volta para a UI — sem isso o clique no Sync parece não fazer nada
         return { action: 'cancelled', message, error: true };
       } finally {
@@ -132,7 +161,7 @@ export function useDriveSync(onDataChanged: () => void) {
       const email = await DriveSyncService.connect();
       setAccount(DriveSyncService.getAccount());
       setStatus({ type: 'success', text: `Conta Google conectada: ${email}` });
-      refreshDirty();
+      void refreshDirty();
       await refreshRemote();
     } catch (e) {
       setStatus({ type: 'error', text: (e as Error).message });

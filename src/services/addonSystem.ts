@@ -101,6 +101,14 @@ export class AddonSystem {
       console.error('Failed to load addons from Addons folder:', err);
     }
     await this.reloadScripts();
+    // avisa a tela (ex.: o sync instalou extensões novas)
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      try {
+        window.dispatchEvent(new CustomEvent('runora:addons-changed'));
+      } catch {
+        // ignora: ambientes sem CustomEvent
+      }
+    }
   }
 
   private static initPromise: Promise<string | null> | null = null;

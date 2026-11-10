@@ -87,6 +87,26 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // O timer do autosync é recriado quando a configuração dele muda — inclusive
+  // quando a configuração chega do Drive (evento de preferência do Sync).
+  const [autoSyncTick, setAutoSyncTick] = useState(0);
+  const autoSyncSigRef = useRef<string | null>(null);
+  useEffect(() => {
+    const check = () => {
+      const sig = `${DriveSyncService.getAutoSync()}|${DriveSyncService.getAutoSyncIntervalMinutes()}`;
+      if (autoSyncSigRef.current !== sig) {
+        autoSyncSigRef.current = sig;
+        setAutoSyncTick((t) => t + 1);
+      }
+    };
+    check();
+    window.addEventListener('runora:settings-changed', check);
+    return () => {
+      window.removeEventListener('runora:settings-changed', check);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!DriveSyncService.getAutoSync()) return;
     // o intervalo é configurável nas Configurações (em minutos ou horas)
@@ -97,15 +117,15 @@ export default function App() {
       }
     }, minutes * 60 * 1000);
     return () => window.clearInterval(id);
-    // o timer é recriado quando o intervalo muda (refreshKey muda nas Configurações)
+    // o timer é recriado quando a configuração do autosync muda
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]);
+  }, [refreshKey, autoSyncTick]);
 
   // Header Sync button: runs a sync right away and reports the result as a toast
   const [syncProgress, setSyncProgress] = useState<SyncProgressState | null>(null);
   const handleSyncClick = useCallback(() => {
-    // mostra na hora que o sync começou (fica até o sync terminar)
-    showToast('Sincronizando…', 0);
+    // o "Sincronizando…" fica apenas no botão do cabeçalho (e o painel de
+    // progresso abre junto — nada de texto repetido no rodapé)
     void sync.runSync({ manual: true, onItemProgress: setSyncProgress }).then((res) => {
       setSyncProgress(null);
       if (!res) return;
@@ -120,7 +140,6 @@ export default function App() {
     sync.refreshDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
-
   useEffect(() => {
     // Backfill de identidade: notas antigas da base (sem GUID) recebem um
     // na primeira execução — a partir daqui toda nota tem seu "RG".

@@ -6,6 +6,8 @@
 import JSZip from 'jszip';
 import type { AddonConfigField, AddonManifest } from './addonSystem';
 import { getAddonFs, normalizeRel, fromBase64 } from './addonFs';
+import { hashValue } from './syncItems';
+import { hashAddonEntries, type SyncAddonEntry } from './syncExtras';
 
 export interface AddonSettings {
   addons: Record<string, { enabled: boolean }>;
@@ -31,10 +33,24 @@ export async function writeSettings(settings: AddonSettings): Promise<void> {
   await fs.write(SETTINGS_PATH, JSON.stringify(settings, null, 2));
 }
 
+/**
+ * Aviso rápido de que o estado das extensões mudou (o botão Sync observa —
+ * configurar/desligar uma extensão não mexe na coleção nem carrega a tela).
+ */
+function notifyAddonsChanged(): void {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  try {
+    window.dispatchEvent(new CustomEvent('runora:addons-changed'));
+  } catch {
+    // ignora: ambientes sem CustomEvent
+  }
+}
+
 export async function setAddonEnabled(id: string, enabled: boolean): Promise<void> {
   const settings = await readSettings();
   settings.addons[id] = { enabled };
   await writeSettings(settings);
+  notifyAddonsChanged();
 }
 
 export async function removeAddon(id: string): Promise<void> {
@@ -45,6 +61,7 @@ export async function removeAddon(id: string): Promise<void> {
     delete settings.addons[id];
     await writeSettings(settings);
   }
+  notifyAddonsChanged();
 }
 
 /* ── Per-addon config (Addons/<id>/config.json) ───────────────────────── */
@@ -89,6 +106,7 @@ export async function readAddonConfig(id: string): Promise<Record<string, unknow
 export async function writeAddonConfig(id: string, config: Record<string, unknown>): Promise<void> {
   const fs = await getAddonFs();
   await fs.write(`${id}/config.json`, JSON.stringify(config, null, 2));
+  notifyAddonsChanged();
 }
 
 /* ── Per-addon data (Addons/<id>/data.json) ───────────────────────────── */
@@ -108,6 +126,7 @@ export async function readAddonData(id: string): Promise<Record<string, unknown>
 export async function writeAddonData(id: string, data: Record<string, unknown>): Promise<void> {
   const fs = await getAddonFs();
   await fs.write(`${id}/data.json`, JSON.stringify(data, null, 2));
+  notifyAddonsChanged();
 }
 
 function sanitizeAddonId(id: unknown): string | null {
@@ -180,6 +199,99 @@ export interface ImportAddonResult {
   replaced?: boolean;
   manifest?: AddonManifest;
   manifests?: AddonManifest[];
+}
+
+/* ── Estado das extensões (Fase 5 do sync: extensões vão para o Drive) ──── */
+
+/**
+ * Calcula o "estado" das extensões instaladas: uma entrada por extensão com
+ * o hash do conteúdo (código + config). O mesmo cálculo roda nos dois
+ * aparelhos, então os hashes são comparáveis.
+ */
+export async function computeAddonState(): Promise<{
+  addons: SyncAddonEntry[];
+  hash: string;
+}> {
+  const fs = await getAddonFs();
+  await fs.ensureAddonsDir();
+  const settings = await readSettings();
+  const dirs = await fs.listAddonDirs();
+  const entries: SyncAddonEntry[] = [];
+
+  for (const dir of dirs) {
+    const manifestEntry = await fs.read(`${dir}/manifest.json`, 'utf8');
+    if (!manifestEntry) continue;
+    let manifest: AddonManifest | null = null;
+    try {
+      manifest = validateManifest(JSON.parse(manifestEntry.data));
+    } catch {
+      manifest = null;
+    }
+    if (!manifest) continue;
+
+    const files = await fs.listFiles(dir);
+    const parts: string[] = [];
+    for (const rel of files) {
+      const lower = rel.toLowerCase();
+      const isText = TEXT_EXT.some((ext) => lower.endsWith(ext));
+      const entry = await fs.read(`${dir}/${rel}`, isText ? 'utf8' : 'base64');
+      if (!entry) continue;
+      parts.push(`${rel}:${hashValue(entry.data)}`);
+    }
+    parts.sort();
+
+    entries.push({
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      enabled: settings.addons[manifest.id]?.enabled ?? manifest.enabled ?? true,
+      files: files.length,
+      hash: hashValue(parts.join('|')),
+    });
+  }
+
+  entries.sort((a, b) => a.id.localeCompare(b.id));
+  return { addons: entries, hash: hashAddonEntries(entries) };
+}
+
+/**
+ * Empacota TODAS as extensões instaladas (código + config + data) num zip
+ * pronto para ir para o Drive. `null` quando não há nenhuma extensão.
+ */
+export async function exportAddonPackage(): Promise<{
+  bytes: Uint8Array;
+  count: number;
+  names: string[];
+} | null> {
+  const ids = (await listAddons()).map((a) => a.id);
+  if (ids.length === 0) return null;
+  const res = await exportAddons(ids);
+  return { bytes: res.bytes, count: res.count, names: res.names };
+}
+
+/** O mesmo pacote, como Blob — usado no backup local antes de substituir. */
+export async function exportAddonPackageBlob(): Promise<Blob | null> {
+  const pkg = await exportAddonPackage();
+  if (!pkg) return null;
+  return new Blob([pkg.bytes.slice()], { type: 'application/zip' });
+}
+
+/**
+ * Instala um pacote de extensões vindo do Drive (substitui as que têm o
+ * mesmo id). O chamador deve guardar um backup local antes.
+ */
+export async function importAddonPackage(bytes: Uint8Array): Promise<{
+  ok: boolean;
+  message: string;
+  count: number;
+}> {
+  const file = new File([bytes.slice()], 'runora-sync-addons.zip', { type: 'application/zip' });
+  const res = await importAddonFile(file, true);
+  return {
+    ok: res.ok,
+    message: res.message,
+    count: res.manifests?.length ?? (res.manifest ? 1 : 0),
+  };
 }
 
 interface ParsedAddon {

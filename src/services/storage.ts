@@ -22,6 +22,19 @@ const STORAGE_KEYS = {
   COLOR_THEME: 'runora_color_theme',
 };
 
+/**
+ * Aviso rápido de que uma configuração do app mudou (o botão Sync observa —
+ * preferências/tema/FSRS não mexem na coleção, então nada mais indica isso).
+ */
+export function dispatchSettingsChanged(): void {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  try {
+    window.dispatchEvent(new CustomEvent('runora:settings-changed'));
+  } catch {
+    // ignora: ambientes sem CustomEvent
+  }
+}
+
 // Bump this when INITIAL_* sample data changes meaningfully,
 // so existing users receive the new defaults once.
 // v3: removed demo decks/cards; new collections ship Básico + Cloze + Shadowing only.
@@ -306,6 +319,7 @@ export class StorageService {
 
   public static saveFSRSSettings(params: FSRSParameters): void {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(params));
+    dispatchSettingsChanged();
   }
 
   public static getTheme(): 'light' | 'dark' | 'system' {
@@ -316,6 +330,7 @@ export class StorageService {
 
   public static setTheme(theme: 'light' | 'dark' | 'system'): void {
     localStorage.setItem(STORAGE_KEYS.THEME, theme);
+    dispatchSettingsChanged();
   }
 
   public static getColorTheme(): string {
@@ -324,6 +339,7 @@ export class StorageService {
 
   public static setColorTheme(theme: string): void {
     localStorage.setItem(STORAGE_KEYS.COLOR_THEME, theme);
+    dispatchSettingsChanged();
   }
 
   /**
@@ -564,6 +580,34 @@ export class StorageService {
   }
 
   // ---- Preferences ----
+  /**
+   * Todas as preferências do app (o bloco `runora_prefs`).
+   * Usado pela Fase 5 do sync (preferências + temas vão para o Drive).
+   */
+  public static getPrefs(): Record<string, unknown> {
+    const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
+    if (!raw) return {};
+    try {
+      const prefs = JSON.parse(raw);
+      return prefs && typeof prefs === 'object' && !Array.isArray(prefs)
+        ? (prefs as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** Grava preferências (mescla com as que já existiam). */
+  public static mergePrefs(prefs: Record<string, unknown>): void {
+    this.writePrefsRecord({ ...this.getPrefs(), ...prefs });
+  }
+
+  /** Grava o registro de preferências e avisa a tela (o Sync observa). */
+  private static writePrefsRecord(prefs: Record<string, unknown>): void {
+    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+    dispatchSettingsChanged();
+  }
+
   /** Rollover hour for "today" (Runora default: 4). */
   public static getRolloverHour(): number {
     const raw = localStorage.getItem(STORAGE_KEYS.PREFS);
@@ -587,7 +631,7 @@ export class StorageService {
       prefs = {};
     }
     prefs.rolloverHour = h;
-    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+    this.writePrefsRecord(prefs);
   }
 
   /**
@@ -636,7 +680,7 @@ export class StorageService {
       parsed = {};
     }
     parsed.browserFields = prefs;
-    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(parsed));
+    this.writePrefsRecord(parsed);
   }
 
   /** CardBrowser list ordering modes. */
@@ -667,7 +711,7 @@ export class StorageService {
       prefs = {};
     }
     prefs.browserSort = sort;
-    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+    this.writePrefsRecord(prefs);
   }
 
   /** CardBrowser multi-select deck filter (deck ids). Empty list = all decks. */
@@ -692,7 +736,7 @@ export class StorageService {
       prefs = {};
     }
     prefs.browserDeckFilter = deckIds.filter((x) => typeof x === 'string' && !!x);
-    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+    this.writePrefsRecord(prefs);
   }
 
   /** Valid FSRS state values for the CardBrowser status filter. */
@@ -727,7 +771,7 @@ export class StorageService {
       prefs = {};
     }
     prefs.browserStatusFilter = sanitized;
-    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+    this.writePrefsRecord(prefs);
   }
 
   /** Valid values for the CardBrowser single-select maturity filter. */
@@ -759,7 +803,7 @@ export class StorageService {
     } else {
       delete prefs.browserMaturityFilter; // unknown value → fall back to 'all'
     }
-    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+    this.writePrefsRecord(prefs);
   }
 
   /** CardBrowser multi-select tag filter (tag names). Empty list = all. */
@@ -784,7 +828,7 @@ export class StorageService {
       prefs = {};
     }
     prefs.browserTagFilter = tags.filter((x) => typeof x === 'string' && !!x);
-    localStorage.setItem(STORAGE_KEYS.PREFS, JSON.stringify(prefs));
+    this.writePrefsRecord(prefs);
   }
 
   // ---- Bulk operations (CardBrowser selection) ----

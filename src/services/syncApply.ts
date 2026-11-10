@@ -19,6 +19,7 @@ import type {
   RevlogEntry,
 } from '../types/runora';
 import { StorageService } from './storage';
+import { refreshThemeInDom } from './syncExtras';
 import {
   cardKey,
   deckKey,
@@ -450,6 +451,7 @@ export function applyRemoteItems(
   if (keys.has(SETTINGS_KEYS.theme)) {
     if (s?.theme) StorageService.setTheme(s.theme as 'light' | 'dark' | 'system');
     if (s?.colorTheme) StorageService.setColorTheme(s.colorTheme);
+    refreshThemeInDom(); // o tema muda a tela na hora
     result.settings++;
   }
 

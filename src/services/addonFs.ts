@@ -127,14 +127,24 @@ function desktopFs(): AddonFs {
 function capacitorFs(): AddonFs {
   const capPath = (rel: string) => `${ADDONS_DIR}/${normalizeRel(rel)}`;
   const capRoot = () => ADDONS_DIR;
+  // cria a pasta de extensões se ainda não existir — o plugin de arquivos
+  // reclama (no console) quando o mkdir é feito em uma pasta que já existe,
+  // então conferimos antes de criar
+  const ensureRoot = async (): Promise<void> => {
+    try {
+      const res = await Filesystem.stat({ path: capRoot(), directory: Directory.Data });
+      if (res.type === 'directory') return;
+    } catch {
+      // ainda não existe → cria abaixo
+    }
+    try {
+      await Filesystem.mkdir({ path: capRoot(), directory: Directory.Data, recursive: true });
+    } catch {
+      // já existe (criada por outro caminho)
+    }
+  };
   return {
-    ensureAddonsDir: async () => {
-      try {
-        await Filesystem.mkdir({ path: capRoot(), directory: Directory.Data, recursive: true });
-      } catch {
-        // already exists
-      }
-    },
+    ensureAddonsDir: ensureRoot,
     rootPath: async () => {
       try {
         const res = await Filesystem.getUri({ path: capRoot(), directory: Directory.Data });
@@ -144,7 +154,7 @@ function capacitorFs(): AddonFs {
       }
     },
     listAddonDirs: async () => {
-      await Filesystem.mkdir({ path: capRoot(), directory: Directory.Data, recursive: true }).catch(() => undefined);
+      await ensureRoot();
       const res = await Filesystem.readdir({ path: capRoot(), directory: Directory.Data });
       return res.files.filter((f) => f.type === 'directory').map((f) => f.name);
     },

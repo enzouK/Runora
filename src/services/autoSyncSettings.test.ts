@@ -1,3 +1,10 @@
+/**
+ * Configuração do autosync: horário/timer, sync ao abrir o app e intervalo.
+ *
+ * As opções são PREFERÊNCIAS do app (registro `runora_prefs`) — mudar aqui
+ * acende o alerta amarelo do Sync e vão para o Drive com as outras preferências.
+ * O espelhamento nas chaves antigas é só compatibilidade.
+ */
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -5,6 +12,9 @@ import {
   AUTO_SYNC_ENABLED_KEY,
   AUTO_SYNC_INTERVAL_KEY,
   AUTO_SYNC_ON_OPEN_KEY,
+  AUTO_SYNC_MINUTES_PREF_KEY,
+  AUTO_SYNC_ON_OPEN_PREF_KEY,
+  AUTO_SYNC_PREF_KEY,
   DEFAULT_AUTO_SYNC_MINUTES,
   MAX_AUTO_SYNC_MINUTES,
   MIN_AUTO_SYNC_MINUTES,
@@ -38,6 +48,13 @@ Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,
   writable: true,
 });
+
+const PREFS_KEY = 'runora_prefs';
+
+function prefs(): Record<string, unknown> {
+  const raw = localStorage.getItem(PREFS_KEY);
+  return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+}
 
 describe('configuração do autosync (ligar/desligar + intervalo)', () => {
   beforeEach(() => {
@@ -78,17 +95,32 @@ describe('configuração do autosync (ligar/desligar + intervalo)', () => {
     assert.equal(getAutoSyncOnOpen(), false);
   });
 
+  it('grava no registro de preferências (vai para o Drive com as demais)', () => {
+    setAutoSyncEnabled(false);
+    setAutoSyncOnOpen(true);
+    setAutoSyncIntervalMinutes(30);
+    assert.equal(prefs()[AUTO_SYNC_PREF_KEY], false);
+    assert.equal(prefs()[AUTO_SYNC_ON_OPEN_PREF_KEY], true);
+    assert.equal(prefs()[AUTO_SYNC_MINUTES_PREF_KEY], 30);
+  });
+
   it('quem já tinha desligado o autosync antigo continua sem sync ao abrir', () => {
     // valor antigo gravado, sem a opção nova
     localStorage.setItem(AUTO_SYNC_ENABLED_KEY, '0');
     assert.equal(getAutoSyncOnOpen(), false);
-    // a migração acontece uma vez só (a partir daí as opções são independentes)
-    assert.equal(localStorage.getItem(AUTO_SYNC_ON_OPEN_KEY), '0');
+    // a migração adota o valor antigo no registro de preferências
+    assert.equal(prefs()[AUTO_SYNC_ON_OPEN_PREF_KEY], false);
     setAutoSyncEnabled(true);
     assert.equal(getAutoSyncOnOpen(), false);
     // a opção nova tem prioridade
     setAutoSyncOnOpen(true);
     assert.equal(getAutoSyncOnOpen(), true);
+  });
+
+  it('quem desligou o timer antigo continua com o timer desligado', () => {
+    localStorage.setItem(AUTO_SYNC_ENABLED_KEY, '0');
+    assert.equal(getAutoSyncEnabled(), false);
+    assert.equal(prefs()[AUTO_SYNC_PREF_KEY], false);
   });
 
   it('guarda o intervalo escolhido (em minutos)', () => {
@@ -115,9 +147,9 @@ describe('configuração do autosync (ligar/desligar + intervalo)', () => {
     assert.equal(getAutoSyncIntervalMinutes(), DEFAULT_AUTO_SYNC_MINUTES);
   });
 
-  it('usa as chaves de localStorage esperadas', () => {
-    assert.equal(AUTO_SYNC_ENABLED_KEY, 'runora_auto_sync');
-    assert.equal(AUTO_SYNC_ON_OPEN_KEY, 'runora_auto_sync_open');
-    assert.equal(AUTO_SYNC_INTERVAL_KEY, 'runora_gdrive_autosync_minutes');
+  it('migração do intervalo: quem tinha 2 horas continua com 2 horas', () => {
+    localStorage.setItem(AUTO_SYNC_INTERVAL_KEY, '120');
+    assert.equal(getAutoSyncIntervalMinutes(), 120);
+    assert.equal(prefs()[AUTO_SYNC_MINUTES_PREF_KEY], 120);
   });
 });

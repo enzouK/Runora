@@ -35,6 +35,13 @@ export const AddonsView: React.FC = () => {
     };
   }, []);
 
+  // o sync pode instalar extensões enquanto a tela está aberta
+  React.useEffect(() => {
+    const onChanged = () => setAddons(AddonSystem.getAddons());
+    window.addEventListener('runora:addons-changed', onChanged);
+    return () => window.removeEventListener('runora:addons-changed', onChanged);
+  }, []);
+
   const handleToggle = (id: string) => {
     AddonSystem.toggleAddon(id);
     setAddons(AddonSystem.getAddons());

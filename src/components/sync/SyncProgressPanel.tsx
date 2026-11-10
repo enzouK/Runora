@@ -15,6 +15,7 @@ const PART_LABEL: Record<string, string> = {
   deletes: 'itens removidos',
   settings: 'configurações',
   media: 'arquivos de mídia',
+  addons: 'extensões',
 };
 
 /**
@@ -51,10 +52,16 @@ export const SyncProgressPanel: React.FC<Props> = ({ progress }) => {
   if (hasCounter) {
     pieces.push(`${done ?? 0} de ${total} ${PART_LABEL[part!] ?? 'itens'}`);
   }
-  if (counts && (counts.notes || counts.cards)) {
+  if (counts && (counts.notes || counts.cards || counts.addons || counts.settings)) {
     const totalPieces: string[] = [];
     if (counts.notes) totalPieces.push(`${counts.notes} notas`);
     if (counts.cards) totalPieces.push(`${counts.cards} cards`);
+    if (counts.settings) {
+      totalPieces.push(counts.settings === 1 ? '1 configuração' : `${counts.settings} configurações`);
+    }
+    if (counts.addons) {
+      totalPieces.push(counts.addons === 1 ? '1 extensão' : `${counts.addons} extensões`);
+    }
     pieces.push(totalPieces.join(', '));
   }
 
