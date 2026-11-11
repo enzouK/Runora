@@ -223,6 +223,10 @@ export interface SyncMeta {
     media: number;
     revlog: number;
   };
+  /** Hash das preferências+temas (para pular download se não mudou). */
+  extrasHash?: string;
+  /** Hash das extensões (para pular download se não mudou). */
+  addonsHash?: string;
 }
 
 interface LockInfo {
@@ -570,6 +574,35 @@ async function findFile(token: string, name: string): Promise<DriveFileInfo | nu
   const file = data.files?.[0] ?? null;
   if (file) await setCachedFileId(name, file.id);
   return file;
+}
+
+/**
+ * Lista TODOS os arquivos de sync do Runora numa única chamada.
+ * Atualiza o cache (folderId + fileIds) e retorna mapa nome → DriveFileInfo.
+ * Usado para evitar múltiplas listagens (META, EXTRAS, ADDONS_INDEX, DELTA_META, etc.).
+ */
+async function listAllSyncFiles(
+  token: string
+): Promise<Record<string, DriveFileInfo>> {
+  const folderId = await ensureFolder(token);
+  const fileNames = Object.values(DRIVE_FILES);
+  const nameClauses = fileNames.map((n) => `name = '${n}'`).join(' OR ');
+  const q = encodeURIComponent(
+    `(${nameClauses}) and trashed = false and '${folderId}' in parents`
+  );
+  const res = await api(
+    token,
+    `/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,size)&pageSize=50&spaces=drive`
+  );
+  const data = (await res.json()) as { files?: DriveFileInfo[] };
+  const map: Record<string, DriveFileInfo> = {};
+  if (data.files) {
+    for (const f of data.files) {
+      map[f.name] = f;
+      await setCachedFileId(f.name, f.id);
+    }
+  }
+  return map;
 }
 
 /** Baixa um arquivo do Drive. */
@@ -988,6 +1021,10 @@ export class DriveSyncService {
     try {
       const token = await track('token', () => this.ensureToken());
 
+      // Fase 3 (nova): lista TODOS os arquivos de sync numa única chamada
+      timing?.mark('list-all-files');
+      const allFiles = await listAllSyncFiles(token);
+
       progress('Verificando trava de sincronização no Drive…');
       itemProgress({ phase: 'comparing' });
       await track('trava', () => acquireLock(token));
@@ -1009,7 +1046,7 @@ export class DriveSyncService {
           this.setLastSyncedUsn(StorageService.getCurrentUsn());
         }
         timing?.mark('meta-find');
-        const metaFile = await findFile(token, DRIVE_FILES.META);
+        const metaFile = allFiles[DRIVE_FILES.META] ?? null;
         const remoteMeta = metaFile
           ? (JSON.parse(await (await downloadFile(token, metaFile.id)).text()) as SyncMeta)
           : null;
@@ -1026,7 +1063,7 @@ export class DriveSyncService {
         if (!remoteMeta) {
           // primeiro sync deste dispositivo: sobe o estado local
           itemProgress({ phase: 'preparing' });
-          return await this.uploadBackup(token, progress, itemProgress);
+          return await this.uploadBackup(token, progress, itemProgress, true, allFiles);
         }
 
         const remoteChanged = remoteMeta.uploadedAt > (lastSync?.remoteUploadedAt ?? 0);
@@ -1057,7 +1094,7 @@ export class DriveSyncService {
                 // Preferências/extensões também precisam subir (Fase 5),
                 // igual ao caminho de download abaixo.
                 timing?.mark('extras-início');
-                const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {});
+                const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {}, allFiles, remoteMeta);
                 timing?.mark('extras-fim');
                 const done = syncDoneMessage(activeTally!);
                 return {
@@ -1088,7 +1125,7 @@ export class DriveSyncService {
             if (newHead !== null) {
               // Aplica extras do Drive (fase 5) e finaliza
               timing?.mark('extras-início');
-              const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {});
+              const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {}, allFiles, remoteMeta);
               timing?.mark('extras-fim');
               const done = syncDoneMessage(activeTally!);
               return {
@@ -1273,8 +1310,16 @@ export class DriveSyncService {
           itemProgress,
           tallyUpFromLocalDiff(diff, choice)
         );
+        // ── Fase 5: preferências, temas e extensões também vão para o Drive ──
+        timing?.mark('extras-início');
+        const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {
+          keepTheme: choice === 'local' && conflicts.some((c) => c.key === SETTINGS_KEYS.theme),
+          keepPrefs: choice === 'local' && conflicts.some((c) => c.key === SETTINGS_KEYS.prefs),
+        }, allFiles, remoteMeta);
+        timing?.mark('extras-fim');
         return {
           ...result,
+          message: extrasMsg ? `${result.message} ${extrasMsg}` : result.message,
           // se a disputa foi resolvida com "ficar com o daqui", os extras
           // (preferências/temas) não podem sobrescrever a escolha
           keepLocalTheme:
@@ -1284,15 +1329,7 @@ export class DriveSyncService {
         };
         });
         if (outcome.action === 'cancelled') return outcome;
-
-        // ── Fase 5: preferências, temas e extensões também vão para o Drive ──
-        timing?.mark('extras-início');
-        const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {
-          keepTheme: outcome.keepLocalTheme,
-          keepPrefs: outcome.keepLocalPrefs,
-        });
-        timing?.mark('extras-fim');
-        return extrasMsg ? { ...outcome, message: `${outcome.message} ${extrasMsg}` } : outcome;
+        return outcome;
       } finally {
         timing?.mark('release-lock');
         await releaseLock(token);
@@ -1340,7 +1377,11 @@ export class DriveSyncService {
     token: string,
     progress: (m: string) => void,
     itemProgress: (p: SyncProgressState | null) => void,
-    opts?: { keepTheme?: boolean; keepPrefs?: boolean }
+    opts?: { keepTheme?: boolean; keepPrefs?: boolean },
+    /** Mapa de arquivos já listados (evita listagens extras). */
+    allFiles?: Record<string, DriveFileInfo>,
+    /** META remoto (para checar hashes sem baixar). */
+    remoteMeta?: SyncMeta
   ): Promise<string | null> {
     const parts: string[] = [];
 
@@ -1350,25 +1391,34 @@ export class DriveSyncService {
       const local = buildExtrasPayload();
       const localHash = hashExtras(local);
       const base = this.getSideBase(LS.EXTRAS_BASE);
-      const file = await findFile(token, DRIVE_FILES.EXTRAS);
-      let remote: SyncExtrasFile | null = null;
-      if (file) {
-        try {
-          remote = JSON.parse(await (await downloadFile(token, file.id)).text()) as SyncExtrasFile;
-        } catch {
-          remote = null;
+
+      // Fase 3: usa hash do META para pular download se não mudou
+      let remotePayload: SyncExtrasPayload | null = null;
+      let remoteUploadedAt: number | undefined;
+      if (remoteMeta?.extrasHash && remoteMeta.extrasHash === hashExtras(local)) {
+        // Hash igual → não baixa, mantém local
+      } else {
+        const file = allFiles?.[DRIVE_FILES.EXTRAS] ?? await findFile(token, DRIVE_FILES.EXTRAS);
+        let remote: SyncExtrasFile | null = null;
+        if (file) {
+          try {
+            remote = JSON.parse(await (await downloadFile(token, file.id)).text()) as SyncExtrasFile;
+          } catch {
+            remote = null;
+          }
         }
-      }
-      const remotePayload: SyncExtrasPayload | null = remote
-        ? {
+        if (remote) {
+          remotePayload = {
             prefs: remote.prefs ?? {},
             theme: remote.theme,
             colorTheme: remote.colorTheme,
-          }
-        : null;
+          };
+          remoteUploadedAt = remote.uploadedAt;
+        }
+      }
       const remoteHash = remotePayload ? hashExtras(remotePayload) : null;
 
-      const side = decideSyncSide(base?.hash ?? null, localHash, remoteHash);
+      const side = decideSyncSide(base?.hash ?? null, hashExtras(local), remoteHash);
       if (side === 'remote' && remotePayload) {
         itemProgress({ phase: 'applying', part: 'settings', done: 2, total: 2, counts: { settings: 2 } });
         applyExtrasPayload(remotePayload, { keepTheme: opts?.keepTheme, keepPrefs: opts?.keepPrefs });
@@ -1378,13 +1428,13 @@ export class DriveSyncService {
         this.refreshBaseSettings();
         this.setSideBase(LS.EXTRAS_BASE, {
           hash: remoteHash!,
-          uploadedAt: remote?.uploadedAt ?? Date.now(),
+          uploadedAt: remoteUploadedAt ?? Date.now(),
         });
         parts.push('Preferências e temas do Drive aplicados.');
       } else if (side === 'local') {
         itemProgress({ phase: 'upload', counts: { settings: 2 } });
         await this.uploadExtras(token, local);
-        this.setSideBase(LS.EXTRAS_BASE, { hash: localHash, uploadedAt: Date.now() });
+        this.setSideBase(LS.EXTRAS_BASE, { hash: hashExtras(local), uploadedAt: Date.now() });
         parts.push('Preferências e temas enviados ao Drive.');
       }
     } catch (e) {
@@ -1396,15 +1446,21 @@ export class DriveSyncService {
       itemProgress({ phase: 'comparing' });
       const localState = await computeAddonState();
       const base = this.getSideBase(LS.ADDONS_BASE);
-      const indexFile = await findFile(token, DRIVE_FILES.ADDONS_INDEX);
+
+      // Fase 3: usa hash do META para pular download se não mudou
       let remoteIndex: SyncAddonsIndex | null = null;
-      if (indexFile) {
-        try {
-          remoteIndex = JSON.parse(
-            await (await downloadFile(token, indexFile.id)).text()
-          ) as SyncAddonsIndex;
-        } catch {
-          remoteIndex = null;
+      if (remoteMeta?.addonsHash && remoteMeta.addonsHash === localState.hash) {
+        // Hash igual → não baixa
+      } else {
+        const indexFile = allFiles?.[DRIVE_FILES.ADDONS_INDEX] ?? await findFile(token, DRIVE_FILES.ADDONS_INDEX);
+        if (indexFile) {
+          try {
+            remoteIndex = JSON.parse(
+              await (await downloadFile(token, indexFile.id)).text()
+            ) as SyncAddonsIndex;
+          } catch {
+            remoteIndex = null;
+          }
         }
       }
       const remoteHash = remoteIndex?.hash ?? null;
@@ -1983,7 +2039,9 @@ export class DriveSyncService {
     progress: (m: string) => void,
     itemProgress: (p: SyncProgressState | null) => void = () => {},
     /** false na mescla: quem conta o que sobe é o chamador (só o que de fato é novo). */
-    countTally = true
+    countTally = true,
+    /** Mapa de arquivos já listados (não usado aqui, mas mantém compatibilidade). */
+    _allFiles?: Record<string, DriveFileInfo>
   ): Promise<SyncResult> {
     progress('Exportando coleção completa + mídia…');
 
@@ -2022,6 +2080,10 @@ export class DriveSyncService {
         }),
     });
 
+    // Hashes de preferências/extensões para pular download no próximo sync
+    const localExtras = buildExtrasPayload();
+    const localAddons = await computeAddonState();
+
     const meta: SyncMeta = {
       app: 'runora',
       version: 1,
@@ -2037,6 +2099,8 @@ export class DriveSyncService {
         media: (await MediaStore.list()).length,
         revlog: StorageService.getRevlog().length,
       },
+      extrasHash: hashExtras(localExtras),
+      addonsHash: localAddons.hash,
     };
 
     // fase de envio: mostra quantos itens estão indo para o Drive
@@ -2218,6 +2282,8 @@ export class DriveSyncService {
         /* mantém o padrão */
       }
     }
+    const localExtras = buildExtrasPayload();
+    const localAddons = await computeAddonState();
     const backupMeta: SyncMeta = {
       app: 'runora',
       version: 1,
@@ -2233,6 +2299,8 @@ export class DriveSyncService {
         media: (await MediaStore.list()).length,
         revlog: StorageService.getRevlog().length,
       },
+      extrasHash: hashExtras(localExtras),
+      addonsHash: localAddons.hash,
     };
     await uploadMultipart(
       token,
