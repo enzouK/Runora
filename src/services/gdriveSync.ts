@@ -135,6 +135,8 @@ const LS = {
   /** Fase 5: base (estado comum) dos extras e das extensões. */
   EXTRAS_BASE: 'runora_sync_extras_base',
   ADDONS_BASE: 'runora_sync_addons_base',
+  /** Fase 6: último modifiedTime conhecido do arquivo STATE no Drive (fast path). */
+  STATE_MODIFIED_TIME: 'runora_sync_state_modified',
 };
 
 /**
@@ -855,6 +857,20 @@ export class DriveSyncService {
     localStorage.setItem(LS.LAST_SYNC, JSON.stringify(v));
   }
 
+  /** Retorna o último modifiedTime conhecido do arquivo STATE no Drive (fast path). */
+  private static getStateModifiedTime(): string | null {
+    try {
+      return localStorage.getItem(LS.STATE_MODIFIED_TIME);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Guarda o modifiedTime do arquivo STATE após sync bem-sucedido. */
+  private static setStateModifiedTime(modifiedTime: string): void {
+    localStorage.setItem(LS.STATE_MODIFIED_TIME, modifiedTime);
+  }
+
   /**
    * Há um sync rodando agora? O aviso expira depois de 10 minutos: se o app
    * foi fechado no meio do sync, o aviso preso não trava mais os próximos.
@@ -1027,6 +1043,34 @@ export class DriveSyncService {
       // Fase 3 (nova): lista TODOS os arquivos de sync numa única chamada
       timing?.mark('list-all-files');
       const allFiles = await listAllSyncFiles(token);
+
+      // Fase 6: Fast path — se o STATE não mudou no Drive e não há mudanças locais,
+      // podemos pular o sync inteiro (sem travar, sem baixar nada).
+      const stateFile = allFiles[DRIVE_FILES.STATE];
+      const lastStateModified = this.getStateModifiedTime();
+      if (stateFile?.modifiedTime && stateFile.modifiedTime === lastStateModified) {
+        // STATE não mudou no Drive — verifica se há mudanças locais
+        const lastSyncedUsn = this.getLastSyncedUsn();
+        if (lastSyncedUsn > 0) {
+          // Tem base incremental válida
+          const base = getSyncBase();
+          const localSnapshot = computeSnapshot(
+            localSyncContent(),
+            this.getDeviceId(),
+            getDeviceName()
+          );
+          if (!this.hasLocalChanges(base, localSnapshot)) {
+            // Sem mudanças no Drive E sem mudanças locais → fast path!
+            timing?.mark('fast-path');
+            progress('Tudo sincronizado — nenhuma mudança desde o último sync.');
+            itemProgress(null);
+            localStorage.removeItem(LS.RUNNING);
+            activeTally = null;
+            if (timing) setActiveTiming(null);
+            return { action: 'none', message: 'Tudo sincronizado — nenhuma mudança desde o último sync.' };
+          }
+        }
+      }
 
       progress('Verificando trava de sincronização no Drive…');
       itemProgress({ phase: 'comparing' });
@@ -2310,6 +2354,13 @@ export class DriveSyncService {
     itemProgress({ phase: 'upload', counts: { decks: decks.length, notes: notes.length, cards: cards.length } });
     const existingState = await findFile(token, DRIVE_FILES.STATE);
     await uploadResumable(token, DRIVE_FILES.STATE, stateBlob, existingState?.id);
+    // Fast path: atualiza o modifiedTime do STATE para o fast path do próximo sync
+    try {
+      const freshState = await findFile(token, DRIVE_FILES.STATE);
+      if (freshState?.modifiedTime) this.setStateModifiedTime(freshState.modifiedTime);
+    } catch {
+      // ignora: fast path é otimização, não crítico
+    }
 
     // Atualiza o META do Drive: é por ele que os OUTROS aparelhos percebem
     // que há mudanças novas no Drive para baixar (checagem de remoteChanged).
