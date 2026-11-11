@@ -26,6 +26,17 @@
 import pkg from '../../package.json';
 import { Deck, NoteType, Note, Card, RevlogEntry, Preset } from '../types/runora';
 import { StorageService } from './storage';
+import { type SyncTally } from './syncTally';
+export type { SyncTally } from './syncTally';
+export {
+  emptySyncTally,
+  bumpTally,
+  tallyFromCounts,
+  tallyChanged,
+  tallyRemoved,
+  tallySent,
+  tallyReceived,
+} from './syncTally';
 import { MediaStore } from './mediaStore';
 import { ExportImportService } from './exportImport';
 import type { ImportableCollection } from './importPlan';
@@ -223,6 +234,11 @@ export type SyncItemsChoice = 'local' | 'remote' | 'abort';
 /** Etapa do sync/restauração para o painel de progresso (mesma cara do import). */
 export interface SyncProgressState {
   phase: 'preparing' | 'download' | 'comparing' | 'applying' | 'upload';
+  /**
+   * Contadores ao vivo estilo Anki (↑ enviado daqui · ↓ recebido da nuvem),
+   * ACUMULADOS desde o início do sync — o painel só exibe.
+   */
+  tally?: SyncTally;
   /** Nome do dispositivo dono do backup (fase download). */
   deviceName?: string;
   /** Contador ao vivo da fase 'applying' (e da mídia na preparação). */
