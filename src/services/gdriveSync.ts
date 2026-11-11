@@ -40,7 +40,22 @@ import {
 export { bumpTally, emptySyncTally, tallyFromCounts, tallySent, tallyReceived };
 export type { SyncTally };
 
-import { countDriveCall, SyncTiming, setActiveTiming, getActiveTiming } from './syncTiming';
+import {
+  countDriveCall,
+  SyncTiming,
+  setActiveTiming,
+  getActiveTiming,
+  resetDriveCallCount,
+} from './syncTiming';
+import {
+  getCachedFolderId,
+  setCachedFolderId,
+  getCachedFileId,
+  setCachedFileId,
+  deleteCachedFileId,
+  isMigrationDone,
+  setMigrationDone,
+} from './driveCache';
 import { MediaStore } from './mediaStore';
 import { ExportImportService } from './exportImport';
 import type { ImportableCollection } from './importPlan';
@@ -469,6 +484,7 @@ interface DriveFileInfo {
   name: string;
   modifiedTime: string;
   size?: string;
+  trashed?: boolean;
 }
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -477,7 +493,15 @@ let folderIdCache: string | null = null;
 
 /** Find or create the "Runora" folder in the user's Drive; returns its id. */
 async function ensureFolder(token: string): Promise<string> {
+  // 1) memória (rápido, mesma sessão)
   if (folderIdCache) return folderIdCache;
+  // 2) IndexedDB (persiste entre sessões)
+  const cached = await getCachedFolderId();
+  if (cached) {
+    folderIdCache = cached;
+    return folderIdCache;
+  }
+  // 3) busca no Drive (primeira vez ou cache inválido)
   const q = encodeURIComponent(
     `name = '${DRIVE_FOLDER}' and mimeType = '${FOLDER_MIME}' and trashed = false`
   );
@@ -485,6 +509,7 @@ async function ensureFolder(token: string): Promise<string> {
   const found = (await res.json()) as { files?: Array<{ id: string }> };
   if (found.files?.[0]?.id) {
     folderIdCache = found.files[0].id;
+    await setCachedFolderId(folderIdCache);
   } else {
     const create = await api(token, '/drive/v3/files', {
       method: 'POST',
@@ -494,8 +519,13 @@ async function ensureFolder(token: string): Promise<string> {
     const created = (await create.json()) as { id?: string };
     if (!created.id) throw new Error('Drive: não foi possível criar a pasta "Runora".');
     folderIdCache = created.id;
+    await setCachedFolderId(folderIdCache);
   }
-  await migrateRootFiles(token, folderIdCache);
+  // migração da raiz só se ainda não foi feita
+  if (!(await isMigrationDone())) {
+    await migrateRootFiles(token, folderIdCache);
+    await setMigrationDone();
+  }
   return folderIdCache;
 }
 
@@ -514,6 +544,22 @@ async function migrateRootFiles(token: string, folderId: string): Promise<void> 
 }
 
 async function findFile(token: string, name: string): Promise<DriveFileInfo | null> {
+  // 1) cache de id do arquivo
+  const cachedId = await getCachedFileId(name);
+  if (cachedId) {
+    try {
+      const res = await api(token, `/drive/v3/files/${cachedId}?fields=id,name,modifiedTime,size`);
+      if (res.ok) {
+        const data = (await res.json()) as DriveFileInfo;
+        if (!data.trashed) return data;
+      }
+    } catch {
+      // ignora e cai para busca
+    }
+    // 404 ou erro → cache inválido, remove e busca de novo
+    await deleteCachedFileId(name);
+  }
+  // 2) busca no Drive
   const folderId = await ensureFolder(token);
   const q = encodeURIComponent(`name = '${name}' and trashed = false and '${folderId}' in parents`);
   const res = await api(
@@ -521,7 +567,9 @@ async function findFile(token: string, name: string): Promise<DriveFileInfo | nu
     `/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,size)&pageSize=10&spaces=drive`
   );
   const data = (await res.json()) as { files?: DriveFileInfo[] };
-  return data.files?.[0] ?? null;
+  const file = data.files?.[0] ?? null;
+  if (file) await setCachedFileId(name, file.id);
+  return file;
 }
 
 /** Baixa um arquivo do Drive. */
@@ -924,7 +972,10 @@ export class DriveSyncService {
     }
     this.markRunning();
     const timing = import.meta.env.DEV ? new SyncTiming() : null;
-    if (timing) setActiveTiming(timing);
+    if (timing) {
+      setActiveTiming(timing);
+      resetDriveCallCount();
+    }
     const progress = opts?.onProgress ?? (() => {});
     const rawItemProgress = opts?.onItemProgress ?? (() => {});
     activeTally = emptySyncTally();
@@ -1645,7 +1696,10 @@ export class DriveSyncService {
     }
     this.markRunning();
     const timing = import.meta.env.DEV ? new SyncTiming() : null;
-    if (timing) setActiveTiming(timing);
+    if (timing) {
+      setActiveTiming(timing);
+      resetDriveCallCount();
+    }
     const progress = opts?.onProgress ?? (() => {});
     const rawItemProgress = opts?.onItemProgress ?? (() => {});
     activeTally = emptySyncTally();
