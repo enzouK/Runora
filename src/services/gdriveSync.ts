@@ -34,16 +34,10 @@ import {
   tallyReceived,
   type SyncTally,
 } from './syncTally';
-export type { SyncTally } from './syncTally';
-export {
-  emptySyncTally,
-  bumpTally,
-  tallyFromCounts,
-  tallyChanged,
-  tallyRemoved,
-  tallySent,
-  tallyReceived,
-} from './syncTally';
+// Re-exporta (mesma assinatura pública) — sem `export ... from` duplicando
+// nomes que o parser do Vite reclama com o import local acima.
+export { bumpTally, emptySyncTally, tallyFromCounts, tallySent, tallyReceived };
+export type { SyncTally };
 import { MediaStore } from './mediaStore';
 import { ExportImportService } from './exportImport';
 import type { ImportableCollection } from './importPlan';
