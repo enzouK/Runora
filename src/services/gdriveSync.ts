@@ -32,6 +32,7 @@ import {
   tallyFromCounts,
   tallySent,
   tallyReceived,
+  tallyUpFromLocalDiff,
   type SyncTally,
 } from './syncTally';
 // Re-exporta (mesma assinatura pública) — sem `export ... from` duplicando
@@ -1074,7 +1075,15 @@ export class DriveSyncService {
                 ...diff.remoteDeleted.map((i) => i.key),
                 ...conflicts.map((i) => i.key),
               ]);
-              return await this.mergeAndUpload(token, remoteData, remoteMeta, progress, keys, itemProgress);
+              return await this.mergeAndUpload(
+                token,
+                remoteData,
+                remoteMeta,
+                progress,
+                keys,
+                itemProgress,
+                tallyUpFromLocalDiff(diff, 'remote')
+              );
             }
             if (choice === 'keep') {
               itemProgress({ phase: 'preparing' });
@@ -1091,7 +1100,15 @@ export class DriveSyncService {
           ]);
           if (conflicts.length === 0) {
             // Sem disputa: o estado mesclado sobe para o Drive.
-            return await this.mergeAndUpload(token, remoteData, remoteMeta, progress, safeKeys, itemProgress);
+            return await this.mergeAndUpload(
+              token,
+              remoteData,
+              remoteMeta,
+              progress,
+              safeKeys,
+              itemProgress,
+              tallyUpFromLocalDiff(diff)
+            );
           }
           const applied = await this.applyRemote(remoteData, safeKeys, itemProgress);
           this.updateBase(base, localSnapshot, remoteSnapshot, diff, safeKeys);
@@ -1176,7 +1193,8 @@ export class DriveSyncService {
           remoteMeta,
           progress,
           applyKeys,
-          itemProgress
+          itemProgress,
+          tallyUpFromLocalDiff(diff, choice)
         );
         return {
           ...result,
@@ -1547,17 +1565,22 @@ export class DriveSyncService {
     remoteMeta: SyncMeta,
     progress: (m: string) => void,
     applyKeys: Set<string>,
-    itemProgress: (p: SyncProgressState | null) => void = () => {}
+    itemProgress: (p: SyncProgressState | null) => void = () => {},
+    /** O que esta mescla envia daqui (↑) — calculado pela diff de quem chama. */
+    upTally: Partial<SyncTally> = {}
   ): Promise<SyncResult> {
     progress('Aplicando as novidades do Drive…');
     const applied = await this.applyRemote(remoteData, applyKeys, itemProgress);
     mergeRemoteRevlog(remoteData.revlog ?? [], remoteData);
     const resumo = summarizeApply(applied);
+    // ↑: só o que a mescla de fato acrescenta ao Drive (não a coleção inteira)
+    addTally(upTally);
     itemProgress({ phase: 'preparing' });
-    const upload = await this.uploadBackup(token, progress, itemProgress);
+    await this.uploadBackup(token, progress, itemProgress, false);
+    const done = activeTally ? syncDoneMessage(activeTally) : null;
     return {
       action: 'download',
-      message: `Sincronizado com "${remoteMeta.deviceName}". ${resumo}.`,
+      message: done ?? `Sincronizado com "${remoteMeta.deviceName}". ${resumo}.`,
     };
   }
 
@@ -1849,7 +1872,9 @@ export class DriveSyncService {
   private static async uploadBackup(
     token: string,
     progress: (m: string) => void,
-    itemProgress: (p: SyncProgressState | null) => void = () => {}
+    itemProgress: (p: SyncProgressState | null) => void = () => {},
+    /** false na mescla: quem conta o que sobe é o chamador (só o que de fato é novo). */
+    countTally = true
   ): Promise<SyncResult> {
     progress('Exportando coleção completa + mídia…');
 
@@ -1861,17 +1886,19 @@ export class DriveSyncService {
     };
 
     // Contadores ↑: o pacote vai conter a coleção inteira
-    addTally(
-      tallyFromCounts(
-        {
-          decks: localCounts.decks,
-          notes: localCounts.notes,
-          cards: localCounts.cards,
-          presets: StorageService.getPresets().length,
-        },
-        'up'
-      )
-    );
+    if (countTally) {
+      addTally(
+        tallyFromCounts(
+          {
+            decks: localCounts.decks,
+            notes: localCounts.notes,
+            cards: localCounts.cards,
+            presets: StorageService.getPresets().length,
+          },
+          'up'
+        )
+      );
+    }
 
     // fase de preparação: o pacote é montado (contador ao vivo dos itens)
     itemProgress({ phase: 'preparing', counts: localCounts });

@@ -53,6 +53,39 @@ export function tallyFromCounts(
   return direction === 'up' ? { addedUp: items } : { addedDown: items };
 }
 
+/**
+ * O que uma MESCLA envia daqui (↑): itens que só mudaram aqui + disputas
+ * vencidas pela versão daqui; itens apagados daqui contam como "Removidos ↑".
+ * Note types e preferências não são itens de coleção (ficam fora, como no
+ * tallyFromCounts). Uso no caminho de mescla do sync (mergeAndUpload), que
+ * sobe o estado combinado — o que ele acrescenta ao Drive é exatamente isto.
+ */
+export function tallyUpFromLocalDiff(
+  diff: {
+    localOnly: { kind: string }[];
+    localDeleted: { kind: string }[];
+    conflicts: { kind: string }[];
+  },
+  conflictWinner?: 'local' | 'remote'
+): Partial<SyncTally> {
+  const counts = { decks: 0, notes: 0, cards: 0, presets: 0 };
+  const byKind: Record<string, keyof typeof counts> = {
+    deck: 'decks',
+    note: 'notes',
+    card: 'cards',
+    preset: 'presets',
+  };
+  const bump = (kind: string): void => {
+    const slot = byKind[kind];
+    if (slot) counts[slot]++;
+  };
+  for (const item of diff.localOnly) bump(item.kind);
+  if (conflictWinner === 'local') for (const item of diff.conflicts) bump(item.kind);
+  const removed = diff.localDeleted.filter((t) => byKind[t.kind]).length;
+  const add = tallyFromCounts(counts, 'up');
+  return removed > 0 ? { ...add, removedUp: removed } : add;
+}
+
 /** Total de adicionados/modificados (as duas direções). */
 export function tallyChanged(t: SyncTally): number {
   return t.addedUp + t.addedDown;

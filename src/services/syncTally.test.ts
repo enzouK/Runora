@@ -12,6 +12,7 @@ import {
   tallyRemoved,
   tallySent,
   tallyReceived,
+  tallyUpFromLocalDiff,
 } from './syncTally';
 
 describe('syncTally', () => {
@@ -87,5 +88,47 @@ describe('syncTally', () => {
     };
     assert.equal(tallySent(t), 3);
     assert.equal(tallyReceived(t), 7);
+  });
+
+  describe('tallyUpFromLocalDiff (mescla)', () => {
+    it('conta os itens que só mudaram aqui como ↑', () => {
+      const r = tallyUpFromLocalDiff({
+        localOnly: [{ kind: 'deck' }, { kind: 'note' }, { kind: 'card' }],
+        localDeleted: [],
+        conflicts: [],
+      });
+      assert.equal(r.addedUp, 3);
+      assert.equal(r.removedUp, undefined);
+    });
+
+    it('conta as disputas vencidas aqui como ↑; vencidas no Drive, não', () => {
+      const diff = {
+        localOnly: [],
+        localDeleted: [],
+        conflicts: [{ kind: 'note' }],
+      };
+      assert.equal(tallyUpFromLocalDiff(diff, 'local').addedUp, 1);
+      assert.equal(tallyUpFromLocalDiff(diff, 'remote').addedUp, undefined);
+      assert.equal(tallyUpFromLocalDiff(diff).addedUp, undefined);
+    });
+
+    it('apagados aqui contam como Removidos ↑', () => {
+      const r = tallyUpFromLocalDiff({
+        localOnly: [],
+        localDeleted: [{ kind: 'note' }, { kind: 'card' }],
+        conflicts: [],
+      });
+      assert.equal(r.removedUp, 2);
+      assert.equal(r.addedUp, undefined);
+    });
+
+    it('ignora note types e preferências (não são itens de coleção)', () => {
+      const r = tallyUpFromLocalDiff({
+        localOnly: [{ kind: 'noteType' }, { kind: 'settings' }],
+        localDeleted: [],
+        conflicts: [],
+      });
+      assert.deepEqual(r, {});
+    });
   });
 });
