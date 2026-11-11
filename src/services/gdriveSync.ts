@@ -1072,6 +1072,30 @@ export class DriveSyncService {
         }
       }
 
+      // Fase 7: Detecção de aparelho antigo (formato antigo subiu .colpkg)
+      // Se .colpkg é mais novo que o STATE, outro aparelho com versão antiga fez upload.
+      const colpkgFile = allFiles[DRIVE_FILES.COLPKG];
+      if (colpkgFile && stateFile) {
+        const colpkgTime = new Date(colpkgFile.modifiedTime).getTime();
+        const stateTime = new Date(stateFile.modifiedTime).getTime();
+        if (colpkgTime > stateTime) {
+          // Aparelho antigo fez upload de backup completo após nosso último sync incremental
+          const msg = 'Outro aparelho (versão antiga) sincronizou um backup completo. ' +
+            'Atualize o outro aparelho para evitar conflitos.';
+          timing?.mark('old-device-detected');
+          progress(msg);
+          itemProgress(null);
+          localStorage.removeItem(LS.RUNNING);
+          activeTally = null;
+          if (timing) setActiveTiming(null);
+          return {
+            action: 'none',
+            message: msg,
+            // Não apaga a base nem o lastSyncedUsn — o usuário decide o que fazer
+          };
+        }
+      }
+
       progress('Verificando trava de sincronização no Drive…');
       itemProgress({ phase: 'comparing' });
       await track('trava', () => acquireLock(token));
@@ -2610,5 +2634,77 @@ itemProgress({ phase: 'download', counts: state.counts });
 
     progress(`Delta aplicado: ${delta.decks.length} decks, ${delta.notes.length} notas, ${delta.cards.length} cards, ${delta.tombstones.length} deletados.`);
     return newHeadUsn;
+  }
+
+  /**
+   * Limpa arquivos antigos do formato de sync no Drive (após migração para estado unificado).
+   * Arquivos removidos:
+   * - runora-sync-delta-meta.json
+   * - runora-sync-delta.json
+   * - runora-sync-media-manifest.json
+   * - runora-sync-meta.json (o antigo meta do backup completo — o novo STATE substitui)
+   * - Pasta runora-sync-media/ (opcional, apenas arquivos não referenciados)
+   *
+   * Use APENAS após confirmar que todos os aparelhos estão na nova versão.
+   * O .colpkg (backup completo) NÃO é removido — serve como backup de segurança.
+   */
+  public static async cleanupOldSyncFiles(token: string): Promise<string> {
+    const deleted: string[] = [];
+    const keepers = new Set([
+      DRIVE_FILES.STATE,
+      DRIVE_FILES.COLPKG,
+      DRIVE_FILES.LOCK,
+      DRIVE_FILES.EXTRAS,
+      DRIVE_FILES.ADDONS_INDEX,
+      DRIVE_FILES.ADDONS_ZIP,
+    ]);
+
+    // 1) Arquivos específicos do formato antigo
+    const oldFiles = [
+      DRIVE_FILES.DELTA_META,
+      DRIVE_FILES.DELTA_PAYLOAD,
+      DRIVE_FILES.DELTA_MEDIA_MANIFEST,
+      DRIVE_FILES.META, // o meta antigo do backup completo
+    ];
+
+    for (const name of oldFiles) {
+      const file = await findFile(token, name);
+      if (file) {
+        await api(token, `/drive/v3/files/${file.id}`, { method: 'DELETE' });
+        deleted.push(name);
+      }
+    }
+
+    // 2) Pasta de mídia incremental (apenas arquivos não referenciados no STATE)
+    if (deleted.length > 0) {
+      try {
+        const stateFile = await findFile(token, DRIVE_FILES.STATE);
+        if (stateFile) {
+          const state: SyncState = JSON.parse(
+            await (await downloadFile(token, stateFile.id)).text()
+          );
+          const referenced = new Set(Object.keys(state.mediaManifest));
+          const folderId = await ensureFolder(token);
+          const q = encodeURIComponent(
+            `'${folderId}' in parents and name contains 'runora-sync-media'`
+          );
+          const res = await api(token, `/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=200`);
+          const data = (await res.json()) as { files?: DriveFileInfo[] };
+          for (const f of data.files ?? []) {
+            const hash = f.name.replace('runora-sync-media/', '');
+            if (!referenced.has(hash)) {
+              await api(token, `/drive/v3/files/${f.id}`, { method: 'DELETE' });
+              deleted.push(`runora-sync-media/${f.name}`);
+            }
+          }
+        }
+      } catch {
+        // se falhar, não bloqueia — o usuário pode rodar de novo
+      }
+    }
+
+    return deleted.length > 0
+      ? `Arquivos antigos removidos: ${deleted.join(', ')}`
+      : 'Nenhum arquivo antigo encontrado para remover.';
   }
 }
