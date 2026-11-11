@@ -875,6 +875,22 @@ export class DriveSyncService {
       await acquireLock(token);
       try {
         const outcome = await (async (): Promise<SyncCollectionOutcome> => {
+        // ============================================================
+        // Fase 7.7: Migração — primeiro sync pós-update
+        // ============================================================
+        // Se não há lastSyncedUsn, é o primeiro sync após o update para sync incremental.
+        // Faz backfill de USN em todas as entidades existentes e inicializa lastSyncedUsn.
+        const lastSyncedUsn = this.getLastSyncedUsn();
+        if (lastSyncedUsn === 0) {
+          progress('Primeiro sync incremental: preparando dados existentes…');
+          const backfilled = StorageService.backfillUsn();
+          if (backfilled > 0) {
+            progress(`Backfill concluído: ${backfilled} entidades receberam USN.`);
+          }
+          // Após backfill, o USN atual será o "head" inicial
+          this.setLastSyncedUsn(StorageService.getCurrentUsn());
+        }
+
         const metaFile = await findFile(token, DRIVE_FILES.META);
         const remoteMeta = metaFile
           ? (JSON.parse(await (await downloadFile(token, metaFile.id)).text()) as SyncMeta)
