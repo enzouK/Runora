@@ -26,7 +26,12 @@
 import pkg from '../../package.json';
 import { Deck, NoteType, Note, Card, RevlogEntry, Preset } from '../types/runora';
 import { StorageService } from './storage';
-import { type SyncTally } from './syncTally';
+import {
+  bumpTally,
+  emptySyncTally,
+  tallyFromCounts,
+  type SyncTally,
+} from './syncTally';
 export type { SyncTally } from './syncTally';
 export {
   emptySyncTally,
@@ -634,6 +639,32 @@ async function releaseLock(token: string): Promise<void> {
   }
 }
 
+/* ── Tally ao vivo (contadores ao vivo estilo Anki do painel de sync) ────── */
+
+// Só um sync roda por vez (guarda isRunning), então um acumulador de módulo
+// evita passar o tally por todas as assinaturas das funções internas.
+// Fora de um sync ele fica null e os helpers viram no-op.
+let activeTally: SyncTally | null = null;
+
+/** Soma incrementos ao tally do sync em andamento. */
+function addTally(add: Partial<SyncTally>): void {
+  if (activeTally) activeTally = bumpTally(activeTally, add);
+}
+
+/** Tally ↓ a partir do resultado de aplicar itens vindos do Drive. */
+function tallyFromApply(applied: {
+  notes: number;
+  cards: number;
+  decks: number;
+  presets: number;
+  deleted: number;
+}): Partial<SyncTally> {
+  return {
+    addedDown: applied.notes + applied.cards + applied.decks + applied.presets,
+    removedDown: applied.deleted,
+  };
+}
+
 /* ── Service ─────────────────────────────────────────────────────────────── */
 
 export class DriveSyncService {
@@ -882,7 +913,11 @@ export class DriveSyncService {
     }
     this.markRunning();
     const progress = opts?.onProgress ?? (() => {});
-    const itemProgress = opts?.onItemProgress ?? (() => {});
+    const rawItemProgress = opts?.onItemProgress ?? (() => {});
+    activeTally = emptySyncTally();
+    // Cada emissão leva o tally ACUMULADO até agora — o painel só exibe.
+    const itemProgress = (p: SyncProgressState | null) =>
+      rawItemProgress(p ? { ...p, tally: { ...activeTally! } } : null);
     try {
       const token = await this.ensureToken();
 
@@ -1162,6 +1197,7 @@ export class DriveSyncService {
     } finally {
       itemProgress(null);
       localStorage.removeItem(LS.RUNNING);
+      activeTally = null;
       // aviso para quem observa (o badge do botão Sync precisa recalcular:
       // um sync pode ter apagado a pendência pelas costas)
       if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
@@ -1489,6 +1525,9 @@ export class DriveSyncService {
     const applied = await applyRemoteItemsProgressive(remoteData, keys, (p) =>
       itemProgress({ phase: 'applying', ...p })
     );
+    // Contadores ↓ do que foi aplicado (o tally vai junto na próxima emissão)
+    addTally(tallyFromApply(applied));
+    itemProgress({ phase: 'applying' });
     mergeRemoteRevlog(remoteData.revlog ?? [], remoteData);
     return applied;
   }
@@ -1536,7 +1575,11 @@ export class DriveSyncService {
     }
     this.markRunning();
     const progress = opts?.onProgress ?? (() => {});
-    const itemProgress = opts?.onItemProgress ?? (() => {});
+    const rawItemProgress = opts?.onItemProgress ?? (() => {});
+    activeTally = emptySyncTally();
+    // Cada emissão leva o tally ACUMULADO até agora — o painel só exibe.
+    const itemProgress = (p: SyncProgressState | null) =>
+      rawItemProgress(p ? { ...p, tally: { ...activeTally! } } : null);
     try {
       const token = await this.ensureToken();
       itemProgress({ phase: 'download' });
@@ -1591,10 +1634,14 @@ export class DriveSyncService {
         new Set(Object.keys(driveSnapshot.items)),
         (p) => itemProgress({ phase: 'applying', ...p })
       );
+      // Contadores ↓ do que veio do Drive
+      addTally(tallyFromApply(applied));
       mergeRemoteRevlog(remoteData.revlog ?? [], remoteData);
 
       // ── O que só existe aqui (ex.: o deck que você deletou) some ──
       const deleted = this.deleteLocalOnlyItems(driveSnapshot);
+      addTally({ removedDown: deleted });
+      itemProgress({ phase: 'applying' });
 
       // ── O estado local agora É o do Drive ──
       setSyncBase(
@@ -1611,6 +1658,7 @@ export class DriveSyncService {
     } finally {
       itemProgress(null);
       localStorage.removeItem(LS.RUNNING);
+      activeTally = null;
     }
   }
 
@@ -1807,6 +1855,19 @@ export class DriveSyncService {
       cards: StorageService.getCards().length,
     };
 
+    // Contadores ↑: o pacote vai conter a coleção inteira
+    addTally(
+      tallyFromCounts(
+        {
+          decks: localCounts.decks,
+          notes: localCounts.notes,
+          cards: localCounts.cards,
+          presets: StorageService.getPresets().length,
+        },
+        'up'
+      )
+    );
+
     // fase de preparação: o pacote é montado (contador ao vivo dos itens)
     itemProgress({ phase: 'preparing', counts: localCounts });
     const { blob } = await ExportImportService.buildCollectionPackage({
@@ -1949,6 +2010,11 @@ export class DriveSyncService {
       getDeviceName(),
       { decks, noteTypes, notes, cards, revlog, presets, tombstones, mediaManifest }
     );
+
+    // Contadores ↑: o delta está pronto — Anki também mostra os números de
+    // uma vez quando monta o lote de envio.
+    addTally(tallyFromCounts({ decks: decks.length, notes: notes.length, cards: cards.length, presets: presets.length }, 'up'));
+    addTally({ removedUp: tombstones.length });
 
     // Upload delta payload
     itemProgress({ phase: 'preparing', counts: { decks: decks.length, notes: notes.length, cards: cards.length } });
@@ -2158,9 +2224,38 @@ export class DriveSyncService {
       }
     }
 
-    // Aplica o delta localmente
+    // Aplica o delta localmente — contagem exata item por item (↓ ao vivo)
     progress('Aplicando delta localmente…');
     itemProgress({ phase: 'applying', counts: deltaMeta.counts });
+
+    const deltaTotal =
+      delta.decks.length +
+      delta.noteTypes.length +
+      delta.notes.length +
+      delta.cards.length +
+      delta.revlog.length +
+      delta.presets.length +
+      delta.tombstones.length;
+    let processed = 0;
+    // tipo do delta → parte do painel / chave do tally (revlog não conta no tally)
+    const TALLY_KEY: Record<string, 'decks' | 'notes' | 'cards' | 'presets' | null> = {
+      deck: 'decks',
+      note: 'notes',
+      card: 'cards',
+      preset: 'presets',
+      notetype: null,
+      revlog: null,
+    };
+    const reportApply = (part?: SyncProgressState['part']) => {
+      processed++;
+      itemProgress({
+        phase: 'applying',
+        ...(part ? { part } : {}),
+        done: processed,
+        total: deltaTotal,
+        counts: deltaMeta.counts,
+      });
+    };
 
     const newHeadUsn = applyDelta(delta,
       // applyEntity: cria/atualiza entidade no storage local
@@ -2185,6 +2280,10 @@ export class DriveSyncService {
             StorageService.upsertPreset(entity as Preset);
             break;
         }
+        const key = TALLY_KEY[type];
+        if (key) addTally(tallyFromCounts({ [key]: 1 }, 'down'));
+        // 'presets' conta no tally mas não tem "parte" própria no painel
+        reportApply(key && key !== 'presets' ? key : undefined);
       },
       // applyTombstone: processa deletados
       (tombstone) => {
@@ -2208,6 +2307,8 @@ export class DriveSyncService {
             StorageService.deletePreset(tombstone.id);
             break;
         }
+        addTally({ removedDown: 1 });
+        reportApply('deletes');
       }
     );
 
