@@ -38,6 +38,103 @@ export interface SyncDelta {
   mediaManifest: Record<string, string>;
 }
 
+/** Conflito detectado: mesma entidade (GUID) com USN divergente nos dois lados. */
+export interface SyncConflict {
+  /** Tipo da entidade em conflito. */
+  type: 'deck' | 'notetype' | 'note' | 'card' | 'preset';
+  /** ID local da entidade. */
+  localId: string;
+  /** ID remoto da entidade (pode ser diferente se GUID casar mas IDs não). */
+  remoteId: string;
+  /** GUID da entidade (chave de identidade universal). */
+  guid?: string;
+  /** USN local. */
+  localUsn: number;
+  /** USN remoto. */
+  remoteUsn: number;
+  /** Dados locais (para apresentação ao usuário). */
+  localData: unknown;
+  /** Dados remotos (para apresentação ao usuário). */
+  remoteData: unknown;
+}
+
+/** Resultado da detecção de conflitos entre delta local e remoto. */
+export interface ConflictDetectionResult {
+  /** Lista de conflitos detectados. */
+  conflicts: SyncConflict[];
+  /** true se há conflitos que precisam de resolução do usuário. */
+  hasConflicts: boolean;
+}
+
+/**
+ * Detecta conflitos entre entidades locais e remotas.
+ * Conflito = mesma entidade (casada por GUID para notas, por ID para demais)
+ * foi modificada nos dois lados desde o último sync comum (baseUsn).
+ */
+export function detectConflicts(
+  baseUsn: number,
+  local: { decks: Deck[]; noteTypes: NoteType[]; notes: Note[]; cards: Card[]; presets: Preset[] },
+  remote: { decks: Deck[]; noteTypes: NoteType[]; notes: Note[]; cards: Card[]; presets: Preset[] }
+): ConflictDetectionResult {
+  const conflicts: SyncConflict[] = [];
+
+  // Helper: compara duas listas de entidades por chave de identidade
+  const compareLists = <T extends { id: string; usn?: number; guid?: string }>(
+    type: SyncConflict['type'],
+    localList: T[],
+    remoteList: T[],
+    getIdentity: (item: T) => string
+  ) => {
+    const localMap = new Map<string, T>();
+    const remoteMap = new Map<string, T>();
+
+    for (const item of localList) {
+      if ((item.usn ?? 0) > baseUsn) localMap.set(getIdentity(item), item);
+    }
+    for (const item of remoteList) {
+      if ((item.usn ?? 0) > baseUsn) remoteMap.set(getIdentity(item), item);
+    }
+
+    for (const [identity, localItem] of localMap) {
+      const remoteItem = remoteMap.get(identity);
+      if (remoteItem) {
+        const localUsn = localItem.usn ?? 0;
+        const remoteUsn = remoteItem.usn ?? 0;
+        // Conflito se ambos mudaram desde baseUsn E os USNs divergem
+        if (localUsn > baseUsn && remoteUsn > baseUsn && localUsn !== remoteUsn) {
+          conflicts.push({
+            type,
+            localId: localItem.id,
+            remoteId: remoteItem.id,
+            guid: 'guid' in localItem ? localItem.guid : undefined,
+            localUsn,
+            remoteUsn,
+            localData: localItem,
+            remoteData: remoteItem,
+          });
+        }
+      }
+    }
+  };
+
+  // Decks: identidade = name (hierárquico)
+  compareLists('deck', local.decks, remote.decks, (d) => d.name);
+
+  // NoteTypes: identidade = name
+  compareLists('notetype', local.noteTypes, remote.noteTypes, (nt) => nt.name);
+
+  // Presets: identidade = name
+  compareLists('preset', local.presets, remote.presets, (p) => p.name);
+
+  // Notes: identidade = GUID (universal)
+  compareLists('note', local.notes, remote.notes, (n) => n.guid ?? n.id);
+
+  // Cards: identidade = noteId + templateOrd (único por nota)
+  compareLists('card', local.cards, remote.cards, (c) => `${c.noteId}:${c.templateOrd}`);
+
+  return { conflicts, hasConflicts: conflicts.length > 0 };
+}
+
 /** Metadado do delta no Drive (arquivo separado do payload). */
 export interface DeltaMeta {
   app: 'runora';

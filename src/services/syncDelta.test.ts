@@ -9,9 +9,11 @@ import {
   buildDelta,
   applyDelta,
   isValidDelta,
+  detectConflicts,
   DELTA_FORMAT_VERSION,
   type SyncDelta,
   type DeltaMeta,
+  type SyncConflict,
 } from './syncDelta';
 import type { Deck, NoteType, Note, Card, RevlogEntry, Preset, Tombstone } from '../types/runora';
 
@@ -68,6 +70,7 @@ function makeNote(partial: Partial<Note> = {}): Note {
     createdAt: partial.createdAt ?? Date.now(),
     updatedAt: partial.updatedAt ?? Date.now(),
     usn: partial.usn,
+    guid: partial.guid,
   };
 }
 
@@ -204,5 +207,106 @@ describe('Fase 7.2 — Formato de delta (sync incremental)', () => {
     };
     assert.equal(meta.app, 'runora');
     assert.equal(meta.counts.notes, 50);
+  });
+});
+
+describe('Fase 7.6 — Detecção de conflitos por USN divergente', () => {
+  const baseUsn = 100;
+
+  function localNote(partial: Partial<Note> = {}): Note {
+    return makeNote({ guid: 'guid-A', usn: 110, ...partial });
+  }
+  function remoteNote(partial: Partial<Note> = {}): Note {
+    return makeNote({ guid: 'guid-A', usn: 120, ...partial });
+  }
+  function localDeck(partial: Partial<Deck> = {}): Deck {
+    return makeDeck({ name: 'Meu Deck', usn: 110, ...partial });
+  }
+  function remoteDeck(partial: Partial<Deck> = {}): Deck {
+    return makeDeck({ name: 'Meu Deck', usn: 120, ...partial });
+  }
+
+  it('detecta conflito em nota (mesmo GUID, USN divergente > baseUsn)', () => {
+    const result = detectConflicts(baseUsn, {
+      notes: [localNote({ id: 'local-n1', fields: { Frente: 'gato' } })],
+      decks: [], noteTypes: [], cards: [], presets: []
+    }, {
+      notes: [remoteNote({ id: 'remote-n1', fields: { Frente: 'cat' } })],
+      decks: [], noteTypes: [], cards: [], presets: []
+    });
+
+    assert.equal(result.hasConflicts, true);
+    assert.equal(result.conflicts.length, 1);
+    const c = result.conflicts[0];
+    assert.equal(c.type, 'note');
+    assert.equal(c.guid, 'guid-A');
+    assert.equal(c.localUsn, 110);
+    assert.equal(c.remoteUsn, 120);
+  });
+
+  it('NÃO detecta conflito se só um lado mudou (outro lado usn <= baseUsn)', () => {
+    const result = detectConflicts(baseUsn, {
+      notes: [localNote({ usn: 110 })],
+      decks: [], noteTypes: [], cards: [], presets: []
+    }, {
+      notes: [remoteNote({ usn: 90 })], // <= baseUsn = não mudou
+      decks: [], noteTypes: [], cards: [], presets: []
+    });
+
+    assert.equal(result.hasConflicts, false);
+    assert.equal(result.conflicts.length, 0);
+  });
+
+  it('NÃO detecta conflito se USNs são iguais (mesma mudança)', () => {
+    const result = detectConflicts(baseUsn, {
+      notes: [localNote({ usn: 110 })],
+      decks: [], noteTypes: [], cards: [], presets: []
+    }, {
+      notes: [remoteNote({ usn: 110 })],
+      decks: [], noteTypes: [], cards: [], presets: []
+    });
+
+    assert.equal(result.hasConflicts, false);
+  });
+
+  it('detecta conflito em deck (mesmo nome, USN divergente)', () => {
+    const result = detectConflicts(baseUsn, {
+      decks: [localDeck({ usn: 110 })],
+      notes: [], noteTypes: [], cards: [], presets: []
+    }, {
+      decks: [remoteDeck({ usn: 120 })],
+      notes: [], noteTypes: [], cards: [], presets: []
+    });
+
+    assert.equal(result.hasConflicts, true);
+    assert.equal(result.conflicts[0].type, 'deck');
+  });
+
+  it('detecta múltiplos conflitos independentes', () => {
+    const result = detectConflicts(baseUsn, {
+      notes: [localNote({ id: 'n1', guid: 'g1', usn: 110 }), localNote({ id: 'n2', guid: 'g2', usn: 115 })],
+      decks: [localDeck({ name: 'Deck1', usn: 110 })],
+      noteTypes: [], cards: [], presets: []
+    }, {
+      notes: [remoteNote({ id: 'n1', guid: 'g1', usn: 120 }), remoteNote({ id: 'n2', guid: 'g2', usn: 125 })],
+      decks: [remoteDeck({ name: 'Deck1', usn: 120 })],
+      noteTypes: [], cards: [], presets: []
+    });
+
+    assert.equal(result.hasConflicts, true);
+    assert.equal(result.conflicts.length, 3); // 2 notas + 1 deck
+  });
+
+  it('cards: conflito por noteId:templateOrd', () => {
+    const result = detectConflicts(baseUsn, {
+      cards: [makeCard({ id: 'c1', noteId: 'n1', templateOrd: 0, usn: 110 })],
+      notes: [], decks: [], noteTypes: [], presets: []
+    }, {
+      cards: [makeCard({ id: 'c1', noteId: 'n1', templateOrd: 0, usn: 120 })],
+      notes: [], decks: [], noteTypes: [], presets: []
+    });
+
+    assert.equal(result.hasConflicts, true);
+    assert.equal(result.conflicts[0].type, 'card');
   });
 });
