@@ -926,12 +926,47 @@ export class DriveSyncService {
             };
           }
           if (localChanged) {
+            // ============================================================
+            // Fase 7: Upload incremental (só local mudou)
+            // ============================================================
+            const lastSyncedUsn = this.getLastSyncedUsn();
+            if (lastSyncedUsn > 0) {
+              const newHead = await this.uploadIncremental(token, progress, itemProgress);
+              if (newHead !== null) {
+                return {
+                  action: 'upload',
+                  message: `Sync incremental concluído (USN ${lastSyncedUsn} → ${newHead}).`,
+                };
+              }
+            }
+            // Fallback para full upload se incremental não disponível
             itemProgress({ phase: 'preparing' });
             return await this.uploadBackup(token, progress, itemProgress);
           }
           // o painel fica de pé: as preferências/extensões ainda serão
           // comparadas nas próximas etapas (Fase 5)
           return { action: 'none', message: 'Tudo sincronizado — nenhuma mudança desde o último sync.' };
+        }
+
+        // ============================================================
+        // Fase 7: Download incremental (só remoto mudou)
+        // ============================================================
+        if (!localChanged) {
+          const lastSyncedUsn = this.getLastSyncedUsn();
+          if (lastSyncedUsn > 0) {
+            const newHead = await this.downloadIncremental(token, progress, itemProgress);
+            if (newHead !== null) {
+              // Aplica extras do Drive (fase 5) e finaliza
+              const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {});
+              return {
+                action: 'download',
+                message: extrasMsg
+                  ? `Sync incremental concluído (USN ${lastSyncedUsn} → ${newHead}). ${extrasMsg}`
+                  : `Sync incremental concluído (USN ${lastSyncedUsn} → ${newHead}).`,
+              };
+            }
+          }
+          // Fallback para download completo
         }
 
         // ── O Drive tem coisa nova: baixa o pacote e compara item a item ──
