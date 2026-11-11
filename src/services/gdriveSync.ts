@@ -933,9 +933,14 @@ export class DriveSyncService {
             if (lastSyncedUsn > 0) {
               const newHead = await this.uploadIncremental(token, progress, itemProgress);
               if (newHead !== null) {
+                // Preferências/extensões também precisam subir (Fase 5),
+                // igual ao caminho de download abaixo.
+                const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {});
                 return {
                   action: 'upload',
-                  message: `Sync incremental concluído (USN ${lastSyncedUsn} → ${newHead}).`,
+                  message: extrasMsg
+                    ? `Sync incremental concluído (USN ${lastSyncedUsn} → ${newHead}). ${extrasMsg}`
+                    : `Sync incremental concluído (USN ${lastSyncedUsn} → ${newHead}).`,
                 };
               }
             }
@@ -1955,12 +1960,13 @@ export class DriveSyncService {
     }
 
     // Update delta meta
+    const now = Date.now();
     const deltaMeta: DeltaMeta = {
       app: 'runora',
       version: 1,
       baseUsn: lastSyncedUsn,
       headUsn: currentUsn,
-      syncedAt: Date.now(),
+      syncedAt: now,
       deviceId: this.getDeviceId(),
       deviceName: getDeviceName(),
       counts: {
@@ -1978,8 +1984,46 @@ export class DriveSyncService {
     const existingMeta = await findFile(token, DRIVE_FILES.DELTA_META);
     await uploadMultipart(token, DRIVE_FILES.DELTA_META, metaBlob, existingMeta?.id);
 
+    // Atualiza o META do Drive: é por ele que os OUTROS aparelhos percebem
+    // que há mudanças novas no Drive para baixar (checagem de remoteChanged).
+    const existingBackupMeta = await findFile(token, DRIVE_FILES.META);
+    let appVersion = '0.1.0';
+    if (existingBackupMeta) {
+      try {
+        appVersion = (JSON.parse(await (await downloadFile(token, existingBackupMeta.id)).text()) as SyncMeta).appVersion;
+      } catch {
+        /* mantém o padrão */
+      }
+    }
+    const backupMeta: SyncMeta = {
+      app: 'runora',
+      version: 1,
+      uploadedAt: now,
+      deviceId: this.getDeviceId(),
+      deviceName: getDeviceName(),
+      appVersion,
+      counts: {
+        decks: StorageService.getDecks().length,
+        notes: StorageService.getNotes().length,
+        cards: StorageService.getCards().length,
+        noteTypes: StorageService.getNoteTypes().length,
+        media: (await MediaStore.list()).length,
+        revlog: StorageService.getRevlog().length,
+      },
+    };
+    await uploadMultipart(
+      token,
+      DRIVE_FILES.META,
+      new Blob([JSON.stringify(backupMeta, null, 2)], { type: 'application/json' }),
+      existingBackupMeta?.id
+    );
+
     // Update last synced USN
     this.setLastSyncedUsn(currentUsn);
+    // O Drive agora tem o estado atual → a base passa a ser o estado local
+    // (senão o sinal de "mudanças pendentes" não apaga, como no backup completo).
+    setSyncBase(computeSnapshot(localSyncContent(), this.getDeviceId(), getDeviceName()));
+    this.setLastSync({ at: now, remoteUploadedAt: now });
 
     progress(`Delta enviado: ${decks.length} decks, ${notes.length} notas, ${cards.length} cards, ${tombstones.length} deletados.`);
     return currentUsn;
@@ -2153,9 +2197,12 @@ export class DriveSyncService {
 
     // Atualiza último USN sincronizado
     this.setLastSyncedUsn(newHeadUsn);
+    // O estado local agora é o do Drive → a base passa a ser o estado atual
+    // (senão o sinal de "mudanças pendentes" acende à toa após o download).
+    setSyncBase(computeSnapshot(localSyncContent(), this.getDeviceId(), getDeviceName()));
+    this.setLastSync({ at: Date.now(), remoteUploadedAt: deltaMeta.syncedAt });
 
     progress(`Delta aplicado: ${delta.decks.length} decks, ${delta.notes.length} notas, ${delta.cards.length} cards, ${delta.tombstones.length} deletados.`);
     return newHeadUsn;
   }
-
-  }
+}
