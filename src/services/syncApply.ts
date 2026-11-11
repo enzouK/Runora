@@ -59,6 +59,20 @@ export interface ApplyRemoteResult {
 }
 
 /**
+ * USN do item mesclado: o mais novo entre o local e o que veio do Drive.
+ *
+ * O USN é a "versão" do item e é COMPARTILHADO entre os aparelhos. Ao
+ * aplicar o que veio do Drive, o item tem que ficar com o USN de lá (ou o
+ * mais novo dos dois) — se ele ganhasse um USN novo aqui, o contador local
+ * advanced a cada mesclagem e os outros aparelhos perdiam a base do delta,
+ * sendo obrigados a baixar a coleção inteira de novo.
+ */
+function mergedUsn(local: number | undefined, remote: number | undefined): number | undefined {
+  const maior = Math.max(local ?? 0, remote ?? 0);
+  return maior > 0 ? maior : undefined;
+}
+
+/**
  * Aplica os itens remotos indicados.
  * `keys` = chaves a aplicar (inclui as disputas resolvidas a favor do Drive).
  */
@@ -142,6 +156,7 @@ export function applyRemoteItems(
         dailyLimitsOverride: remoteDeck.dailyLimitsOverride ?? existing.dailyLimitsOverride,
         fsrsOverride: remoteDeck.fsrsOverride ?? existing.fsrsOverride,
         fsrsParams: remoteDeck.fsrsParams ?? existing.fsrsParams,
+        usn: mergedUsn(existing.usn, remoteDeck.usn),
         updatedAt: now,
       };
       const idx = decksToSave.findIndex((d) => d.id === merged.id);
@@ -169,6 +184,7 @@ export function applyRemoteItems(
         css: remoteType.css,
         fields: remoteType.fields,
         templates: remoteType.templates,
+        usn: mergedUsn(existing.usn, remoteType.usn),
         updatedAt: now,
       };
       const idx = typesToSave.findIndex((t) => t.id === merged.id);
@@ -201,6 +217,7 @@ export function applyRemoteItems(
         displayOrder: remotePreset.displayOrder,
         audioConfig: remotePreset.audioConfig,
         fsrsParams: remotePreset.fsrsParams,
+        usn: mergedUsn(existing.usn, remotePreset.usn),
         updatedAt: now,
       };
       const idx = presetsToSave.findIndex((p) => p.id === merged.id);
@@ -260,6 +277,7 @@ export function applyRemoteItems(
         fields: { ...remoteNote.fields },
         media: remoteNote.media?.length ? remoteNote.media : localNote.media,
         tags: remoteNote.tags,
+        usn: mergedUsn(localNote.usn, remoteNote.usn),
         updatedAt: now,
       };
       const idx = notesToSave.findIndex((n) => n.id === merged.id);
@@ -306,6 +324,7 @@ export function applyRemoteItems(
         suspended: remoteCard.suspended,
         position: remoteCard.position,
         learningStep: remoteCard.learningStep,
+        usn: mergedUsn(localCard.usn, remoteCard.usn),
         updatedAt: now,
       };
       const idx = cardsToSave.findIndex((c) => c.id === merged.id);
@@ -370,36 +389,41 @@ export function applyRemoteItems(
   }
 
   // ── Grava ──
-  if (decksToSave.length > 0) {
-    const current = StorageService.getDecks();
-    const byId = new Map(current.map((d) => [d.id, d]));
-    for (const d of decksToSave) byId.set(d.id, d);
-    StorageService.saveDecks([...byId.values()]);
-  }
-  if (typesToSave.length > 0) {
-    const current = StorageService.getNoteTypes();
-    const byId = new Map(current.map((t) => [t.id, t]));
-    for (const t of typesToSave) byId.set(t.id, t);
-    StorageService.saveNoteTypes([...byId.values()]);
-  }
-  if (presetsToSave.length > 0) {
-    const current = StorageService.getPresets();
-    const byName = new Map(current.map((p) => [p.name.trim(), p]));
-    for (const p of presetsToSave) byName.set(p.name.trim(), p);
-    StorageService.savePresets([...byName.values()]);
-  }
-  if (notesToSave.length > 0) {
-    const current = StorageService.getNotes();
-    const byId = new Map(current.map((n) => [n.id, n]));
-    for (const n of notesToSave) byId.set(n.id, n);
-    StorageService.saveNotes([...byId.values()]);
-  }
-  if (cardsToSave.length > 0) {
-    const current = StorageService.getCards();
-    const byId = new Map(current.map((c) => [c.id, c]));
-    for (const c of cardsToSave) byId.set(c.id, c);
-    StorageService.saveCards([...byId.values()]);
-  }
+  // Tudo aqui veio do Drive: o USN é o DE LÁ. Renumerar aqui faria o
+  // contador local subir a cada mesclagem (e os outros aparelhos perderiam
+  // a base do delta) — por isso o `withoutUsnBump`.
+  StorageService.withoutUsnBump(() => {
+    if (decksToSave.length > 0) {
+      const current = StorageService.getDecks();
+      const byId = new Map(current.map((d) => [d.id, d]));
+      for (const d of decksToSave) byId.set(d.id, d);
+      StorageService.saveDecks([...byId.values()]);
+    }
+    if (typesToSave.length > 0) {
+      const current = StorageService.getNoteTypes();
+      const byId = new Map(current.map((t) => [t.id, t]));
+      for (const t of typesToSave) byId.set(t.id, t);
+      StorageService.saveNoteTypes([...byId.values()]);
+    }
+    if (presetsToSave.length > 0) {
+      const current = StorageService.getPresets();
+      const byName = new Map(current.map((p) => [p.name.trim(), p]));
+      for (const p of presetsToSave) byName.set(p.name.trim(), p);
+      StorageService.savePresets([...byName.values()]);
+    }
+    if (notesToSave.length > 0) {
+      const current = StorageService.getNotes();
+      const byId = new Map(current.map((n) => [n.id, n]));
+      for (const n of notesToSave) byId.set(n.id, n);
+      StorageService.saveNotes([...byId.values()]);
+    }
+    if (cardsToSave.length > 0) {
+      const current = StorageService.getCards();
+      const byId = new Map(current.map((c) => [c.id, c]));
+      for (const c of cardsToSave) byId.set(c.id, c);
+      StorageService.saveCards([...byId.values()]);
+    }
+  });
 
   // ── Exclusões (o item sumiu do Drive) ──
   if (decksToDelete.length > 0) {

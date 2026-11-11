@@ -270,10 +270,19 @@ export interface FSRSPrediction {
 export interface Tombstone {
   /** Tipo da entidade deletada. */
   type: 'deck' | 'notetype' | 'note' | 'card' | 'revlog' | 'preset';
-  /** ID da entidade deletada (o `id` original). */
+  /** ID da entidade deletada (o `id` original — LOCAL deste aparelho). */
   id: string;
-  /** GUID da nota (apenas para notas — ajuda a casar entre dispositivos). */
+  /**
+   * Identidade entre aparelhos (o `id` é local de cada aparelho):
+   * - nota: o GUID da nota
+   * - card: o GUID da nota dona do card
+   * - deck/tipo/preset: o NOME
+   */
   guid?: string;
+  /** Ordem do template do card deletado (a identidade do card). */
+  templateOrd?: number;
+  /** Nome do deck/tipo/preset deletado (a identidade entre aparelhos). */
+  name?: string;
   /** USN da exclusão. */
   usn: number;
   /** Timestamp da exclusão. */

@@ -6,6 +6,21 @@ import { formatTimespanMinutes } from '../fsrs/timespan';
 import { isValidWeights } from '../fsrs/weights';
 import { DEFAULT_COLOR_THEME } from '../themes';
 
+/**
+ * JSON estável (chaves sempre na mesma ordem) para comparar o CONTEÚDO de
+ * dois itens sem falso positivo. `usn` e `updatedAt` ficam de fora: o USN é
+ * o "número da mudança" e o updatedAt é só o carimbo do toque — nenhum dos
+ * dois diz se o conteúdo realmente mudou.
+ */
+export function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([k]) => k !== 'usn' && k !== 'updatedAt')
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(',')}}`;
+}
+
 const STORAGE_KEYS = {
   DECKS: 'runora_decks',
   NOTETYPES: 'runora_notetypes',
@@ -133,6 +148,156 @@ export class StorageService {
   /** Retorna o USN atual (sem incrementar). */
   public static getCurrentUsn(): number {
     return this.getUsnCounter();
+  }
+
+  /**
+   * Adota o contador que veio do Drive.
+   *
+   * O USN é COMPARTILHADO entre os aparelhos (ele vive no estado do Drive).
+   * Sem esta adoção, cada aparelho contaria por si e o delta incremental
+   * não bateria entre eles: o aparelho que editou algo "depois" do outro
+   * ficaria com um USN menor e a mudança nunca entraria no delta.
+   */
+  public static adoptUsnCounter(usn: number): void {
+    if (!Number.isFinite(usn) || usn <= 0) return;
+    if (usn > this.getUsnCounter()) this.setUsnCounter(usn);
+  }
+
+  /**
+   * Maior USN entre os itens da coleção — o "head" real do conteúdo.
+   *
+   * Serve para o aparelho adotar o contador de quem escreveu a coleção:
+   * depois de baixar o backup do outro aparelho, os itens trazem o USN
+   * daquele aparelho e o contador local precisa acompanhar.
+   */
+  public static getMaxItemUsn(): number {
+    let max = 0;
+    const listas: Array<Array<{ usn?: number }>> = [
+      this.getNotes(),
+      this.getCards(),
+      this.getDecks(),
+      this.getNoteTypes(),
+      this.getPresets(),
+      this.getRevlog(),
+    ];
+    for (const lista of listas) {
+      for (const item of lista) max = Math.max(max, item.usn ?? 0);
+    }
+    return max;
+  }
+
+  /**
+   * Quando applying itens que vim do Drive, o USN local NÃO pode ser
+   * renumerado (o item já traz o USN do aparelho que o mudou).
+   */
+  private static suppressUsnBump = false;
+
+  /** Roda `fn` sem renumerar o USN dos itens (uso: aplicar o delta do Drive). */
+  public static withoutUsnBump<T>(fn: () => T): T {
+    const anterior = this.suppressUsnBump;
+    this.suppressUsnBump = true;
+    try {
+      return fn();
+    } finally {
+      this.suppressUsnBump = anterior;
+    }
+  }
+
+  /**
+   * Dá USN novo aos itens que mudaram de verdade.
+   *
+   * Antes, editar uma nota mantinha o USN antigo (o `usn` já preenchido era
+   * preservado) — e o delta incremental do Drive não via a edição: o sync
+   * dizia "sincronizado" e a mudança ficava só naquele aparelho.
+   *
+   * O contador global SÓ avança quando o CONTEÚDO muda: ele diz em que
+   * "versão" da coleção estamos, e não quantas vezes o app gravou. Se
+   * avançasse a cada gravação, cada aparelho subiria uma versão nova sem
+   * nada ter mudado e os aparelhos nunca mais sincronizariam de forma
+   * incremental entre si.
+   */
+  private static withFreshUsn<
+    T extends { id: string; usn?: number; createdAt?: number; updatedAt?: number }
+  >(items: T[], previous: T[], now: number): T[] {
+    const antes = new Map(previous.map((p) => [p.id, p]));
+
+    // `usn` e `updatedAt` NÃO são conteúdo: o usn é justamente o que estamos
+    // decidindo aqui, e o updatedAt muda sozinho em importações/migrações
+    // (sem nenhum conteúdo novo).
+    const conteudo = (item: T): string => {
+      const { usn, updatedAt, ...resto } = item as T & Record<string, unknown>;
+      return stableStringify(resto);
+    };
+
+    if (this.suppressUsnBump) {
+      // veio do Drive: o USN é o de lá — não renumera nem avança o contador
+      return items.map((item) =>
+        item.usn
+          ? item
+          : { ...item, usn: Math.max(1, this.getCurrentUsn()), createdAt: item.createdAt ?? now, updatedAt: item.updatedAt ?? now }
+      );
+    }
+
+    // O que precisa de um USN novo?
+    //  - item NOVO (não existia antes e não tem USN)      → cria
+    //  - item NOVO que já tem USN (veio de outra origem)  → mantém o dele
+    //  - item que EXISTIA e o conteúdo mudou              → edição
+    //  - item que EXISTIA sem USN e o conteúdo mudou     → edição (ganha USN)
+    //  - item que existia COM USN e o chamador esqueceu o USN → devolve o de antes
+    const precisaDeUsn = (item: T): 'novo' | 'edicao' | 'restaurar' | null => {
+      const antigo = antes.get(item.id);
+      if (!antigo) return item.usn ? null : 'novo';
+      if (!item.usn) {
+        if (antigo.usn) return 'restaurar';
+        return conteudo(antigo) === conteudo(item) ? null : 'edicao';
+      }
+      return conteudo(antigo) === conteudo(item) ? null : 'edicao';
+    };
+
+    // Itens que já têm USN (vieram de outra origem) mantêm o dele — mas o
+    // contador local precisa acompanhar, senão o próximo USN gerado seria
+    // MENOR que o de um item já guardado (e o delta não o enxergaria).
+    for (const item of items) {
+      if (item.usn) this.adoptUsnCounter(item.usn);
+    }
+
+    const plano = items.map((item) => precisaDeUsn(item));
+    if (!plano.some((p) => p === 'novo' || p === 'edicao')) {
+      // Nada mudou de verdade: o contador NÃO avança (senão cada gravação
+      // criaria uma "versão" nova e os aparelhos só trocariam sync completo).
+      return items.map((item, i) =>
+        plano[i] === 'restaurar' ? { ...item, usn: antes.get(item.id)?.usn } : item
+      );
+    }
+
+    const usn = this.nextUsn();
+    return items.map((item, i) => {
+      if (plano[i] === 'novo') {
+        return { ...item, usn, createdAt: item.createdAt ?? now, updatedAt: item.updatedAt ?? now };
+      }
+      if (plano[i] === 'edicao') {
+        return { ...item, usn };
+      }
+      if (plano[i] === 'restaurar') {
+        return { ...item, usn: antes.get(item.id)?.usn };
+      }
+      return item;
+    });
+  }
+
+  /**
+   * Lê o que está guardado no localStorage SEM passar pelos getters (que
+   * podem gravar de volta) — é o "antes" que o withFreshUsn compara.
+   */
+  private static readStored<T>(key: string): T[] {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as T[]) : [];
+    } catch {
+      return [];
+    }
   }
 
   // ---- Sync Tombstones (para itens deletados no sync incremental) ----
@@ -367,14 +532,15 @@ export class StorageService {
 
   public static saveDecks(decks: Deck[]): void {
     const now = Date.now();
-    const usn = this.nextUsn();
-    const withUsn = decks.map((d) => {
+    const comTimestamps = decks.map((d) => {
       if (d.usn) return d;
       const createdAt = d.createdAt ?? now;
       const updatedAt = d.updatedAt ?? now;
-      return { ...d, usn, createdAt, updatedAt };
+      return { ...d, createdAt, updatedAt };
     });
-    localStorage.setItem(STORAGE_KEYS.DECKS, JSON.stringify(withUsn));
+    // decks renomeados/editados ganham USN novo (o delta do Drive precisa ver)
+    const final = this.withFreshUsn(comTimestamps, this.readStored<Deck>(STORAGE_KEYS.DECKS), now);
+    localStorage.setItem(STORAGE_KEYS.DECKS, JSON.stringify(final));
   }
 
   public static getNoteTypes(): NoteType[] {
@@ -411,14 +577,14 @@ export class StorageService {
 
   public static saveNoteTypes(noteTypes: NoteType[]): void {
     const now = Date.now();
-    const usn = this.nextUsn();
-    const withUsn = noteTypes.map((nt) => {
+    const comTimestamps = noteTypes.map((nt) => {
       if (nt.usn) return nt;
       const createdAt = nt.createdAt ?? now;
       const updatedAt = nt.updatedAt ?? now;
-      return { ...nt, usn, createdAt, updatedAt };
+      return { ...nt, createdAt, updatedAt };
     });
-    localStorage.setItem(STORAGE_KEYS.NOTETYPES, JSON.stringify(withUsn));
+    const final = this.withFreshUsn(comTimestamps, this.readStored<NoteType>(STORAGE_KEYS.NOTETYPES), now);
+    localStorage.setItem(STORAGE_KEYS.NOTETYPES, JSON.stringify(final));
   }
 
   public static getNotes(): Note[] {
@@ -444,15 +610,17 @@ export class StorageService {
 
   public static saveNotes(notes: Note[]): void {
     const now = Date.now();
-    const usn = this.nextUsn();
-    const withUsn = notes.map((n) => {
+    const comTimestamps = notes.map((n) => {
       if (n.usn) return n;
       // Preserve existing timestamps; only set to now if genuinely new (no createdAt)
       const createdAt = n.createdAt ?? now;
       const updatedAt = n.updatedAt ?? now;
-      return { ...n, usn, createdAt, updatedAt };
+      return { ...n, createdAt, updatedAt };
     });
-    localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(withUsn));
+    // NOTA EDITADA ganha USN novo: sem isto a edição não entrava no delta
+    // incremental e o sync dizia "sincronizado" com a mudança só local.
+    const final = this.withFreshUsn(comTimestamps, this.readStored<Note>(STORAGE_KEYS.NOTES), now);
+    localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(final));
   }
 
   public static getCards(): Card[] {
@@ -478,14 +646,15 @@ export class StorageService {
 
   public static saveCards(cards: Card[]): void {
     const now = Date.now();
-    const usn = this.nextUsn();
-    const withUsn = cards.map((c) => {
+    const comTimestamps = cards.map((c) => {
       if (c.usn) return c;
       const createdAt = c.createdAt ?? now;
       const updatedAt = c.updatedAt ?? now;
-      return { ...c, usn, createdAt, updatedAt };
+      return { ...c, createdAt, updatedAt };
     });
-    localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(withUsn));
+    // card revisto (FSRS, deck, template) também precisa aparecer no delta
+    const final = this.withFreshUsn(comTimestamps, this.readStored<Card>(STORAGE_KEYS.CARDS), now);
+    localStorage.setItem(STORAGE_KEYS.CARDS, JSON.stringify(final));
   }
 
   public static getRevlog(): RevlogEntry[] {
@@ -508,7 +677,12 @@ export class StorageService {
 
   /** Replaces the whole review history (bulk imports build the union first). */
   public static saveRevlogAll(entries: RevlogEntry[]): void {
-    const usn = this.nextUsn();
+    // O contador só avança se entra alguma revisão SEM USN (ou seja, nova de
+    // verdade). Reordenar/mesclar o histórico que já tem USN não cria uma
+    // "versão" nova da coleção — e criar uma faria os aparelhos baixarem a
+    // coleção inteira de novo.
+    const precisaDeUsn = entries.some((e) => !e.usn);
+    const usn = precisaDeUsn ? this.nextUsn() : 0;
     const withUsn = entries.map((e) => (e.usn ? e : { ...e, usn }));
     localStorage.setItem(STORAGE_KEYS.REVLOG, JSON.stringify(withUsn));
   }
@@ -730,14 +904,14 @@ export class StorageService {
    */
   public static deleteNote(noteId: string): void {
     const note = this.getNotes().find((n) => n.id === noteId);
-    const cardsToDelete = this.getCards().filter((c) => c.noteId === noteId).map((c) => c.id);
+    const cardsToDelete = this.getCards().filter((c) => c.noteId === noteId);
     const notes = this.getNotes().filter((n) => n.id !== noteId);
     const cards = this.getCards().filter((c) => c.noteId !== noteId);
     this.saveNotes(notes);
     this.saveCards(cards);
     this.bumpDeletedAt();
     this.addTombstone('notes', [noteId]);
-    if (cardsToDelete.length > 0) this.addTombstone('cards', cardsToDelete);
+    if (cardsToDelete.length > 0) this.addTombstone('cards', cardsToDelete.map((c) => c.id));
 
     // Sync tombstones (Phase 7)
     const usn = this.getCurrentUsn(); // USN já foi incrementado pelos saves acima
@@ -745,10 +919,16 @@ export class StorageService {
     if (note) {
       this.addSyncTombstone('notes', { type: 'note', id: noteId, guid: note.guid, usn, deletedAt });
     }
-    if (cardsToDelete.length > 0) {
-      for (const cardId of cardsToDelete) {
-        this.addSyncTombstone('cards', { type: 'card', id: cardId, usn, deletedAt });
-      }
+    for (const card of cardsToDelete) {
+      // a identidade do card entre aparelhos é (GUID da nota, ordem do template)
+      this.addSyncTombstone('cards', {
+        type: 'card',
+        id: card.id,
+        guid: note?.guid,
+        templateOrd: card.templateOrd,
+        usn,
+        deletedAt,
+      });
     }
   }
 
@@ -774,8 +954,8 @@ export class StorageService {
         .map((d) => d.id)
     );
 
-    const notesToDelete = this.getNotes().filter((n) => deckIdsToDelete.has(n.deckId)).map((n) => n.id);
-    const cardsToDelete = this.getCards().filter((c) => deckIdsToDelete.has(c.deckId)).map((c) => c.id);
+    const notesToDelete = this.getNotes().filter((n) => deckIdsToDelete.has(n.deckId));
+    const cardsToDelete = this.getCards().filter((c) => deckIdsToDelete.has(c.deckId));
     const notes = this.getNotes().filter((n) => !deckIdsToDelete.has(n.deckId));
     const cards = this.getCards().filter((c) => !deckIdsToDelete.has(c.deckId));
     this.saveNotes(notes);
@@ -784,21 +964,30 @@ export class StorageService {
     this.bumpDeletedAt();
     // Remember user deletions so seed version bumps never resurrect them
     this.addTombstone('decks', [...deckIdsToDelete]);
-    if (notesToDelete.length > 0) this.addTombstone('notes', notesToDelete);
-    if (cardsToDelete.length > 0) this.addTombstone('cards', cardsToDelete);
+    if (notesToDelete.length > 0) this.addTombstone('notes', notesToDelete.map((n) => n.id));
+    if (cardsToDelete.length > 0) this.addTombstone('cards', cardsToDelete.map((c) => c.id));
 
     // Sync tombstones (Phase 7)
     const usn = this.getCurrentUsn();
     const deletedAt = Date.now();
     for (const did of deckIdsToDelete) {
-      this.addSyncTombstone('decks', { type: 'deck', id: did, usn, deletedAt });
+      const deck = decks.find((d) => d.id === did);
+      // a identidade do deck entre aparelhos é o NOME
+      this.addSyncTombstone('decks', { type: 'deck', id: did, name: deck?.name, usn, deletedAt });
     }
-    for (const noteId of notesToDelete) {
-      const note = this.getNotes().find((n) => n.id === noteId);
-      this.addSyncTombstone('notes', { type: 'note', id: noteId, guid: note?.guid, usn, deletedAt });
+    for (const note of notesToDelete) {
+      this.addSyncTombstone('notes', { type: 'note', id: note.id, guid: note.guid, usn, deletedAt });
     }
-    for (const cardId of cardsToDelete) {
-      this.addSyncTombstone('cards', { type: 'card', id: cardId, usn, deletedAt });
+    const guidByNoteId = new Map(notesToDelete.map((n) => [n.id, n.guid]));
+    for (const card of cardsToDelete) {
+      this.addSyncTombstone('cards', {
+        type: 'card',
+        id: card.id,
+        guid: guidByNoteId.get(card.noteId),
+        templateOrd: card.templateOrd,
+        usn,
+        deletedAt,
+      });
     }
   }
 
@@ -1234,26 +1423,34 @@ export class StorageService {
 
   public static savePresets(presets: Preset[]): void {
     const now = Date.now();
-    const usn = this.nextUsn();
-    const withUsn = presets.map((p) => {
+    const comTimestamps = presets.map((p) => {
       if (p.usn) return p;
       const createdAt = p.createdAt ?? now;
       const updatedAt = p.updatedAt ?? now;
-      return { ...p, usn, createdAt, updatedAt };
+      return { ...p, createdAt, updatedAt };
     });
-    localStorage.setItem(STORAGE_KEYS.PRESETS, JSON.stringify(withUsn));
+    const final = this.withFreshUsn(comTimestamps, this.readStored<Preset>(STORAGE_KEYS.PRESETS), now);
+    localStorage.setItem(STORAGE_KEYS.PRESETS, JSON.stringify(final));
   }
 
   public static getPresetById(presetId: string | null | undefined): Preset | null {
     return this.getPresets().find((p) => p.id === presetId) ?? null;
   }
 
+  /** Preset que veio do Drive — identidade entre aparelhos: o NOME. */
   public static upsertPreset(preset: Preset): void {
-    const presets = this.getPresets();
-    const idx = presets.findIndex((p) => p.id === preset.id);
-    if (idx >= 0) presets[idx] = { ...preset, updatedAt: Date.now() };
-    else presets.push({ ...preset, updatedAt: Date.now() });
-    this.savePresets(presets);
+    this.withoutUsnBump(() => {
+      const presets = this.getPresets();
+      const nome = preset.name?.trim();
+      const idx = presets.findIndex((p) => p.name?.trim() === nome);
+      if (idx >= 0) {
+        const local = presets[idx];
+        presets[idx] = { ...local, ...preset, id: local.id, updatedAt: Date.now() };
+      } else {
+        presets.push({ ...preset, updatedAt: Date.now() });
+      }
+      this.savePresets(presets);
+    });
   }
 
   /** Delete a preset; every deck linked to it is re-linked to the factory preset. */
@@ -1268,66 +1465,207 @@ export class StorageService {
     );
     this.saveDecks(decks);
 
-    // Sync tombstone (Phase 7)
+    // Sync tombstone (Phase 7) — a identidade entre aparelhos é o NOME
     const usn = this.getCurrentUsn();
     const deletedAt = Date.now();
-    this.addSyncTombstone('presets', { type: 'preset', id: presetId, usn, deletedAt });
+    const presetName = this.getPresets().find((p) => p.id === presetId)?.name;
+    this.addSyncTombstone('presets', { type: 'preset', id: presetId, name: presetName, usn, deletedAt });
   }
 
   // ============================================================
   // Fase 7: Upsert/Delete helpers para sync incremental
   // ============================================================
 
+  // ── Identidade entre aparelhos ──
+  // O `id` de um item é LOCAL (cada aparelho cria o seu). A identidade que
+  // atravessa os aparelhos é: GUID (nota), (GUID + ordem do template) (card)
+  // e NOME (deck, tipo de nota, preset). Sem isso, um item que veio do Drive
+  // pode acabar DUPLICADO aqui.
+
+  /** Id local da nota com este GUID (identidade universal da nota). */
+  public static findNoteIdByGuid(guid?: string): string | undefined {
+    if (!guid) return undefined;
+    const alvo = guid.trim();
+    return this.getNotes().find((n) => n.guid?.trim() === alvo)?.id;
+  }
+
+  /** Id local do card com este (GUID da nota dona, ordem do template). */
+  public static findCardIdByIdentity(
+    noteGuid?: string,
+    templateOrd?: number
+  ): string | undefined {
+    if (!noteGuid || templateOrd === undefined) return undefined;
+    const noteId = this.findNoteIdByGuid(noteGuid);
+    if (!noteId) return undefined;
+    return this.getCards().find((c) => c.noteId === noteId && c.templateOrd === templateOrd)?.id;
+  }
+
+  /** Id local do deck com este nome. */
+  public static findDeckIdByName(name?: string): string | undefined {
+    if (!name) return undefined;
+    const alvo = name.trim();
+    return this.getDecks().find((d) => d.name?.trim() === alvo)?.id;
+  }
+
+  /** Id local do tipo de nota com este nome. */
+  public static findNoteTypeIdByName(name?: string): string | undefined {
+    if (!name) return undefined;
+    const alvo = name.trim();
+    return this.getNoteTypes().find((t) => t.name?.trim() === alvo)?.id;
+  }
+
+  /** Id local do preset com este nome. */
+  public static findPresetIdByName(name?: string): string | undefined {
+    if (!name) return undefined;
+    const alvo = name.trim();
+    return this.getPresets().find((p) => p.name?.trim() === alvo)?.id;
+  }
+
+  /**
+   * Deck que veio do Drive.
+   *
+   * A identidade de um deck ENTRE APARELHOS é o NOME (o id é local de cada
+   * aparelho). Casar pelo id criaria um deck DUPLICADO no outro aparelho.
+   */
   public static upsertDeck(deck: Deck): void {
-    const decks = this.getDecks();
-    const idx = decks.findIndex((d) => d.id === deck.id);
-    if (idx >= 0) decks[idx] = { ...deck, updatedAt: Date.now() };
-    else decks.push({ ...deck, updatedAt: Date.now() });
-    this.saveDecks(decks);
+    this.withoutUsnBump(() => {
+      const decks = this.getDecks();
+      const nome = deck.name?.trim();
+      const idx = decks.findIndex((d) => d.name?.trim() === nome);
+      if (idx >= 0) {
+        const local = decks[idx];
+        decks[idx] = { ...local, ...deck, id: local.id, updatedAt: Date.now() };
+      } else {
+        decks.push({ ...deck, updatedAt: Date.now() });
+      }
+      this.saveDecks(decks);
+    });
   }
 
+  /** Tipo de nota que veio do Drive — identidade entre aparelhos: o NOME. */
   public static upsertNoteType(noteType: NoteType): void {
-    const noteTypes = this.getNoteTypes();
-    const idx = noteTypes.findIndex((nt) => nt.id === noteType.id);
-    if (idx >= 0) noteTypes[idx] = { ...noteType, updatedAt: Date.now() };
-    else noteTypes.push({ ...noteType, updatedAt: Date.now() });
-    this.saveNoteTypes(noteTypes);
+    this.withoutUsnBump(() => {
+      const noteTypes = this.getNoteTypes();
+      const nome = noteType.name?.trim();
+      const idx = noteTypes.findIndex((nt) => nt.name?.trim() === nome);
+      if (idx >= 0) {
+        const local = noteTypes[idx];
+        noteTypes[idx] = { ...local, ...noteType, id: local.id, updatedAt: Date.now() };
+      } else {
+        noteTypes.push({ ...noteType, updatedAt: Date.now() });
+      }
+      this.saveNoteTypes(noteTypes);
+    });
   }
 
+  /**
+   * Nota que veio do Drive.
+   *
+   * A identidade de uma nota ENTRE APARELHOS é o GUID (o id é local de cada
+   * aparelho — dois aparelhos que importaram o mesmo .apkg podem ter ids
+   * diferentes para a MESMA nota). Casar pelo id criaria uma nota
+   * DUPLICADA no outro aparelho.
+   */
   public static upsertNote(note: Note): void {
-    const notes = this.getNotes();
-    const idx = notes.findIndex((n) => n.id === note.id);
-    if (idx >= 0) notes[idx] = { ...note, updatedAt: Date.now() };
-    else notes.push({ ...note, updatedAt: Date.now() });
-    this.saveNotes(notes);
+    this.withoutUsnBump(() => {
+      const notes = this.getNotes();
+      const guid = note.guid?.trim();
+      const idx = notes.findIndex((n) =>
+        guid ? n.guid?.trim() === guid : n.id === note.id
+      );
+      if (idx >= 0) {
+        const local = notes[idx];
+        // o deck/tipo do outro aparelho pode ter outro id: se ele não existe
+        // aqui, fica o que já estava (a nota não fica órfã).
+        const decks = this.getDecks();
+        const tipos = this.getNoteTypes();
+        const deckId = decks.some((d) => d.id === note.deckId) ? note.deckId : local.deckId;
+        const noteTypeId = tipos.some((t) => t.id === note.noteTypeId)
+          ? note.noteTypeId
+          : local.noteTypeId;
+        notes[idx] = { ...local, ...note, id: local.id, deckId, noteTypeId, updatedAt: Date.now() };
+      } else {
+        notes.push({ ...note, updatedAt: Date.now() });
+      }
+      this.saveNotes(notes);
+    });
   }
 
-  public static upsertCard(card: Card): void {
-    const cards = this.getCards();
-    const idx = cards.findIndex((c) => c.id === card.id);
-    if (idx >= 0) cards[idx] = { ...card, updatedAt: Date.now() };
-    else cards.push({ ...card, updatedAt: Date.now() });
-    this.saveCards(cards);
+  /**
+   * Card que veio do Drive.
+   *
+   * A identidade de um card ENTRE APARELHOS é (GUID da nota, ordem do
+   * template) — o `noteId` do card é o id da nota NO APARELHO DE ORIGEM e
+   * pode ser diferente aqui. `noteGuid` (quando o delta traz) é o GUID da
+   * nota no aparelho de origem: é o que permite casar o card certo.
+   */
+  public static upsertCard(card: Card, noteGuid?: string): void {
+    this.withoutUsnBump(() => {
+      const cards = this.getCards();
+      const notes = this.getNotes();
+      const guidLocalDaNota = (noteId: string): string | undefined =>
+        notes.find((n) => n.id === noteId)?.guid?.trim();
+      const guid = noteGuid?.trim() ?? guidLocalDaNota(card.noteId);
+      const idx = cards.findIndex((c) => {
+        if (guid) {
+          const guidCartao = guidLocalDaNota(c.noteId);
+          return guidCartao === guid && c.templateOrd === card.templateOrd;
+        }
+        return c.id === card.id;
+      });
+      if (idx >= 0) {
+        const local = cards[idx];
+        cards[idx] = { ...local, ...card, id: local.id, noteId: local.noteId, updatedAt: Date.now() };
+      } else {
+        // card novo: o noteId precisa apontar para a nota LOCAL
+        const notaLocal = guid
+          ? notes.find((n) => n.guid?.trim() === guid)
+          : notes.find((n) => n.id === card.noteId);
+        cards.push({
+          ...card,
+          noteId: notaLocal?.id ?? card.noteId,
+          updatedAt: Date.now(),
+        });
+      }
+      this.saveCards(cards);
+    });
   }
 
   public static deleteCard(cardId: string): void {
+    const card = this.getCards().find((c) => c.id === cardId);
     this.saveCards(this.getCards().filter((c) => c.id !== cardId));
     this.bumpDeletedAt();
     this.addTombstone('cards', [cardId]);
-    // Sync tombstone (Phase 7)
+    // Sync tombstone (Phase 7) — a identidade do card entre aparelhos é
+    // (GUID da nota dona, ordem do template)
     const usn = this.getCurrentUsn();
     const deletedAt = Date.now();
-    this.addSyncTombstone('cards', { type: 'card', id: cardId, usn, deletedAt });
+    const noteGuid = card ? this.getNotes().find((n) => n.id === card.noteId)?.guid : undefined;
+    this.addSyncTombstone('cards', {
+      type: 'card',
+      id: cardId,
+      guid: noteGuid,
+      templateOrd: card?.templateOrd,
+      usn,
+      deletedAt,
+    });
   }
 
   public static deleteNoteType(noteTypeId: string): void {
+    const noteType = this.getNoteTypes().find((nt) => nt.id === noteTypeId);
     this.saveNoteTypes(this.getNoteTypes().filter((nt) => nt.id !== noteTypeId));
     this.bumpDeletedAt();
     this.addTombstone('notetypes', [noteTypeId]);
-    // Sync tombstone (Phase 7)
+    // Sync tombstone (Phase 7) — a identidade entre aparelhos é o NOME
     const usn = this.getCurrentUsn();
     const deletedAt = Date.now();
-    this.addSyncTombstone('notetypes', { type: 'notetype', id: noteTypeId, usn, deletedAt });
+    this.addSyncTombstone('notetypes', {
+      type: 'notetype',
+      id: noteTypeId,
+      name: noteType?.name,
+      usn,
+      deletedAt,
+    });
   }
 
   /** Create an empty preset with the app defaults (like Runora's "Add" preset option). */

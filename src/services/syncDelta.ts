@@ -36,6 +36,15 @@ export interface SyncDelta {
   tombstones: Tombstone[];
   /** Manifest de mídia: { filename: sha256 } — apenas mídia nova/modificada. */
   mediaManifest: Record<string, string>;
+  /**
+   * Mapa `id da nota` (no aparelho que gerou o delta) → GUID da nota.
+   *
+   * O id de uma nota é LOCAL de cada aparelho: dois aparelhos que importaram
+   * o mesmo .apkg têm ids diferentes para a MESMA nota. Sem este mapa, o
+   * outro aparelho não consegue casar o card com a nota certa (e pode criar
+   * uma nota duplicada).
+   */
+  noteGuids?: Record<string, string>;
 }
 
 /** Conflito detectado: mesma entidade (GUID) com USN divergente nos dois lados. */
@@ -245,6 +254,8 @@ export function buildDelta(
     presets: Preset[];
     tombstones: Tombstone[];
     mediaManifest: Record<string, string>;
+    /** Mapa id-da-nota → GUID (identidade entre aparelhos). */
+    noteGuids?: Record<string, string>;
   }
 ): SyncDelta {
   return {
@@ -262,14 +273,216 @@ export function buildDelta(
     presets: data.presets,
     tombstones: data.tombstones,
     mediaManifest: data.mediaManifest,
+    noteGuids: data.noteGuids,
   };
+}
+
+/**
+ * Identidade universal de um item entre aparelhos.
+ *
+ * O `id` de um item é LOCAL (cada aparelho cria o seu): a nota se reconhece
+ * pelo GUID, o card pelo (GUID da nota + ordem do template) e deck/tipo/
+ * preset pelo NOME. Sem isso, um item que veio de outro aparelho entraria
+ * DUPLICADO aqui.
+ */
+function identityOf(
+  type: string,
+  item: { id: string; guid?: string; name?: string; templateOrd?: number; noteId?: string },
+  noteGuids: Record<string, string>
+): string {
+  switch (type) {
+    case 'note':
+      return `note:${item.guid ?? item.id}`;
+    case 'card': {
+      const guid = item.noteId ? noteGuids[item.noteId] : undefined;
+      return `card:${guid ?? item.noteId ?? ''}:${item.templateOrd ?? item.id}`;
+    }
+    case 'deck':
+      return `deck:${item.name ?? item.id}`;
+    case 'notetype':
+      return `notetype:${item.name ?? item.id}`;
+    case 'preset':
+      return `preset:${item.name ?? item.id}`;
+    default:
+      return `${type}:${item.id}`;
+  }
+}
+
+/** Identidade universal de um tombstone (o `id` é local do aparelho que deletou). */
+function tombIdentity(t: Tombstone): string {
+  switch (t.type) {
+    case 'note':
+      return `note:${t.guid ?? t.id}`;
+    case 'card':
+      return `card:${t.guid ?? ''}:${t.templateOrd ?? t.id}`;
+    case 'deck':
+      return `deck:${t.name ?? t.id}`;
+    case 'notetype':
+      return `notetype:${t.name ?? t.id}`;
+    case 'preset':
+      return `preset:${t.name ?? t.id}`;
+    default:
+      return `${t.type}:${t.id}`;
+  }
+}
+
+/**
+ * Junta o delta que já está no Drive com as mudanças novas deste aparelho.
+ *
+ * O delta do Drive cobre (baseUsn → headUsn). Cada envio incremental
+ * acrescenta só as mudanças deste aparelho — sem esta soma, o delta anterior
+ * seria jogado fora e as mudanças antigas nunca chegariam aos outros
+ * aparelhos (que só recebem o delta mais recente).
+ *
+ * A versão mais nova do mesmo item vence (o aparelho que acaba de mexer nele
+ * tem a razão) e um item deletado sai do delta: o apply sobe o tombstone
+ * antes do item, então manter os dois faria o item "ressuscitar".
+ */
+export function mergeDeltas(previous: SyncDelta | null, added: SyncDelta): SyncDelta {
+  if (!previous) return added;
+
+  const noteGuids: Record<string, string> = {
+    ...(previous.noteGuids ?? {}),
+    ...(added.noteGuids ?? {}),
+  };
+
+  const tombstones: Tombstone[] = [...previous.tombstones];
+  const tombKeys = new Set(tombstones.map((t) => tombIdentity(t)));
+  for (const t of added.tombstones) {
+    const key = tombIdentity(t);
+    if (!tombKeys.has(key)) {
+      tombstones.push(t);
+      tombKeys.add(key);
+    }
+  }
+
+  const alive = <T extends { id: string }>(items: T[], type: string): T[] =>
+    items.filter((i) => !tombKeys.has(identityOf(type, i, noteGuids)));
+
+  const upsert = <T extends { id: string }>(list: T[], items: T[], type: string): T[] => {
+    const out = [...list];
+    for (const item of items) {
+      const key = identityOf(type, item, noteGuids);
+      const idx = out.findIndex((x) => identityOf(type, x, noteGuids) === key);
+      if (idx >= 0) out[idx] = item;
+      else out.push(item);
+    }
+    return out;
+  };
+
+  return {
+    ...added,
+    baseUsn: Math.min(previous.baseUsn, added.baseUsn),
+    currentUsn: Math.max(previous.currentUsn, added.currentUsn),
+    decks: alive(upsert(previous.decks, added.decks, 'deck'), 'deck'),
+    noteTypes: alive(upsert(previous.noteTypes, added.noteTypes, 'notetype'), 'notetype'),
+    notes: alive(upsert(previous.notes, added.notes, 'note'), 'note'),
+    cards: alive(upsert(previous.cards, added.cards, 'card'), 'card'),
+    revlog: alive(upsert(previous.revlog, added.revlog, 'revlog'), 'revlog'),
+    presets: alive(upsert(previous.presets, added.presets, 'preset'), 'preset'),
+    tombstones,
+    mediaManifest: { ...previous.mediaManifest, ...added.mediaManifest },
+    noteGuids,
+  };
+}
+
+/**
+ * Aplica o delta do Drive por cima da coleção que veio do .colpkg.
+ *
+ * O .colpkg é a base (o estado até o último sync completo) e o delta são as
+ * mudanças depois disso — os dois juntos são a verdade do Drive.
+ */
+export function applyDeltaToCollection(
+  collection: {
+    decks: Deck[];
+    noteTypes: NoteType[];
+    notes: Note[];
+    cards: Card[];
+    presets?: Preset[];
+    revlog?: RevlogEntry[];
+  },
+  delta: SyncDelta
+): void {
+  const noteGuids: Record<string, string> = delta.noteGuids ?? {};
+
+  // O `.colpkg` e o delta podem ter vindo de aparelhos diferentes: a
+  // identidade entre eles é o GUID (nota), (GUID + ordem) (card) e o NOME
+  // (deck/tipo/preset) — o `id` é local de cada aparelho.
+  const remove = <T extends { id: string; guid?: string; name?: string; templateOrd?: number; noteId?: string }>(
+    list: T[] | undefined,
+    type: string,
+    tomb: Tombstone
+  ) => {
+    if (!list) return;
+    // casar pela identidade universal (GUID/nome) E pelo id local (tombstone
+    // antigo, sem a identidade universal)
+    const idx = list.findIndex(
+      (x) => identityOf(type, x, noteGuids) === tombIdentity(tomb) || x.id === tomb.id
+    );
+    if (idx >= 0) list.splice(idx, 1);
+  };
+
+  const upsert = <T extends { id: string; guid?: string; name?: string; templateOrd?: number; noteId?: string }>(
+    list: T[] | undefined,
+    items: T[],
+    type: string
+  ) => {
+    if (!list) return;
+    for (const item of items) {
+      const key = identityOf(type, item, noteGuids);
+      const idx = list.findIndex((x) => identityOf(type, x, noteGuids) === key);
+      if (idx >= 0) list[idx] = item;
+      else list.push(item);
+    }
+  };
+
+  // 1. o que foi deletado some
+  for (const t of delta.tombstones) {
+    switch (t.type) {
+      case 'deck':
+        remove(collection.decks, 'deck', t);
+        break;
+      case 'notetype':
+        remove(collection.noteTypes, 'notetype', t);
+        break;
+      case 'note': {
+        remove(collection.notes, 'note', t);
+        // os cards da nota deletada vão junto
+        for (const card of [...collection.cards]) {
+          const guid = noteGuids[card.noteId];
+          const mesmaNota =
+            card.noteId === t.id || (t.guid && guid && guid === t.guid);
+          if (mesmaNota) {
+            const idx = collection.cards.findIndex((c) => c.id === card.id);
+            if (idx >= 0) collection.cards.splice(idx, 1);
+          }
+        }
+        break;
+      }
+      case 'card':
+        remove(collection.cards, 'card', t);
+        break;
+      case 'preset':
+        remove(collection.presets, 'preset', t);
+        break;
+      case 'revlog':
+        break;
+    }
+  }
+
+  // 2. o que mudou entra
+  upsert(collection.decks, delta.decks, 'deck');
+  upsert(collection.noteTypes, delta.noteTypes, 'notetype');
+  upsert(collection.notes, delta.notes, 'note');
+  upsert(collection.cards, delta.cards, 'card');
+  upsert(collection.presets, delta.presets, 'preset');
+  upsert(collection.revlog, delta.revlog, 'revlog');
 }
 
 /**
  * Verifica se um delta é válido e compatível.
  */
-export function isValidDelta(delta: unknown): delta is SyncDelta {
-  if (!delta || typeof delta !== 'object') return false;
+export function isValidDelta(delta: unknown): delta is SyncDelta {  if (!delta || typeof delta !== 'object') return false;
   const d = delta as Record<string, unknown>;
   return (
     d.version === DELTA_FORMAT_VERSION &&

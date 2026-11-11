@@ -93,6 +93,8 @@ import {
 import {
   buildDelta,
   applyDelta,
+  applyDeltaToCollection,
+  mergeDeltas,
   isValidDelta,
   type SyncDelta,
   type DeltaMeta,
@@ -1288,7 +1290,12 @@ export class DriveSyncService {
           const lastSyncedUsn = this.getLastSyncedUsn();
           if (lastSyncedUsn > 0) {
             timing?.mark('download-incremental-início');
-            const newHead = await this.downloadIncremental(token, progress, itemProgress);
+            const newHead = await this.downloadIncremental(
+              token,
+              progress,
+              itemProgress,
+              remoteMeta.uploadedAt
+            );
             timing?.mark('download-incremental-fim');
             if (newHead !== null) {
               // Aplica extras do Drive (fase 5) e finaliza
@@ -1898,6 +1905,10 @@ export class DriveSyncService {
     addTally(tallyFromApply(applied));
     itemProgress({ phase: 'applying' });
     mergeRemoteRevlog(remoteData.revlog ?? [], remoteData);
+    // O USN é compartilhado: os itens que vieram do Drive trazem o USN do
+    // aparelho que os mudou — o contador local precisa acompanhar, senão as
+    // próximas edições daqui ficam "no passado" do delta.
+    StorageService.adoptUsnCounter(StorageService.getMaxItemUsn());
     return applied;
   }
 
@@ -2320,6 +2331,16 @@ export class DriveSyncService {
     // fast path: o META é reescrito em todo sync → é o marcador de "o Drive mudou"
     await this.rememberMetaWritten(token, metaUpload);
 
+    // O estado unificado também é reescrito: o .colpkg sozinho não basta.
+    // O STATE é quem diz aos outros aparelhos "a base é X, o head é X" — sem
+    // ele, o delta que sobrou no Drive ficaria velho e desmentiria o .colpkg.
+    const usnAtual = StorageService.getCurrentUsn();
+    await this.publishEmptyState(token, usnAtual, meta.counts);
+    // O backup completo deixou o Drive no USN atual → este aparelho também
+    // passa a contar a partir dali (senão o próximo sync acharia que está
+    // "atrás" e baixaria a coleção inteira de novo).
+    this.setLastSyncedUsn(usnAtual);
+
     this.setLastSync({ at: Date.now(), remoteUploadedAt: meta.uploadedAt });
     // A base (estado comum do último sync) passa a ser o estado atual.
     setSyncBase(
@@ -2337,6 +2358,145 @@ export class DriveSyncService {
   // ============================================================
   // Fase 7: Upload incremental (delta) — envia só o que mudou
   // ============================================================
+
+  /**
+   * Aplica por cima da coleção baixada o delta que está no estado do Drive.
+   *
+   * O .colpkg é a base (até o último sync completo) e o delta são as mudanças
+   * depois disso: os dois juntos são a verdade do Drive.
+   */
+  private static async applyRemoteStateDelta(
+    token: string,
+    data: {
+      decks: Deck[];
+      noteTypes: NoteType[];
+      notes: Note[];
+      cards: Card[];
+      presets?: Preset[];
+      revlog?: RevlogEntry[];
+    }
+  ): Promise<void> {
+    const stateInfo = await this.readStateFromDrive(token);
+    if (!stateInfo) return;
+    const { state, modifiedTime } = stateInfo;
+    if (!state || !state.delta) return;
+    if (!isValidDelta(state.delta)) return;
+    // estado inconsistente: melhor ignorá-lo do que aplicar meio delta
+    if (state.delta.currentUsn !== state.headUsn) return;
+    // o USN do Drive passa a ser a referência deste aparelho (mesmo com o
+    // delta vazio: o head continua sendo o contador compartilhado)
+    StorageService.adoptUsnCounter(state.headUsn);
+    // delta velho (o .colpkg já é mais novo): o .colpkg é a verdade
+    const pkgFile = await findFile(token, DRIVE_FILES.COLPKG);
+    if (pkgFile?.modifiedTime && modifiedTime && pkgFile.modifiedTime > modifiedTime) return;
+    const d = state.delta;
+    const vazio =
+      d.decks.length === 0 &&
+      d.noteTypes.length === 0 &&
+      d.notes.length === 0 &&
+      d.cards.length === 0 &&
+      d.presets.length === 0 &&
+      d.revlog.length === 0 &&
+      d.tombstones.length === 0;
+    if (vazio) return;
+    applyDeltaToCollection(data, d);
+  }
+
+  /**
+   * Lê o estado unificado do Drive (null se não existir ou estiver ruins).
+   */
+  private static async readStateFromDrive(
+    token: string
+  ): Promise<{ state: SyncState; modifiedTime: string } | null> {
+    const file = await findFile(token, DRIVE_FILES.STATE);
+    if (!file) return null;
+    try {
+      const raw = await (await downloadFile(token, file.id)).text();
+      const state = JSON.parse(raw) as SyncState;
+      if (!state || typeof state.baseUsn !== 'number' || typeof state.headUsn !== 'number') {
+        return null;
+      }
+      return { state, modifiedTime: file.modifiedTime ?? '' };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * O delta do estado ficou VELHO?
+   *
+   * O .colpkg (a base) e o META sobem juntos; o delta vive no estado. Se o
+   * .colpkg for mais novo que o estado, o delta não descreve o que o .colpkg
+   * já contém — e aplicá-lo poderia devolver ao mundo uma nota que já foi
+   * apagada (foi exatamente o que aconteceu com a nota de teste).
+   */
+  private static async isStateStale(token: string): Promise<boolean> {
+    const [stateFile, pkgFile] = await Promise.all([
+      findFile(token, DRIVE_FILES.STATE),
+      findFile(token, DRIVE_FILES.COLPKG),
+    ]);
+    if (!stateFile?.modifiedTime || !pkgFile?.modifiedTime) return false;
+    return pkgFile.modifiedTime > stateFile.modifiedTime;
+  }
+
+  /**
+   * Publica o estado unificado (runora-sync-state.json) com delta vazio.
+   *
+   * Usado quando o .colpkg inteiro sobe: a partir daí o .colpkg É a verdade
+   * toda (base = head = USN atual) e não há nada pendente no delta. Sem isso,
+   * o delta que sobrou no Drive ficaria velho e desmentiria o .colpkg — foi
+   * assim que uma nota já apagada voltou a aparecer num outro aparelho.
+   */
+  private static async publishEmptyState(
+    token: string,
+    usn: number,
+    counts: { decks: number; noteTypes: number; notes: number; cards: number; revlog: number; media: number }
+  ): Promise<void> {
+    const now = Date.now();
+    const delta = buildDelta(usn, usn, this.getDeviceId(), getDeviceName(), {
+      decks: [],
+      noteTypes: [],
+      notes: [],
+      cards: [],
+      revlog: [],
+      presets: [],
+      tombstones: [],
+      mediaManifest: {},
+    });
+    const state: SyncState = {
+      app: 'runora',
+      version: 1,
+      baseUsn: usn,
+      headUsn: usn,
+      syncedAt: now,
+      deviceId: this.getDeviceId(),
+      deviceName: getDeviceName(),
+      counts: {
+        decks: counts.decks,
+        noteTypes: counts.noteTypes,
+        notes: counts.notes,
+        cards: counts.cards,
+        revlog: counts.revlog,
+        presets: StorageService.getPresets().length,
+        tombstones: 0,
+        mediaFiles: counts.media,
+      },
+      delta,
+      mediaManifest: {},
+      extrasHash: hashExtras(buildExtrasPayload()),
+      addonsHash: (await computeAddonState()).hash,
+    };
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const existing = await findFile(token, DRIVE_FILES.STATE);
+    await uploadResumable(token, DRIVE_FILES.STATE, blob, existing?.id);
+    // fast path: o STATE foi reescrito → guarda o modifiedTime novo
+    try {
+      const fresh = await findFile(token, DRIVE_FILES.STATE);
+      if (fresh?.modifiedTime) this.setStateModifiedTime(fresh.modifiedTime);
+    } catch {
+      // fast path é otimização, não crítico
+    }
+  }
 
   /** Chave para o último USN sincronizado com o Drive. */
   private static getLastSyncedUsnKey(): string {
@@ -2410,14 +2570,45 @@ export class DriveSyncService {
       }
     }
 
+    // O delta que já está no Drive (a base) + as mudanças novas deste
+    // aparelho. Sem a soma, cada envio incremental jogaria fora o delta
+    // anterior e as mudanças antigas nunca chegariam aos outros aparelhos.
+    const previous = await this.readStateFromDrive(token);
+    const previousState = previous?.state ?? null;
+    if (previousState && previousState.headUsn !== lastSyncedUsn) {
+      // O Drive tem mudanças que este aparelho ainda não viu: publicar um
+      // delta parcial agora deixaria o estado do Drive misturado.
+      progress('O Drive tem mudanças que este aparelho ainda não viu — vai sincronizar tudo.');
+      return null;
+    }
+    // O delta que já está no Drive é a BASE do que este aparelho vai somar.
+    // Se ele estiver velho (o .colpkg já é mais novo), não dá para somar em
+    // cima: o caminho seguro é sincronizar tudo.
+    if (previous && (await this.isStateStale(token))) {
+      progress('O estado do Drive ficou atrás do backup — vai sincronizar tudo.');
+      return null;
+    }
+
     // Build delta payload
-    const delta = buildDelta(
+    // O mapa id-da-nota → GUID viaja junto: o id de uma nota é LOCAL de cada
+    // aparelho, e é pelo GUID que o outro aparelho casa o item certo (sem
+    // isso, uma nota editada aqui viraria uma DUPLICATA lá).
+    const localNotes = StorageService.getNotes();
+    const noteGuids: Record<string, string> = {};
+    for (const n of notes) if (n.guid) noteGuids[n.id] = n.guid;
+    for (const c of cards) {
+      const n = localNotes.find((x) => x.id === c.noteId);
+      if (n?.guid) noteGuids[c.noteId] = n.guid;
+    }
+    const newDelta = buildDelta(
       lastSyncedUsn,
       currentUsn,
       this.getDeviceId(),
       getDeviceName(),
-      { decks, noteTypes, notes, cards, revlog, presets, tombstones, mediaManifest }
+      { decks, noteTypes, notes, cards, revlog, presets, tombstones, mediaManifest, noteGuids }
     );
+    const delta = mergeDeltas(previousState?.delta ?? null, newDelta);
+    const baseUsn = previousState?.baseUsn ?? lastSyncedUsn;
 
     // Contadores ↑: o delta está pronto — Anki também mostra os números de
     // uma vez quando monta o lote de envio.
@@ -2445,23 +2636,23 @@ export class DriveSyncService {
     const state: SyncState = {
       app: 'runora',
       version: 1,
-      baseUsn: lastSyncedUsn,
-      headUsn: currentUsn,
+      baseUsn,
+      headUsn: Math.max(currentUsn, previousState?.headUsn ?? 0),
       syncedAt: now,
       deviceId: this.getDeviceId(),
       deviceName: getDeviceName(),
       counts: {
-        decks: decks.length,
-        noteTypes: noteTypes.length,
-        notes: notes.length,
-        cards: cards.length,
-        revlog: revlog.length,
-        presets: presets.length,
-        tombstones: tombstones.length,
-        mediaFiles: Object.keys(mediaManifest).length,
+        decks: delta.decks.length,
+        noteTypes: delta.noteTypes.length,
+        notes: delta.notes.length,
+        cards: delta.cards.length,
+        revlog: delta.revlog.length,
+        presets: delta.presets.length,
+        tombstones: delta.tombstones.length,
+        mediaFiles: Object.keys(delta.mediaManifest).length,
       },
       delta,
-      mediaManifest,
+      mediaManifest: delta.mediaManifest,
       extrasHash: hashExtras(buildExtrasPayload()),
       addonsHash: (await computeAddonState()).hash,
     };
@@ -2558,6 +2749,12 @@ export class DriveSyncService {
 
     const file = new File([blob], DRIVE_FILES.COLPKG, { type: 'application/octet-stream' });
     const data = await ExportImportService.readPackageData(file);
+
+    // O .colpkg é a BASE (o estado até o último sync completo). As mudanças
+    // depois disso vivem no delta do estado unificado — sem aplicar o delta,
+    // o .colpkg viria velho: nota nova sumia, nota apagada voltava.
+    await this.applyRemoteStateDelta(token, data);
+
     // A mídia do outro dispositivo entra junto (nomes únicos, reimportar é seguro)
     progress('Importando os arquivos de mídia do Drive…');
     await ExportImportService.importMediaFrom(data, (p) =>
@@ -2584,7 +2781,8 @@ export class DriveSyncService {
   private static async downloadIncremental(
     token: string,
     progress: (m: string) => void,
-    itemProgress: (p: SyncProgressState | null) => void = () => {}
+    itemProgress: (p: SyncProgressState | null) => void = () => {},
+    remoteUploadedAt?: number
   ): Promise<number | null> {
     const lastSyncedUsn = this.getLastSyncedUsn();
 
@@ -2599,7 +2797,40 @@ export class DriveSyncService {
     const remoteHeadUsn = state.headUsn;
 
     if (remoteHeadUsn <= lastSyncedUsn) {
-      progress('Drive não tem mudanças incrementais desde o último sync.');
+      // O Drive não tem nada além do que já temos. Mas o META pode ter mudado
+      // só porque OUTRO aparelho reenviou o backup (mesmo conteúdo, mesmo
+      // head). Baixar a coleção inteira (69,5 MB) para receber o que já
+      // temos seria desperdício — e fazia os aparelhos entrarem num ciclo de
+      // sync completo.
+      //
+      // A única exceção é o estado VELHO: aí o delta não descreve o .colpkg e
+      // a coleção completa é a verdade.
+      if (await this.isStateStale(token)) {
+        progress('O estado do Drive ficou atrás do backup — vai baixar a coleção completa.');
+        return null;
+      }
+      progress('O Drive não tem nada além do que já temos.');
+      if (stateFile.modifiedTime) this.setStateModifiedTime(stateFile.modifiedTime);
+      this.setLastSync({
+        at: Date.now(),
+        remoteUploadedAt: remoteUploadedAt ?? state.syncedAt,
+      });
+      // sinaliza "nada a fazer" (e não "falhou" → não baixa a coleção toda)
+      return lastSyncedUsn;
+    }
+
+    // O delta só serve para quem está na MESMA base do Drive. Se a base for
+    // outra, o delta traria um estado misturado (faltando o que veio antes)
+    // → melhor baixar a coleção completa, que é sempre a verdade.
+    if (lastSyncedUsn < state.baseUsn) {
+      progress('A base do Drive mudou — vai baixar a coleção completa.');
+      return null;
+    }
+
+    // Delta velho (o .colpkg já é mais novo): aplicar ele poderia devolver
+    // ao mundo algo que já foi apagado. O caminho seguro é a coleção completa.
+    if (await this.isStateStale(token)) {
+      progress('O estado do Drive ficou atrás do backup — vai baixar a coleção completa.');
       return null;
     }
 
@@ -2679,9 +2910,13 @@ itemProgress({ phase: 'download', counts: state.counts });
           case 'note':
             StorageService.upsertNote(entity as Note);
             break;
-          case 'card':
-            StorageService.upsertCard(entity as Card);
+          case 'card': {
+            const card = entity as Card;
+            // o `noteId` do card é o id da nota NO APARELHO DE ORIGEM: o delta
+            // traz o mapa id → GUID para casar a nota localmente
+            StorageService.upsertCard(card, delta.noteGuids?.[card.noteId]);
             break;
+          }
           case 'revlog':
             StorageService.saveRevlog(entity as RevlogEntry);
             break;
@@ -2696,25 +2931,40 @@ itemProgress({ phase: 'download', counts: state.counts });
       },
       // applyTombstone: processa deletados
       (tombstone) => {
+        // O `id` do tombstone é LOCAL do aparelho que deletou — aqui we casamos
+        // pela identidade universal (GUID da nota / nome do deck) para apagar
+        // o item certo.
         switch (tombstone.type) {
-          case 'deck':
-            StorageService.deleteDeck(tombstone.id);
+          case 'deck': {
+            const id = StorageService.findDeckIdByName(tombstone.name) ?? tombstone.id;
+            StorageService.deleteDeck(id);
             break;
-          case 'notetype':
-            StorageService.deleteNoteType(tombstone.id);
+          }
+          case 'notetype': {
+            const id = StorageService.findNoteTypeIdByName(tombstone.name) ?? tombstone.id;
+            StorageService.deleteNoteType(id);
             break;
-          case 'note':
-            StorageService.deleteNote(tombstone.id);
+          }
+          case 'note': {
+            const id = StorageService.findNoteIdByGuid(tombstone.guid) ?? tombstone.id;
+            StorageService.deleteNote(id);
             break;
-          case 'card':
-            StorageService.deleteCard(tombstone.id);
+          }
+          case 'card': {
+            const id =
+              StorageService.findCardIdByIdentity(tombstone.guid, tombstone.templateOrd) ??
+              tombstone.id;
+            StorageService.deleteCard(id);
             break;
+          }
           case 'revlog':
             // Revlog não tem delete individual — ignora (limpeza via sync completo se necessário)
             break;
-          case 'preset':
-            StorageService.deletePreset(tombstone.id);
+          case 'preset': {
+            const id = StorageService.findPresetIdByName(tombstone.name) ?? tombstone.id;
+            StorageService.deletePreset(id);
             break;
+          }
         }
         addTally({ removedDown: 1 });
         reportApply('deletes');
@@ -2723,6 +2973,9 @@ itemProgress({ phase: 'download', counts: state.counts });
 
     // Atualiza último USN sincronizado
     this.setLastSyncedUsn(newHeadUsn);
+    // O USN é compartilhado: este aparelho passa a contar a partir do head
+    // do Drive (senão as próximas edições ficariam "no passado" do delta).
+    StorageService.adoptUsnCounter(newHeadUsn);
     // O estado local agora é o do Drive → a base passa a ser o estado atual
     // (senão o sinal de "mudanças pendentes" acende à toa após o download).
     setSyncBase(computeSnapshot(localSyncContent(), this.getDeviceId(), getDeviceName()));

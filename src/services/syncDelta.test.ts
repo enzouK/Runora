@@ -10,6 +10,8 @@ import {
   applyDelta,
   isValidDelta,
   detectConflicts,
+  mergeDeltas,
+  applyDeltaToCollection,
   DELTA_FORMAT_VERSION,
   type SyncDelta,
   type DeltaMeta,
@@ -310,3 +312,122 @@ describe('Fase 7.6 — Detecção de conflitos por USN divergente', () => {
     assert.equal(result.conflicts[0].type, 'card');
   });
 });
+
+describe('mergeDeltas — o delta do Drive não pode ser jogado fora', () => {
+  const vazio = (baseUsn: number, currentUsn: number): SyncDelta =>
+    buildDelta(baseUsn, currentUsn, 'dev-1', 'PC', {
+      decks: [], noteTypes: [], notes: [], cards: [], revlog: [], presets: [],
+      tombstones: [], mediaManifest: {},
+    });
+
+  it('sem delta anterior, devolve o novo', () => {
+    const novo = buildDelta(10, 12, 'dev-1', 'PC', {
+      decks: [], noteTypes: [], notes: [makeNote({ id: 'n1', usn: 11 })], cards: [], revlog: [], presets: [],
+      tombstones: [], mediaManifest: {},
+    });
+    const resultado = mergeDeltas(null, novo);
+    assert.equal(resultado.notes.length, 1);
+    assert.equal(resultado.currentUsn, 12);
+  });
+
+  it('soma o delta antigo com o novo (a mudança antiga continua no Drive)', () => {
+    const antigo = buildDelta(10, 12, 'dev-1', 'PC', {
+      decks: [], noteTypes: [], notes: [makeNote({ id: 'n1', usn: 11 })], cards: [], revlog: [], presets: [],
+      tombstones: [], mediaManifest: {},
+    });
+    const novo = buildDelta(12, 14, 'dev-2', 'Celular', {
+      decks: [], noteTypes: [], notes: [makeNote({ id: 'n2', usn: 13 })], cards: [], revlog: [], presets: [],
+      tombstones: [], mediaManifest: {},
+    });
+    const resultado = mergeDeltas(antigo, novo);
+    assert.equal(resultado.notes.length, 2, 'as duas notas ficam no delta');
+    assert.equal(resultado.baseUsn, 10, 'a base continua a do primeiro sync completo');
+    assert.equal(resultado.currentUsn, 14);
+  });
+
+  it('a versão mais nova do mesmo item vence', () => {
+    const antigo = buildDelta(10, 12, 'dev-1', 'PC', {
+      decks: [], noteTypes: [], notes: [makeNote({ id: 'n1', usn: 11 })], cards: [], revlog: [], presets: [],
+      tombstones: [], mediaManifest: {},
+    });
+    const novo = buildDelta(12, 14, 'dev-2', 'Celular', {
+      decks: [], noteTypes: [], notes: [makeNote({ id: 'n1', usn: 13 })], cards: [], revlog: [], presets: [],
+      tombstones: [], mediaManifest: {},
+    });
+    const resultado = mergeDeltas(antigo, novo);
+    assert.equal(resultado.notes.length, 1);
+    assert.equal(resultado.notes[0].usn, 13);
+  });
+
+  it('item deletado sai do delta (senão voltaria a existir)', () => {
+    const antigo = buildDelta(10, 12, 'dev-1', 'PC', {
+      decks: [], noteTypes: [], notes: [makeNote({ id: 'n1', usn: 11 })], cards: [], revlog: [], presets: [],
+      tombstones: [], mediaManifest: {},
+    });
+    const novo = buildDelta(12, 14, 'dev-2', 'Celular', {
+      decks: [], noteTypes: [], notes: [], cards: [], revlog: [], presets: [],
+      tombstones: [makeTombstone({ type: 'note', id: 'n1', usn: 13 })], mediaManifest: {},
+    });
+    const resultado = mergeDeltas(antigo, novo);
+    assert.equal(resultado.notes.length, 0, 'a nota deletada não fica no delta');
+    assert.equal(resultado.tombstones.length, 1);
+  });
+
+  it('não duplica tombstone', () => {
+    const t = makeTombstone({ type: 'note', id: 'n1', usn: 13 });
+    const antigo = buildDelta(10, 12, 'dev-1', 'PC', {
+      decks: [], noteTypes: [], notes: [], cards: [], revlog: [], presets: [],
+      tombstones: [t], mediaManifest: {},
+    });
+    const novo = buildDelta(12, 14, 'dev-2', 'Celular', {
+      decks: [], noteTypes: [], notes: [], cards: [], revlog: [], presets: [],
+      tombstones: [t], mediaManifest: {},
+    });
+    const resultado = mergeDeltas(antigo, novo);
+    assert.equal(resultado.tombstones.length, 1);
+  });
+});
+
+describe('applyDeltaToCollection — o .colpkg + o delta = a verdade do Drive', () => {
+  it('aplica nota nova, edição e exclusão por cima do pacote', () => {
+    const colecao = {
+      decks: [] as any[],
+      noteTypes: [] as any[],
+      notes: [makeNote({ id: 'n1', guid: 'g1' }), makeNote({ id: 'n2', guid: 'g2' })],
+      cards: [makeCard({ id: 'c1', noteId: 'n1' })],
+    };
+    const delta = buildDelta(10, 14, 'dev-2', 'Celular', {
+      decks: [], noteTypes: [],
+      notes: [makeNote({ id: 'n3', guid: 'g3' }), makeNote({ id: 'n1', guid: 'g1' })],
+      cards: [], revlog: [], presets: [],
+      tombstones: [makeTombstone({ type: 'note', id: 'n2', usn: 13 })],
+      mediaManifest: {},
+    });
+
+    applyDeltaToCollection(colecao, delta);
+
+    assert.equal(colecao.notes.length, 2, 'n3 entrou e n2 saiu');
+    assert.ok(colecao.notes.some((n) => n.id === 'n3'));
+    assert.ok(!colecao.notes.some((n) => n.id === 'n2'));
+  });
+
+  it('os cards da nota deletada vão junto', () => {
+    const colecao = {
+      decks: [] as any[],
+      noteTypes: [] as any[],
+      notes: [makeNote({ id: 'n1', guid: 'g1' })],
+      cards: [makeCard({ id: 'c1', noteId: 'n1' })],
+    };
+    const delta = buildDelta(10, 14, 'dev-2', 'Celular', {
+      decks: [], noteTypes: [], notes: [], cards: [], revlog: [], presets: [],
+      tombstones: [makeTombstone({ type: 'note', id: 'n1', usn: 13 })],
+      mediaManifest: {},
+    });
+
+    applyDeltaToCollection(colecao, delta);
+
+    assert.equal(colecao.notes.length, 0);
+    assert.equal(colecao.cards.length, 0, 'o card da nota deletada some junto');
+  });
+});
+
