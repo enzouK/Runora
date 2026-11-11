@@ -95,8 +95,9 @@ import {
   applyDelta,
   isValidDelta,
   type SyncDelta,
-  DELTA_FILES as DELTA_FILE_CONSTS,
   type DeltaMeta,
+  type SyncState,
+  syncStateToDeltaMeta,
 } from './syncDelta';
 import {
   computeAddonState,
@@ -190,6 +191,8 @@ export const DRIVE_FILES = {
   DELTA_META: 'runora-sync-delta-meta.json',
   DELTA_PAYLOAD: 'runora-sync-delta.json',
   DELTA_MEDIA_MANIFEST: 'runora-sync-media-manifest.json',
+  /** Fase 8: estado unificado do sync incremental (substitui delta-meta + delta + media-manifest + partes incrementais do META). */
+  STATE: 'runora-sync-state.json',
   /** Pasta para arquivos de mídia do sync incremental. */
   MEDIA_FOLDER: 'runora-sync-media/',
 } as const;
@@ -2261,19 +2264,10 @@ export class DriveSyncService {
     addTally(tallyFromCounts({ decks: decks.length, notes: notes.length, cards: cards.length, presets: presets.length }, 'up'));
     addTally({ removedUp: tombstones.length });
 
-    // Upload delta payload
+    // Upload unified state file (replaces delta-meta + delta-payload + media-manifest)
     itemProgress({ phase: 'preparing', counts: { decks: decks.length, notes: notes.length, cards: cards.length } });
-    const deltaBlob = new Blob([JSON.stringify(delta, null, 2)], { type: 'application/json' });
-    progress(`Enviando delta (${formatBytes(deltaBlob.size)}) para o Drive…`);
+    progress('Preparando estado unificado…');
     itemProgress({ phase: 'upload', counts: { decks: decks.length, notes: notes.length, cards: cards.length } });
-
-    const existingDelta = await findFile(token, DRIVE_FILES.DELTA_PAYLOAD);
-    await uploadResumable(token, DRIVE_FILES.DELTA_PAYLOAD, deltaBlob, existingDelta?.id);
-
-    // Upload media manifest
-    const manifestBlob = new Blob([JSON.stringify(mediaManifest, null, 2)], { type: 'application/json' });
-    const existingManifest = await findFile(token, DRIVE_FILES.DELTA_MEDIA_MANIFEST);
-    await uploadResumable(token, DRIVE_FILES.DELTA_MEDIA_MANIFEST, manifestBlob, existingManifest?.id);
 
     // Upload media files referenced in manifest (only new ones)
     for (const [hash, name] of Object.entries(mediaManifest)) {
@@ -2286,9 +2280,9 @@ export class DriveSyncService {
       }
     }
 
-    // Update delta meta
+    // Build unified state
     const now = Date.now();
-    const deltaMeta: DeltaMeta = {
+    const state: SyncState = {
       app: 'runora',
       version: 1,
       baseUsn: lastSyncedUsn,
@@ -2306,10 +2300,16 @@ export class DriveSyncService {
         tombstones: tombstones.length,
         mediaFiles: Object.keys(mediaManifest).length,
       },
+      delta,
+      mediaManifest,
+      extrasHash: hashExtras(buildExtrasPayload()),
+      addonsHash: (await computeAddonState()).hash,
     };
-    const metaBlob = new Blob([JSON.stringify(deltaMeta, null, 2)], { type: 'application/json' });
-    const existingMeta = await findFile(token, DRIVE_FILES.DELTA_META);
-    await uploadMultipart(token, DRIVE_FILES.DELTA_META, metaBlob, existingMeta?.id);
+    const stateBlob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    progress(`Enviando estado unificado (${formatBytes(stateBlob.size)}) para o Drive…`);
+    itemProgress({ phase: 'upload', counts: { decks: decks.length, notes: notes.length, cards: cards.length } });
+    const existingState = await findFile(token, DRIVE_FILES.STATE);
+    await uploadResumable(token, DRIVE_FILES.STATE, stateBlob, existingState?.id);
 
     // Atualiza o META do Drive: é por ele que os OUTROS aparelhos percebem
     // que há mudanças novas no Drive para baixar (checagem de remoteChanged).
@@ -2417,47 +2417,36 @@ export class DriveSyncService {
   ): Promise<number | null> {
     const lastSyncedUsn = this.getLastSyncedUsn();
 
-    // Lê o delta meta do Drive
-    const metaFile = await findFile(token, DRIVE_FILES.DELTA_META);
-    if (!metaFile) {
-      progress('Nenhum delta incremental no Drive — fará sync completo se necessário.');
+    // Lê o estado unificado do Drive
+    const stateFile = await findFile(token, DRIVE_FILES.STATE);
+    if (!stateFile) {
+      progress('Nenhum estado incremental no Drive — fará sync completo se necessário.');
       return null;
     }
 
-    const deltaMeta: DeltaMeta = JSON.parse(await (await downloadFile(token, metaFile.id)).text());
-    const remoteHeadUsn = deltaMeta.headUsn;
+    const state: SyncState = JSON.parse(await (await downloadFile(token, stateFile.id)).text());
+    const remoteHeadUsn = state.headUsn;
 
     if (remoteHeadUsn <= lastSyncedUsn) {
       progress('Drive não tem mudanças incrementais desde o último sync.');
       return null;
     }
 
-    progress(`Baixando delta incremental (USN ${lastSyncedUsn} → ${remoteHeadUsn}) de "${deltaMeta.deviceName}"…`);
+    progress(`Baixando delta incremental (USN ${lastSyncedUsn} → ${state.headUsn}) de "${state.deviceName}"…`);
+itemProgress({ phase: 'download', counts: state.counts });
 
-    // Baixa o delta payload
-    const payloadFile = await findFile(token, DRIVE_FILES.DELTA_PAYLOAD);
-    if (!payloadFile) {
-      throw new Error('Delta meta existe mas payload não encontrado no Drive.');
-    }
-    itemProgress({ phase: 'download', counts: deltaMeta.counts });
-    const deltaBlob = await downloadFile(token, payloadFile.id);
-    const delta: SyncDelta = JSON.parse(await deltaBlob.text());
+    const delta = state.delta;
 
     if (!isValidDelta(delta)) {
       throw new Error('Delta inválido ou corrompido no Drive.');
     }
 
     // Verifica consistência
-    if (delta.currentUsn !== remoteHeadUsn) {
-      throw new Error('Inconsistência: delta.currentUsn ≠ deltaMeta.headUsn');
+    if (delta.currentUsn !== state.headUsn) {
+      throw new Error('Inconsistência: delta.currentUsn ≠ state.headUsn');
     }
 
-    // Baixa manifest de mídia
-    const manifestFile = await findFile(token, DRIVE_FILES.DELTA_MEDIA_MANIFEST);
-    let mediaManifest: Record<string, string> = {};
-    if (manifestFile) {
-      mediaManifest = JSON.parse(await (await downloadFile(token, manifestFile.id)).text());
-    }
+    const mediaManifest = state.mediaManifest;
 
     // Baixa arquivos de mídia novos (que não temos localmente)
     const mediaFolder = DRIVE_FILES.MEDIA_FOLDER;
@@ -2475,7 +2464,7 @@ export class DriveSyncService {
 
     // Aplica o delta localmente — contagem exata item por item (↓ ao vivo)
     progress('Aplicando delta localmente…');
-    itemProgress({ phase: 'applying', counts: deltaMeta.counts });
+    itemProgress({ phase: 'applying', counts: state.counts });
 
     const deltaTotal =
       delta.decks.length +
@@ -2502,7 +2491,7 @@ export class DriveSyncService {
         ...(part ? { part } : {}),
         done: processed,
         total: deltaTotal,
-        counts: deltaMeta.counts,
+        counts: state.counts,
       });
     };
 
@@ -2566,7 +2555,7 @@ export class DriveSyncService {
     // O estado local agora é o do Drive → a base passa a ser o estado atual
     // (senão o sinal de "mudanças pendentes" acende à toa após o download).
     setSyncBase(computeSnapshot(localSyncContent(), this.getDeviceId(), getDeviceName()));
-    this.setLastSync({ at: Date.now(), remoteUploadedAt: deltaMeta.syncedAt });
+    this.setLastSync({ at: Date.now(), remoteUploadedAt: state.syncedAt });
 
     progress(`Delta aplicado: ${delta.decks.length} decks, ${delta.notes.length} notas, ${delta.cards.length} cards, ${delta.tombstones.length} deletados.`);
     return newHeadUsn;

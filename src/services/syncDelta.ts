@@ -162,6 +162,59 @@ export interface DeltaMeta {
   };
 }
 
+/**
+ * Estado unificado do sync incremental (Fase 8).
+ * Substitui: delta-meta.json + delta.json + delta-media-manifest.json + partes incrementais do meta.json.
+ * Mantém compatibilidade: pode ser lido como DeltaMeta (campos em comum).
+ */
+export interface SyncState {
+  app: 'runora';
+  version: number;           // 1 = formato atual
+  /** USN do último sync completo (base comum). */
+  baseUsn: number;
+  /** USN do último sync incremental bem-sucedido (head). */
+  headUsn: number;
+  /** Timestamp do último sync incremental. */
+  syncedAt: number;
+  /** Device que fez o último upload incremental. */
+  deviceId: string;
+  /** Nome do device. */
+  deviceName: string;
+  /** Contagem de itens no delta atual. */
+  counts: {
+    decks: number;
+    noteTypes: number;
+    notes: number;
+    cards: number;
+    revlog: number;
+    presets: number;
+    tombstones: number;
+    mediaFiles: number;
+  };
+  /** Delta payload inline (notas, decks, cards, etc. que mudaram). */
+  delta: SyncDelta;
+  /** Media manifest inline (hash → filename). */
+  mediaManifest: Record<string, string>;
+  /** Hash das preferências+temas (para pular download se não mudou). */
+  extrasHash?: string;
+  /** Hash das extensões (para pular download se não mudou). */
+  addonsHash?: string;
+}
+
+/** Converte SyncState para DeltaMeta (compatibilidade com código antigo). */
+export function syncStateToDeltaMeta(state: SyncState): DeltaMeta {
+  return {
+    app: state.app,
+    version: state.version,
+    baseUsn: state.baseUsn,
+    headUsn: state.headUsn,
+    syncedAt: state.syncedAt,
+    deviceId: state.deviceId,
+    deviceName: state.deviceName,
+    counts: state.counts,
+  };
+}
+
 /** Nomes dos arquivos no Drive para o sync incremental. */
 export const DELTA_FILES = {
   /** Metadado do delta (pequeno, lido primeiro). */
