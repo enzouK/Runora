@@ -39,6 +39,8 @@ import {
 // nomes que o parser do Vite reclama com o import local acima.
 export { bumpTally, emptySyncTally, tallyFromCounts, tallySent, tallyReceived };
 export type { SyncTally };
+
+import { countDriveCall, SyncTiming, setActiveTiming, getActiveTiming } from './syncTiming';
 import { MediaStore } from './mediaStore';
 import { ExportImportService } from './exportImport';
 import type { ImportableCollection } from './importPlan';
@@ -422,6 +424,7 @@ async function fetchWithTimeout(
   init: RequestInit,
   timeoutMs: number
 ): Promise<Response> {
+  countDriveCall();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -920,20 +923,25 @@ export class DriveSyncService {
       return { action: 'cancelled', message: 'Uma sincronização já está em andamento neste dispositivo.' };
     }
     this.markRunning();
+    const timing = import.meta.env.DEV ? new SyncTiming() : null;
+    if (timing) setActiveTiming(timing);
     const progress = opts?.onProgress ?? (() => {});
     const rawItemProgress = opts?.onItemProgress ?? (() => {});
     activeTally = emptySyncTally();
     // Cada emissão leva o tally ACUMULADO até agora — o painel só exibe.
     const itemProgress = (p: SyncProgressState | null) =>
       rawItemProgress(p ? { ...p, tally: { ...activeTally! } } : null);
+    // Helper para timing: em não-dev executa direto, em dev mede
+    const track = <T,>(stage: string, fn: () => Promise<T>) =>
+      timing ? timing.track(stage, fn) : fn();
     try {
-      const token = await this.ensureToken();
+      const token = await track('token', () => this.ensureToken());
 
       progress('Verificando trava de sincronização no Drive…');
       itemProgress({ phase: 'comparing' });
-      await acquireLock(token);
+      await track('trava', () => acquireLock(token));
       try {
-        const outcome = await (async (): Promise<SyncCollectionOutcome> => {
+        const outcome = await track('colecao', async (): Promise<SyncCollectionOutcome> => {
         // ============================================================
         // Fase 7.7: Migração — primeiro sync pós-update
         // ============================================================
@@ -949,11 +957,12 @@ export class DriveSyncService {
           // Após backfill, o USN atual será o "head" inicial
           this.setLastSyncedUsn(StorageService.getCurrentUsn());
         }
-
+        timing?.mark('meta-find');
         const metaFile = await findFile(token, DRIVE_FILES.META);
         const remoteMeta = metaFile
           ? (JSON.parse(await (await downloadFile(token, metaFile.id)).text()) as SyncMeta)
           : null;
+        timing?.mark('meta-download');
 
         const lastSync = this.getLastSync();
         const base = getSyncBase();
@@ -990,11 +999,15 @@ export class DriveSyncService {
             // ============================================================
             const lastSyncedUsn = this.getLastSyncedUsn();
             if (lastSyncedUsn > 0) {
+              timing?.mark('upload-incremental-início');
               const newHead = await this.uploadIncremental(token, progress, itemProgress);
+              timing?.mark('upload-incremental-fim');
               if (newHead !== null) {
                 // Preferências/extensões também precisam subir (Fase 5),
                 // igual ao caminho de download abaixo.
+                timing?.mark('extras-início');
                 const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {});
+                timing?.mark('extras-fim');
                 const done = syncDoneMessage(activeTally!);
                 return {
                   action: 'upload',
@@ -1004,6 +1017,7 @@ export class DriveSyncService {
             }
             // Fallback para full upload se incremental não disponível
             itemProgress({ phase: 'preparing' });
+            timing?.mark('upload-backup');
             return await this.uploadBackup(token, progress, itemProgress);
           }
           // o painel fica de pé: as preferências/extensões ainda serão
@@ -1017,10 +1031,14 @@ export class DriveSyncService {
         if (!localChanged) {
           const lastSyncedUsn = this.getLastSyncedUsn();
           if (lastSyncedUsn > 0) {
+            timing?.mark('download-incremental-início');
             const newHead = await this.downloadIncremental(token, progress, itemProgress);
+            timing?.mark('download-incremental-fim');
             if (newHead !== null) {
               // Aplica extras do Drive (fase 5) e finaliza
+              timing?.mark('extras-início');
               const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {});
+              timing?.mark('extras-fim');
               const done = syncDoneMessage(activeTally!);
               return {
                 action: 'download',
@@ -1039,12 +1057,14 @@ export class DriveSyncService {
           deviceName: remoteMeta.deviceName,
           counts: remoteMeta.counts,
         });
+        timing?.mark('download-collection-início');
         const remoteData = await this.downloadCollection(
           token,
           remoteMeta,
           progress,
           itemProgress
         );
+        timing?.mark('download-collection-fim');
         const remoteSnapshot = computeSnapshot(
           collectionSyncContent({
             decks: remoteData.decks,
@@ -1075,6 +1095,7 @@ export class DriveSyncService {
                 ...diff.remoteDeleted.map((i) => i.key),
                 ...conflicts.map((i) => i.key),
               ]);
+              timing?.mark('merge-and-upload');
               return await this.mergeAndUpload(
                 token,
                 remoteData,
@@ -1087,6 +1108,7 @@ export class DriveSyncService {
             }
             if (choice === 'keep') {
               itemProgress({ phase: 'preparing' });
+              timing?.mark('upload-backup');
               const kept = await this.uploadBackup(token, progress, itemProgress);
               // o usuário ficou com a versão daqui — as preferências daqui valem
               return { ...kept, keepLocalTheme: true, keepLocalPrefs: true };
@@ -1100,6 +1122,7 @@ export class DriveSyncService {
           ]);
           if (conflicts.length === 0) {
             // Sem disputa: o estado mesclado sobe para o Drive.
+            timing?.mark('merge-and-upload');
             return await this.mergeAndUpload(
               token,
               remoteData,
@@ -1110,6 +1133,7 @@ export class DriveSyncService {
               tallyUpFromLocalDiff(diff)
             );
           }
+          timing?.mark('apply-remote');
           const applied = await this.applyRemote(remoteData, safeKeys, itemProgress);
           this.updateBase(base, localSnapshot, remoteSnapshot, diff, safeKeys);
           this.setPendingConflict({
@@ -1147,6 +1171,7 @@ export class DriveSyncService {
               ...diff.remoteOnly.map((i) => i.key),
               ...diff.remoteDeleted.map((i) => i.key),
             ]);
+            timing?.mark('apply-remote');
             const applied = await this.applyRemote(remoteData, safeKeys, itemProgress);
             this.updateBase(base, localSnapshot, remoteSnapshot, diff, safeKeys);
             this.setPendingConflict({
@@ -1187,6 +1212,7 @@ export class DriveSyncService {
         if (choice === 'remote') {
           for (const c of conflicts) applyKeys.add(c.key);
         }
+        timing?.mark('merge-and-upload');
         const result = await this.mergeAndUpload(
           token,
           remoteData,
@@ -1205,22 +1231,30 @@ export class DriveSyncService {
           keepLocalPrefs:
             choice === 'local' && conflicts.some((c) => c.key === SETTINGS_KEYS.prefs),
         };
-        })();
+        });
         if (outcome.action === 'cancelled') return outcome;
 
         // ── Fase 5: preferências, temas e extensões também vão para o Drive ──
+        timing?.mark('extras-início');
         const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {
           keepTheme: outcome.keepLocalTheme,
           keepPrefs: outcome.keepLocalPrefs,
         });
+        timing?.mark('extras-fim');
         return extrasMsg ? { ...outcome, message: `${outcome.message} ${extrasMsg}` } : outcome;
       } finally {
+        timing?.mark('release-lock');
         await releaseLock(token);
       }
     } finally {
+      timing?.mark('fim');
+      // guarda o relatório para leitura posterior
+      const report = timing?.getReport();
+      if (report) (this as any)._lastTimingReport = report;
       itemProgress(null);
       localStorage.removeItem(LS.RUNNING);
       activeTally = null;
+      if (timing) setActiveTiming(null);
       // aviso para quem observa (o badge do botão Sync precisa recalcular:
       // um sync pode ter apagado a pendência pelas costas)
       if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
@@ -1231,6 +1265,14 @@ export class DriveSyncService {
         }
       }
     }
+  }
+
+  /**
+   * Retorna o relatório de tempo do último sync executado (só em dev).
+   * Formato: linhas com "ms calls etapa", última linha = TOTAL.
+   */
+  public static getLastTimingReport(): string | null {
+    return (this as any)._lastTimingReport ?? null;
   }
 
   /* ── Fase 5: preferências, temas e extensões no Drive ─────────────────── */
@@ -1602,21 +1644,28 @@ export class DriveSyncService {
       };
     }
     this.markRunning();
+    const timing = import.meta.env.DEV ? new SyncTiming() : null;
+    if (timing) setActiveTiming(timing);
     const progress = opts?.onProgress ?? (() => {});
     const rawItemProgress = opts?.onItemProgress ?? (() => {});
     activeTally = emptySyncTally();
     // Cada emissão leva o tally ACUMULADO até agora — o painel só exibe.
     const itemProgress = (p: SyncProgressState | null) =>
       rawItemProgress(p ? { ...p, tally: { ...activeTally! } } : null);
+    // Helper para timing: em não-dev executa direto, em dev mede
+    const track = <T,>(stage: string, fn: () => Promise<T>) =>
+      timing ? timing.track(stage, fn) : fn();
     try {
-      const token = await this.ensureToken();
+      const token = await track('token', () => this.ensureToken());
       itemProgress({ phase: 'download' });
 
+      timing?.mark('meta-find');
       const metaFile = await findFile(token, DRIVE_FILES.META);
       if (!metaFile) throw new Error('Não há backup no Google Drive ainda.');
       const remoteMeta = JSON.parse(
         await (await downloadFile(token, metaFile.id)).text()
       ) as SyncMeta;
+      timing?.mark('meta-download');
       itemProgress({
         phase: 'download',
         deviceName: remoteMeta.deviceName,
@@ -1624,7 +1673,9 @@ export class DriveSyncService {
       });
 
       // baixa o pacote (guarda o estado atual no backup local antes)
+      timing?.mark('download-collection-início');
       const data = await this.downloadCollection(token, remoteMeta, progress, itemProgress);
+      timing?.mark('download-collection-fim');
 
       const remoteData: RemoteSyncData = {
         decks: data.decks,
@@ -1684,9 +1735,13 @@ export class DriveSyncService {
         message: `Backup do Drive baixado: ${resumo}.`,
       };
     } finally {
+      timing?.mark('fim');
+      const report = timing?.getReport();
+      if (report) (this as any)._lastTimingReport = report;
       itemProgress(null);
       localStorage.removeItem(LS.RUNNING);
       activeTally = null;
+      if (timing) setActiveTiming(null);
     }
   }
 
