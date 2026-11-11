@@ -1047,6 +1047,29 @@ export class DriveSyncService {
         }
         timing?.mark('meta-find');
         const metaFile = allFiles[DRIVE_FILES.META] ?? null;
+
+        // Fase 4: baixa EXTRAS e ADDONS_INDEX em paralelo (se hashes diferirem)
+        // Isso evita esperar sequencialmente por cada download
+        const [extrasFile, addonsIndexFile] = await Promise.all([
+          allFiles?.[DRIVE_FILES.EXTRAS] ?? findFile(token, DRIVE_FILES.EXTRAS),
+          allFiles?.[DRIVE_FILES.ADDONS_INDEX] ?? findFile(token, DRIVE_FILES.ADDONS_INDEX),
+        ]);
+        timing?.mark('extras-index-find');
+
+        const [extrasContent, addonsIndexContent] = await Promise.all([
+          extrasFile ? downloadFile(token, extrasFile.id).then((r) => r.text()) : Promise.resolve(null),
+          addonsIndexFile ? downloadFile(token, addonsIndexFile.id).then((r) => r.text()) : Promise.resolve(null),
+        ]);
+        timing?.mark('extras-index-download');
+
+        const remoteExtras: SyncExtrasFile | null = extrasContent
+          ? JSON.parse(extrasContent) as SyncExtrasFile
+          : null;
+        const remoteAddonsIndex: SyncAddonsIndex | null = addonsIndexContent
+          ? JSON.parse(addonsIndexContent) as SyncAddonsIndex
+          : null;
+        timing?.mark('extras-index-parse');
+
         const remoteMeta = metaFile
           ? (JSON.parse(await (await downloadFile(token, metaFile.id)).text()) as SyncMeta)
           : null;
@@ -1094,7 +1117,7 @@ export class DriveSyncService {
                 // Preferências/extensões também precisam subir (Fase 5),
                 // igual ao caminho de download abaixo.
                 timing?.mark('extras-início');
-                const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {}, allFiles, remoteMeta);
+                const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {}, allFiles, remoteMeta, remoteExtras, remoteAddonsIndex);
                 timing?.mark('extras-fim');
                 const done = syncDoneMessage(activeTally!);
                 return {
@@ -1125,7 +1148,7 @@ export class DriveSyncService {
             if (newHead !== null) {
               // Aplica extras do Drive (fase 5) e finaliza
               timing?.mark('extras-início');
-              const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {}, allFiles, remoteMeta);
+              const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {}, allFiles, remoteMeta, remoteExtras, remoteAddonsIndex);
               timing?.mark('extras-fim');
               const done = syncDoneMessage(activeTally!);
               return {
@@ -1315,7 +1338,7 @@ export class DriveSyncService {
         const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {
           keepTheme: choice === 'local' && conflicts.some((c) => c.key === SETTINGS_KEYS.theme),
           keepPrefs: choice === 'local' && conflicts.some((c) => c.key === SETTINGS_KEYS.prefs),
-        }, allFiles, remoteMeta);
+        }, allFiles, remoteMeta, remoteExtras, remoteAddonsIndex);
         timing?.mark('extras-fim');
         return {
           ...result,
@@ -1381,7 +1404,11 @@ export class DriveSyncService {
     /** Mapa de arquivos já listados (evita listagens extras). */
     allFiles?: Record<string, DriveFileInfo>,
     /** META remoto (para checar hashes sem baixar). */
-    remoteMeta?: SyncMeta
+    remoteMeta?: SyncMeta,
+    /** EXTRAS já baixado (Fase 4: paralelização). */
+    remoteExtras?: SyncExtrasFile | null,
+    /** ADDONS_INDEX já baixado (Fase 4: paralelização). */
+    remoteAddonsIndex?: SyncAddonsIndex | null
   ): Promise<string | null> {
     const parts: string[] = [];
 
@@ -1392,12 +1419,21 @@ export class DriveSyncService {
       const localHash = hashExtras(local);
       const base = this.getSideBase(LS.EXTRAS_BASE);
 
-      // Fase 3: usa hash do META para pular download se não mudou
+      // Fase 3+4: usa hash do META para pular download se não mudou; se precisar, usa o já baixado (Fase 4)
       let remotePayload: SyncExtrasPayload | null = null;
       let remoteUploadedAt: number | undefined;
       if (remoteMeta?.extrasHash && remoteMeta.extrasHash === hashExtras(local)) {
         // Hash igual → não baixa, mantém local
+      } else if (remoteExtras) {
+        // Já baixado na Fase 4
+        remotePayload = {
+          prefs: remoteExtras.prefs ?? {},
+          theme: remoteExtras.theme,
+          colorTheme: remoteExtras.colorTheme,
+        };
+        remoteUploadedAt = remoteExtras.uploadedAt;
       } else {
+        // Fallback: baixa sob demanda (não deveria acontecer com Fase 4)
         const file = allFiles?.[DRIVE_FILES.EXTRAS] ?? await findFile(token, DRIVE_FILES.EXTRAS);
         let remote: SyncExtrasFile | null = null;
         if (file) {
@@ -1447,11 +1483,15 @@ export class DriveSyncService {
       const localState = await computeAddonState();
       const base = this.getSideBase(LS.ADDONS_BASE);
 
-      // Fase 3: usa hash do META para pular download se não mudou
+      // Fase 3+4: usa hash do META para pular download se não mudou; se precisar, usa o já baixado (Fase 4)
       let remoteIndex: SyncAddonsIndex | null = null;
       if (remoteMeta?.addonsHash && remoteMeta.addonsHash === localState.hash) {
         // Hash igual → não baixa
+      } else if (remoteAddonsIndex) {
+        // Já baixado na Fase 4
+        remoteIndex = remoteAddonsIndex;
       } else {
+        // Fallback: baixa sob demanda (não deveria acontecer com Fase 4)
         const indexFile = allFiles?.[DRIVE_FILES.ADDONS_INDEX] ?? await findFile(token, DRIVE_FILES.ADDONS_INDEX);
         if (indexFile) {
           try {
