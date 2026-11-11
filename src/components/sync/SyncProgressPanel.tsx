@@ -2,7 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { Loader2 } from 'lucide-react';
 import { useBodyScrollLock } from '../common/useBodyScrollLock';
-import type { SyncProgressState } from '../../services/gdriveSync';
+import type { SyncProgressState, SyncTally } from '../../services/gdriveSync';
 
 interface Props {
   progress: SyncProgressState | null;
@@ -18,35 +18,27 @@ const PART_LABEL: Record<string, string> = {
   addons: 'extensões',
 };
 
+const ZERO_TALLY: SyncTally = { addedUp: 0, addedDown: 0, removedUp: 0, removedDown: 0 };
+
 /**
- * Painel de progresso da sincronização — mesma cara do painel da importação.
+ * Painel de progresso da sincronização — estilo Anki.
  *
- * Mostra a etapa (preparando → baixando → comparando → aplicando → enviando)
- * e o contador de ITENS (notas, cards, mídia) — nunca bytes.
+ * Mostra contadores ao vivo ↑↓ (↑ enviado daqui · ↓ recebido da nuvem),
+ * acumulados desde o início do sync, e o contador de ITENS por parte
+ * (notas, cards, mídia) — nunca bytes. Sem "etapas": os números contam
+ * a história, como na janela de sync do Anki.
  */
 export const SyncProgressPanel: React.FC<Props> = ({ progress }) => {
   useBodyScrollLock(!!progress);
   if (!progress) return null;
 
-  const { phase, part, done, total, deviceName, counts } = progress;
+  const { part, done, total, counts, tally } = progress;
+  const t = tally ?? ZERO_TALLY;
   const hasCounter = !!part && (total ?? 0) > 0;
   const percent = hasCounter ? Math.min(100, Math.round(((done ?? 0) / (total ?? 1)) * 100)) : 0;
 
-  const title =
-    phase === 'preparing'
-      ? 'Preparando o envio…'
-      : phase === 'download'
-        ? deviceName
-          ? `Baixando de "${deviceName}"…`
-          : 'Baixando do Drive…'
-        : phase === 'comparing'
-          ? 'Comparando com o Drive…'
-          : phase === 'applying'
-            ? 'Aplicando do Drive…'
-            : 'Enviando ao Drive…';
-
-  // ── contador de ITENS ──
-  // 1) o que está sendo aplicado agora ("30 de 38 notas")
+  // ── contador de ITENS por parte (linha pequena, só quando existe) ──
+  // 1) o que está sendo processado agora ("30 de 38 notas")
   // 2) os totais da coleção que está sendo baixada/enviada ("81 notas, 81 cards")
   const pieces: string[] = [];
   if (hasCounter) {
@@ -64,19 +56,6 @@ export const SyncProgressPanel: React.FC<Props> = ({ progress }) => {
     }
     pieces.push(totalPieces.join(', '));
   }
-
-  const subtitle =
-    pieces.length > 0
-      ? pieces.join(' · ')
-      : phase === 'download'
-        ? 'Só um instante…'
-        : phase === 'comparing'
-          ? 'Vendo o que mudou…'
-          : phase === 'upload'
-            ? 'Enviando suas alterações…'
-            : phase === 'preparing'
-              ? 'Juntando o pacote…'
-              : 'Só um instante…';
 
   return createPortal(
     <div
@@ -101,11 +80,26 @@ export const SyncProgressPanel: React.FC<Props> = ({ progress }) => {
           ))}
         </div>
 
-        <h3 className="text-[16px] font-bold text-zinc-900 dark:text-white">{title}</h3>
+        <h3 className="text-[16px] font-bold text-zinc-900 dark:text-white">Sincronizando…</h3>
 
-        <p className="text-[13px] text-zinc-500 dark:text-zinc-400 mt-1 tabular-nums">
-          {subtitle}
-        </p>
+        {/* ── contadores ao vivo (estilo Anki: ↑ enviado daqui · ↓ recebido) ── */}
+        <div className="mt-3 space-y-1 text-[14px] text-zinc-700 dark:text-zinc-300 tabular-nums">
+          <p>
+            Adicionados/Modificados: <span className="font-semibold">{t.addedUp}↑</span>{' '}
+            <span className="font-semibold">{t.addedDown}↓</span>
+          </p>
+          <p>
+            Removidos: <span className="font-semibold">{t.removedUp}↑</span>{' '}
+            <span className="font-semibold">{t.removedDown}↓</span>
+          </p>
+        </div>
+
+        {/* linha pequena de itens por parte ("12 de 81 notas") */}
+        {pieces.length > 0 && (
+          <p className="text-[12px] text-zinc-500 dark:text-zinc-400 mt-2 tabular-nums">
+            {pieces.join(' · ')}
+          </p>
+        )}
 
         {/* Progress bar */}
         <div className="mt-4 h-2 w-full rounded-full bg-black/[0.07] dark:bg-white/[0.12] overflow-hidden">

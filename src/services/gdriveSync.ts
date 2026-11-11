@@ -30,6 +30,8 @@ import {
   bumpTally,
   emptySyncTally,
   tallyFromCounts,
+  tallySent,
+  tallyReceived,
   type SyncTally,
 } from './syncTally';
 export type { SyncTally } from './syncTally';
@@ -665,6 +667,17 @@ function tallyFromApply(applied: {
   };
 }
 
+/** Mensagem final "Sincronizado — N mudança(s) enviada(s)/recebida(s)" (estilo Anki, sem USN). */
+function syncDoneMessage(t: SyncTally): string {
+  const sent = tallySent(t);
+  const received = tallyReceived(t);
+  const parts: string[] = [];
+  if (sent > 0) parts.push(sent === 1 ? '1 mudança enviada' : `${sent} mudanças enviadas`);
+  if (received > 0)
+    parts.push(received === 1 ? '1 mudança recebida' : `${received} mudanças recebidas`);
+  return parts.length > 0 ? `Sincronizado — ${parts.join(' · ')}.` : 'Sincronizado.';
+}
+
 /* ── Service ─────────────────────────────────────────────────────────────── */
 
 export class DriveSyncService {
@@ -987,11 +1000,10 @@ export class DriveSyncService {
                 // Preferências/extensões também precisam subir (Fase 5),
                 // igual ao caminho de download abaixo.
                 const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {});
+                const done = syncDoneMessage(activeTally!);
                 return {
                   action: 'upload',
-                  message: extrasMsg
-                    ? `Sync incremental concluído (USN ${lastSyncedUsn} → ${newHead}). ${extrasMsg}`
-                    : `Sync incremental concluído (USN ${lastSyncedUsn} → ${newHead}).`,
+                  message: extrasMsg ? `${done} ${extrasMsg}` : done,
                 };
               }
             }
@@ -1014,11 +1026,10 @@ export class DriveSyncService {
             if (newHead !== null) {
               // Aplica extras do Drive (fase 5) e finaliza
               const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {});
+              const done = syncDoneMessage(activeTally!);
               return {
                 action: 'download',
-                message: extrasMsg
-                  ? `Sync incremental concluído (USN ${lastSyncedUsn} → ${newHead}). ${extrasMsg}`
-                  : `Sync incremental concluído (USN ${lastSyncedUsn} → ${newHead}).`,
+                message: extrasMsg ? `${done} ${extrasMsg}` : done,
               };
             }
           }
