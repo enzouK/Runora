@@ -99,6 +99,7 @@ import {
   type SyncState,
   syncStateToDeltaMeta,
 } from './syncDelta';
+import { isOldFormatBackup, OLD_DEVICE_WARNING } from './syncFormat';
 import {
   computeAddonState,
   exportAddonPackage,
@@ -137,6 +138,13 @@ const LS = {
   ADDONS_BASE: 'runora_sync_addons_base',
   /** Fase 6: último modifiedTime conhecido do arquivo STATE no Drive (fast path). */
   STATE_MODIFIED_TIME: 'runora_sync_state_modified',
+  /**
+   * Último modifiedTime conhecido do META no Drive. O META é reescrito em
+   * TODO sync (inclusive por apps antigos) → é o marcador confiável de
+   * "o Drive mudou". Sem ele, um backup vindo de um aparelho antigo
+   * passaria batido no fast path.
+   */
+  META_MODIFIED_TIME: 'runora_sync_meta_modified',
 };
 
 /**
@@ -232,6 +240,19 @@ export interface SyncMeta {
   extrasHash?: string;
   /** Hash das extensões (para pular download se não mudou). */
   addonsHash?: string;
+  /**
+   * Marcador do formato de sync do último upload.
+   *
+   * - `'state'`: o app que escreveu este META conhece o arquivo de estado
+   *   unificado (`runora-sync-state.json`) → o sync incremental é confiável.
+   * - ausente: o META foi escrito por um app ANTIGO (que só sobe `.colpkg`)
+   *   → o backup completo no Drive é a fonte da verdade e a mescla precisa
+   *   ser refeita por inteiro.
+   *
+   * É esse marcador (e não a data do arquivo) que diz com segurança se o
+   * backup do Drive veio de um aparelho atualizado.
+   */
+  syncFormat?: 'state';
 }
 
 interface LockInfo {
@@ -615,13 +636,19 @@ async function downloadFile(token: string, id: string): Promise<Blob> {
   return (await api(token, `/drive/v3/files/${id}?alt=media`)).blob();
 }
 
+/** Resposta de um upload: id do arquivo + modifiedTime (se o Drive devolveu). */
+interface UploadResult {
+  id: string;
+  modifiedTime?: string;
+}
+
 /** Resumable upload (works for large .colpkg files with media). */
 async function uploadResumable(
   token: string,
   name: string,
   blob: Blob,
   existingId?: string
-): Promise<string> {
+): Promise<UploadResult> {
   const url = existingId
     ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=resumable`
     : `https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable`;
@@ -660,9 +687,9 @@ async function uploadResumable(
   if (!putRes.ok) {
     throw new Error(`Drive: falha no envio do arquivo (${putRes.status})`);
   }
-  const data = (await putRes.json()) as { id?: string };
+  const data = (await putRes.json()) as { id?: string; modifiedTime?: string };
   if (!data.id) throw new Error('Drive: upload concluído sem id de arquivo.');
-  return data.id;
+  return { id: data.id, modifiedTime: data.modifiedTime };
 }
 
 /** Multipart upload for small JSON files (meta, lock). */
@@ -671,7 +698,7 @@ async function uploadMultipart(
   name: string,
   blob: Blob,
   existingId?: string
-): Promise<string> {
+): Promise<UploadResult> {
   const fd = new FormData();
   const metadata: Record<string, unknown> = { name };
   if (!existingId) metadata.parents = [await ensureFolder(token)];
@@ -681,9 +708,9 @@ async function uploadMultipart(
     ? `/upload/drive/v3/files/${existingId}?uploadType=multipart`
     : `/upload/drive/v3/files?uploadType=multipart`;
   const res = await api(token, path, { method: existingId ? 'PATCH' : 'POST', body: fd });
-  const data = (await res.json()) as { id?: string };
+  const data = (await res.json()) as { id?: string; modifiedTime?: string };
   if (!data.id) throw new Error('Drive: upload de metadados sem id.');
-  return data.id;
+  return { id: data.id, modifiedTime: data.modifiedTime };
 }
 
 /* ── Cross-device lock ───────────────────────────────────────────────────── */
@@ -731,6 +758,14 @@ async function releaseLock(token: string): Promise<void> {
 // evita passar o tally por todas as assinaturas das funções internas.
 // Fora de um sync ele fica null e os helpers viram no-op.
 let activeTally: SyncTally | null = null;
+
+/**
+ * O META do Drive foi reescrito por NÓS neste sync?
+ * Se sim, o modifiedTime dele vem da resposta do upload.
+ * Se não, o META continua sendo o que o outro aparelho escreveu → vale o
+ * modifiedTime que veio da listagem (listAllSyncFiles).
+ */
+let metaWrittenByUs = false;
 
 /** Soma incrementos ao tally do sync em andamento. */
 function addTally(add: Partial<SyncTally>): void {
@@ -869,6 +904,43 @@ export class DriveSyncService {
   /** Guarda o modifiedTime do arquivo STATE após sync bem-sucedido. */
   private static setStateModifiedTime(modifiedTime: string): void {
     localStorage.setItem(LS.STATE_MODIFIED_TIME, modifiedTime);
+  }
+
+  /** Retorna o último modifiedTime conhecido do META no Drive. */
+  private static getMetaModifiedTime(): string | null {
+    try {
+      return localStorage.getItem(LS.META_MODIFIED_TIME);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Guarda o modifiedTime do META após sync bem-sucedido. */
+  private static setMetaModifiedTime(modifiedTime: string | undefined): void {
+    if (modifiedTime) localStorage.setItem(LS.META_MODIFIED_TIME, modifiedTime);
+  }
+
+  /**
+   * Registra o META que acabamos de escrever no Drive.
+   * Guarda o modifiedTime dele para o fast path do próximo sync: se a resposta
+   * do upload não trouxer a data, busca o arquivo (1 chamada) — sem isso o
+   * fast path simplesmente deixa de ser usado (o sync continua correto).
+   */
+  private static async rememberMetaWritten(
+    token: string,
+    upload: UploadResult
+  ): Promise<void> {
+    metaWrittenByUs = true;
+    if (upload.modifiedTime) {
+      this.setMetaModifiedTime(upload.modifiedTime);
+      return;
+    }
+    try {
+      const fresh = await findFile(token, DRIVE_FILES.META);
+      if (fresh?.modifiedTime) this.setMetaModifiedTime(fresh.modifiedTime);
+    } catch {
+      // ignora: otimização apenas
+    }
   }
 
   /**
@@ -1031,6 +1103,7 @@ export class DriveSyncService {
     const progress = opts?.onProgress ?? (() => {});
     const rawItemProgress = opts?.onItemProgress ?? (() => {});
     activeTally = emptySyncTally();
+    metaWrittenByUs = false;
     // Cada emissão leva o tally ACUMULADO até agora — o painel só exibe.
     const itemProgress = (p: SyncProgressState | null) =>
       rawItemProgress(p ? { ...p, tally: { ...activeTally! } } : null);
@@ -1044,11 +1117,18 @@ export class DriveSyncService {
       timing?.mark('list-all-files');
       const allFiles = await listAllSyncFiles(token);
 
-      // Fase 6: Fast path — se o STATE não mudou no Drive e não há mudanças locais,
-      // podemos pular o sync inteiro (sem travar, sem baixar nada).
+      // Fase 6: Fast path — se o STATE e o META não mudaram no Drive e não há
+      // mudanças locais, podemos pular o sync inteiro (sem travar, sem baixar nada).
       const stateFile = allFiles[DRIVE_FILES.STATE];
+      const metaFileInList = allFiles[DRIVE_FILES.META];
       const lastStateModified = this.getStateModifiedTime();
-      if (stateFile?.modifiedTime && stateFile.modifiedTime === lastStateModified) {
+      const lastMetaModified = this.getMetaModifiedTime();
+      const driveUnchanged =
+        !!stateFile?.modifiedTime &&
+        stateFile.modifiedTime === lastStateModified &&
+        !!metaFileInList?.modifiedTime &&
+        metaFileInList.modifiedTime === lastMetaModified;
+      if (driveUnchanged) {
         // STATE não mudou no Drive — verifica se há mudanças locais
         const lastSyncedUsn = this.getLastSyncedUsn();
         if (lastSyncedUsn > 0) {
@@ -1072,34 +1152,12 @@ export class DriveSyncService {
         }
       }
 
-      // Fase 7: Detecção de aparelho antigo (formato antigo subiu .colpkg)
-      // Se .colpkg é mais novo que o STATE, outro aparelho com versão antiga fez upload.
-      const colpkgFile = allFiles[DRIVE_FILES.COLPKG];
-      if (colpkgFile && stateFile) {
-        const colpkgTime = new Date(colpkgFile.modifiedTime).getTime();
-        const stateTime = new Date(stateFile.modifiedTime).getTime();
-        if (colpkgTime > stateTime) {
-          // Aparelho antigo fez upload de backup completo após nosso último sync incremental
-          const msg = 'Outro aparelho (versão antiga) sincronizou um backup completo. ' +
-            'Atualize o outro aparelho para evitar conflitos.';
-          timing?.mark('old-device-detected');
-          progress(msg);
-          itemProgress(null);
-          localStorage.removeItem(LS.RUNNING);
-          activeTally = null;
-          if (timing) setActiveTiming(null);
-          return {
-            action: 'none',
-            message: msg,
-            // Não apaga a base nem o lastSyncedUsn — o usuário decide o que fazer
-          };
-        }
-      }
-
       progress('Verificando trava de sincronização no Drive…');
       itemProgress({ phase: 'comparing' });
       await track('trava', () => acquireLock(token));
       try {
+        // Fase 7: o backup do Drive veio de um aparelho antigo? (preenchido abaixo)
+        let oldFormatDetected = false;
         const outcome = await track('colecao', async (): Promise<SyncCollectionOutcome> => {
         // ============================================================
         // Fase 7.7: Migração — primeiro sync pós-update
@@ -1146,6 +1204,20 @@ export class DriveSyncService {
           : null;
         timing?.mark('meta-download');
 
+        // ── Fase 7: o backup do Drive veio de um aparelho ANTIGO? ──
+        // O app atualizado sempre grava o marcador `syncFormat: 'state'` no
+        // META. Se o META do Drive não tem esse marcador (e não foi este mesmo
+        // aparelho que escreveu), ele veio de um app antigo — que só sabe
+        // subir `.colpkg`. Nesse caso o backup completo é a fonte da verdade
+        // e o delta incremental não serve: a mescla é refeita por inteiro.
+        oldFormatDetected = isOldFormatBackup(remoteMeta, this.getDeviceId());
+        if (oldFormatDetected && remoteMeta) {
+          timing?.mark('old-device-detected');
+          progress(
+            `Backup completo de "${remoteMeta.deviceName}" (versão antiga) detectado — refazendo a mescla completa…`
+          );
+        }
+
         const lastSync = this.getLastSync();
         const base = getSyncBase();
         const localSnapshot = computeSnapshot(
@@ -1163,7 +1235,7 @@ export class DriveSyncService {
         const remoteChanged = remoteMeta.uploadedAt > (lastSync?.remoteUploadedAt ?? 0);
         const localChanged = this.hasLocalChanges(base, localSnapshot);
 
-        if (!remoteChanged) {
+        if (!remoteChanged && !oldFormatDetected) {
           // Disputa pendente: não sobe nada para o Drive antes da decisão.
           const pending = this.getPendingConflict();
           if (pending) {
@@ -1210,7 +1282,9 @@ export class DriveSyncService {
         // ============================================================
         // Fase 7: Download incremental (só remoto mudou)
         // ============================================================
-        if (!localChanged) {
+        // Com um backup de aparelho antigo o delta não serve: o backup
+        // completo é que manda → cai no caminho de mescla completa abaixo.
+        if (!localChanged && !oldFormatDetected) {
           const lastSyncedUsn = this.getLastSyncedUsn();
           if (lastSyncedUsn > 0) {
             timing?.mark('download-incremental-início');
@@ -1422,7 +1496,19 @@ export class DriveSyncService {
             choice === 'local' && conflicts.some((c) => c.key === SETTINGS_KEYS.prefs),
         };
         });
+        // O META do Drive agora é o que está lá de verdade: se foi NÓS que
+        // escrevemos, o modifiedTime já foi salvo no upload; se foi o outro
+        // aparelho, vale o da listagem (para o fast path do próximo sync).
+        if (!metaWrittenByUs) {
+          this.setMetaModifiedTime(allFiles[DRIVE_FILES.META]?.modifiedTime);
+        }
         if (outcome.action === 'cancelled') return outcome;
+        if (oldFormatDetected) {
+          return {
+            ...outcome,
+            message: `${outcome.message} ${OLD_DEVICE_WARNING}`,
+          };
+        }
         return outcome;
       } finally {
         timing?.mark('release-lock');
@@ -1870,6 +1956,7 @@ export class DriveSyncService {
     const progress = opts?.onProgress ?? (() => {});
     const rawItemProgress = opts?.onItemProgress ?? (() => {});
     activeTally = emptySyncTally();
+    metaWrittenByUs = false;
     // Cada emissão leva o tally ACUMULADO até agora — o painel só exibe.
     const itemProgress = (p: SyncProgressState | null) =>
       rawItemProgress(p ? { ...p, tally: { ...activeTally! } } : null);
@@ -2212,6 +2299,9 @@ export class DriveSyncService {
       },
       extrasHash: hashExtras(localExtras),
       addonsHash: localAddons.hash,
+      // Marcador: este app conhece o estado unificado (runora-sync-state.json).
+      // Sem ele, os outros aparelhos não conseguem usar o sync incremental.
+      syncFormat: 'state',
     };
 
     // fase de envio: mostra quantos itens estão indo para o Drive
@@ -2221,12 +2311,14 @@ export class DriveSyncService {
     await uploadResumable(token, DRIVE_FILES.COLPKG, blob, existing?.id);
 
     const metaExisting = await findFile(token, DRIVE_FILES.META);
-    await uploadMultipart(
+    const metaUpload = await uploadMultipart(
       token,
       DRIVE_FILES.META,
       new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }),
       metaExisting?.id
     );
+    // fast path: o META é reescrito em todo sync → é o marcador de "o Drive mudou"
+    await this.rememberMetaWritten(token, metaUpload);
 
     this.setLastSync({ at: Date.now(), remoteUploadedAt: meta.uploadedAt });
     // A base (estado comum do último sync) passa a ser o estado atual.
@@ -2416,13 +2508,17 @@ export class DriveSyncService {
       },
       extrasHash: hashExtras(localExtras),
       addonsHash: localAddons.hash,
+      // Marcador: este app conhece o estado unificado (runora-sync-state.json).
+      syncFormat: 'state',
     };
-    await uploadMultipart(
+    const metaUpload = await uploadMultipart(
       token,
       DRIVE_FILES.META,
       new Blob([JSON.stringify(backupMeta, null, 2)], { type: 'application/json' }),
       existingBackupMeta?.id
     );
+    // fast path: o META é reescrito em todo sync → é o marcador de "o Drive mudou"
+    await this.rememberMetaWritten(token, metaUpload);
 
     // Update last synced USN
     this.setLastSyncedUsn(currentUsn);
