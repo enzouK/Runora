@@ -89,6 +89,7 @@ import {
   hashExtras,
   refreshThemeInDom,
   type SyncAddonsIndex,
+  type SyncAddonEntry,
   type SyncExtrasFile,
   type SyncExtrasPayload,
   type SyncSideBase,
@@ -1303,7 +1304,7 @@ export class DriveSyncService {
             this.getDeviceId(),
             getDeviceName()
           );
-          if (!this.hasLocalChanges(base, localSnapshot)) {
+          if (!this.hasLocalChanges(base, localSnapshot) && !this.hasExtrasLocalChanges()) {
             // Sem mudanças no Drive E sem mudanças locais → fast path!
             timing?.mark('fast-path');
             progress('Tudo sincronizado — nenhuma mudança desde o último sync.');
@@ -1340,18 +1341,37 @@ export class DriveSyncService {
         }
         timing?.mark('meta-find');
         const metaFile = allFiles[DRIVE_FILES.META] ?? null;
+        const remoteMeta = metaFile
+          ? (JSON.parse(await (await downloadFile(token, metaFile.id)).text()) as SyncMeta)
+          : null;
+        timing?.mark('meta-download');
 
-        // Fase 4: baixa EXTRAS e ADDONS_INDEX em paralelo (se hashes diferirem)
-        // Isso evita esperar sequencialmente por cada download
+        // Fase 4: baixa EXTRAS e ADDONS_INDEX em paralelo — mas SÓ quando o
+        // hash no META diz que o conteúdo do Drive difere do daqui. O hash no
+        // META é calculado por quem subiu, a partir do conteúdo: dá para
+        // comparar sem baixar. Antes baixava sempre: 2 downloads desperdiçados
+        // em todo sync.
         const [extrasFile, addonsIndexFile] = await Promise.all([
           allFiles?.[DRIVE_FILES.EXTRAS] ?? findFile(token, DRIVE_FILES.EXTRAS),
           allFiles?.[DRIVE_FILES.ADDONS_INDEX] ?? findFile(token, DRIVE_FILES.ADDONS_INDEX),
         ]);
         timing?.mark('extras-index-find');
 
+        const localExtrasHash = hashExtras(buildExtrasPayload());
+        const localAddonState = await computeAddonState();
+        const precisaExtras =
+          !!extrasFile &&
+          (!remoteMeta?.extrasHash || remoteMeta.extrasHash !== localExtrasHash);
+        const precisaAddons =
+          !!addonsIndexFile &&
+          (!remoteMeta?.addonsHash || remoteMeta.addonsHash !== localAddonState.hash);
         const [extrasContent, addonsIndexContent] = await Promise.all([
-          extrasFile ? downloadFile(token, extrasFile.id).then((r) => r.text()) : Promise.resolve(null),
-          addonsIndexFile ? downloadFile(token, addonsIndexFile.id).then((r) => r.text()) : Promise.resolve(null),
+          precisaExtras && extrasFile
+            ? downloadFile(token, extrasFile.id).then((r) => r.text())
+            : Promise.resolve(null),
+          precisaAddons && addonsIndexFile
+            ? downloadFile(token, addonsIndexFile.id).then((r) => r.text())
+            : Promise.resolve(null),
         ]);
         timing?.mark('extras-index-download');
 
@@ -1362,11 +1382,6 @@ export class DriveSyncService {
           ? JSON.parse(addonsIndexContent) as SyncAddonsIndex
           : null;
         timing?.mark('extras-index-parse');
-
-        const remoteMeta = metaFile
-          ? (JSON.parse(await (await downloadFile(token, metaFile.id)).text()) as SyncMeta)
-          : null;
-        timing?.mark('meta-download');
 
         // ── Fase 7: o backup do Drive veio de um aparelho ANTIGO? ──
         // O app atualizado sempre grava o marcador `syncFormat: 'state'` no
@@ -1424,7 +1439,7 @@ export class DriveSyncService {
                 // Preferências/extensões também precisam subir (Fase 5),
                 // igual ao caminho de download abaixo.
                 timing?.mark('extras-início');
-                const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {}, allFiles, remoteMeta, remoteExtras, remoteAddonsIndex);
+                const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {}, allFiles, remoteMeta, remoteExtras, remoteAddonsIndex, localAddonState);
                 timing?.mark('extras-fim');
                 const done = syncDoneMessage(activeTally!);
                 return {
@@ -1438,9 +1453,18 @@ export class DriveSyncService {
             timing?.mark('upload-backup');
             return await this.uploadBackup(token, progress, itemProgress);
           }
-          // o painel fica de pé: as preferências/extensões ainda serão
-          // comparadas nas próximas etapas (Fase 5)
-          return { action: 'none', message: 'Tudo sincronizado — nenhuma mudança desde o último sync.' };
+          if (!this.hasExtrasLocalChanges()) {
+            // Nada mudou aqui nem no Drive (coleção, preferências, extensões):
+            // grava os modifiedTimes atuais para o PRÓXIMO sync cair no fast
+            // path. Antes isso só acontecia em caminhos que escreviam no Drive
+            // — um sync "nada a fazer" deixava o fast path desarmado e o
+            // próximo sync refazia o caminho inteiro à toa.
+            this.setStateModifiedTime(stateFile.modifiedTime);
+            this.setMetaModifiedTime(metaFileInList.modifiedTime);
+            return { action: 'none', message: 'Tudo sincronizado — nenhuma mudança desde o último sync.' };
+          }
+          // Só preferências/extensões mudaram (não entram no snapshot): deixa
+          // o fluxo seguir até a Fase 5 (travada), que compara e envia os extras.
         }
 
         // ============================================================
@@ -1463,7 +1487,7 @@ export class DriveSyncService {
             if (newHead !== null) {
               // Aplica extras do Drive (fase 5) e finaliza
               timing?.mark('extras-início');
-              const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {}, allFiles, remoteMeta, remoteExtras, remoteAddonsIndex);
+              const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {}, allFiles, remoteMeta, remoteExtras, remoteAddonsIndex, localAddonState);
               timing?.mark('extras-fim');
               const done = syncDoneMessage(activeTally!);
               return {
@@ -1654,7 +1678,7 @@ export class DriveSyncService {
         const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {
           keepTheme: choice === 'local' && conflicts.some((c) => c.key === SETTINGS_KEYS.theme),
           keepPrefs: choice === 'local' && conflicts.some((c) => c.key === SETTINGS_KEYS.prefs),
-        }, allFiles, remoteMeta, remoteExtras, remoteAddonsIndex);
+        }, allFiles, remoteMeta, remoteExtras, remoteAddonsIndex, localAddonState);
         timing?.mark('extras-fim');
         return {
           ...result,
@@ -1736,7 +1760,9 @@ export class DriveSyncService {
     /** EXTRAS já baixado (Fase 4: paralelização). */
     remoteExtras?: SyncExtrasFile | null,
     /** ADDONS_INDEX já baixado (Fase 4: paralelização). */
-    remoteAddonsIndex?: SyncAddonsIndex | null
+    remoteAddonsIndex?: SyncAddonsIndex | null,
+    /** Estado local das extensões já computado (Fase 4) — evita recomputar. */
+    localAddonState?: { addons: SyncAddonEntry[]; hash: string }
   ): Promise<string | null> {
     const parts: string[] = [];
 
@@ -1747,59 +1773,72 @@ export class DriveSyncService {
       const localHash = hashExtras(local);
       const base = this.getSideBase(LS.EXTRAS_BASE);
 
-      // Fase 3+4: usa hash do META para pular download se não mudou; se precisar, usa o já baixado (Fase 4)
-      let remotePayload: SyncExtrasPayload | null = null;
-      let remoteUploadedAt: number | undefined;
-      if (remoteMeta?.extrasHash && remoteMeta.extrasHash === hashExtras(local)) {
-        // Hash igual → não baixa, mantém local
-      } else if (remoteExtras) {
-        // Já baixado na Fase 4
-        remotePayload = {
-          prefs: remoteExtras.prefs ?? {},
-          theme: remoteExtras.theme,
-          colorTheme: remoteExtras.colorTheme,
-        };
-        remoteUploadedAt = remoteExtras.uploadedAt;
+      // O hash no META é o hash do CONTEÚDO do Drive (calculado por quem
+      // subiu, a partir do conteúdo). Antes, hash igual → pulava o download →
+      // remoteHash ficava null → decideSyncSide entendia "o Drive não tem o
+      // arquivo" → reenviava as preferências em TODO sync (o eterno
+      // "Preferências e temas enviados ao Drive").
+      if (remoteMeta?.extrasHash && remoteMeta.extrasHash === localHash) {
+        // Conteúdo igual dos dois lados: nada a enviar nem aplicar — só
+        // garante que a base existe (aparelho recém-conectado precisa dela).
+        if (!base) {
+          this.setSideBase(LS.EXTRAS_BASE, {
+            hash: localHash,
+            uploadedAt: remoteMeta.uploadedAt,
+          });
+        }
       } else {
-        // Fallback: baixa sob demanda (não deveria acontecer com Fase 4)
-        const file = allFiles?.[DRIVE_FILES.EXTRAS] ?? await findFile(token, DRIVE_FILES.EXTRAS);
-        let remote: SyncExtrasFile | null = null;
-        if (file) {
-          try {
-            remote = JSON.parse(await (await downloadFile(token, file.id)).text()) as SyncExtrasFile;
-          } catch {
-            remote = null;
+        let remotePayload: SyncExtrasPayload | null = null;
+        let remoteUploadedAt: number | undefined;
+        if (remoteExtras) {
+          // Já baixado na Fase 4 (só baixa quando o hash no META difere)
+          remotePayload = {
+            prefs: remoteExtras.prefs ?? {},
+            theme: remoteExtras.theme,
+            colorTheme: remoteExtras.colorTheme,
+          };
+          remoteUploadedAt = remoteExtras.uploadedAt;
+        } else {
+          // Fallback: baixa sob demanda (não deveria acontecer com Fase 4)
+          const file = allFiles?.[DRIVE_FILES.EXTRAS] ?? await findFile(token, DRIVE_FILES.EXTRAS);
+          let remote: SyncExtrasFile | null = null;
+          if (file) {
+            try {
+              remote = JSON.parse(await (await downloadFile(token, file.id)).text()) as SyncExtrasFile;
+            } catch {
+              remote = null;
+            }
+          }
+          if (remote) {
+            remotePayload = {
+              prefs: remote.prefs ?? {},
+              theme: remote.theme,
+              colorTheme: remote.colorTheme,
+            };
+            remoteUploadedAt = remote.uploadedAt;
           }
         }
-        if (remote) {
-          remotePayload = {
-            prefs: remote.prefs ?? {},
-            theme: remote.theme,
-            colorTheme: remote.colorTheme,
-          };
-          remoteUploadedAt = remote.uploadedAt;
-        }
-      }
-      const remoteHash = remotePayload ? hashExtras(remotePayload) : null;
+        const remoteHash = remotePayload ? hashExtras(remotePayload) : null;
 
-      const side = decideSyncSide(base?.hash ?? null, hashExtras(local), remoteHash);
-      if (side === 'remote' && remotePayload) {
-        itemProgress({ phase: 'applying', part: 'settings', done: 2, total: 2, counts: { settings: 2 } });
-        applyExtrasPayload(remotePayload, { keepTheme: opts?.keepTheme, keepPrefs: opts?.keepPrefs });
-        refreshThemeInDom(); // o tema muda a tela na hora
-        // o tema/preferências agora são os mesmos dos dois lados → a base
-        // precisa saber disso (senão o próximo sync acha que mudou aqui)
-        this.refreshBaseSettings();
-        this.setSideBase(LS.EXTRAS_BASE, {
-          hash: remoteHash!,
-          uploadedAt: remoteUploadedAt ?? Date.now(),
-        });
-        parts.push('Preferências e temas do Drive aplicados.');
-      } else if (side === 'local') {
-        itemProgress({ phase: 'upload', counts: { settings: 2 } });
-        await this.uploadExtras(token, local);
-        this.setSideBase(LS.EXTRAS_BASE, { hash: hashExtras(local), uploadedAt: Date.now() });
-        parts.push('Preferências e temas enviados ao Drive.');
+        const side = decideSyncSide(base?.hash ?? null, localHash, remoteHash);
+        if (side === 'remote' && remotePayload) {
+          itemProgress({ phase: 'applying', part: 'settings', done: 2, total: 2, counts: { settings: 2 } });
+          applyExtrasPayload(remotePayload, { keepTheme: opts?.keepTheme, keepPrefs: opts?.keepPrefs });
+          refreshThemeInDom(); // o tema muda a tela na hora
+          // o tema/preferências agora são os mesmos dos dois lados → a base
+          // precisa saber disso (senão o próximo sync acha que mudou aqui)
+          this.refreshBaseSettings();
+          this.setSideBase(LS.EXTRAS_BASE, {
+            hash: remoteHash!,
+            uploadedAt: remoteUploadedAt ?? Date.now(),
+          });
+          parts.push('Preferências e temas do Drive aplicados.');
+        } else if (side === 'local') {
+          itemProgress({ phase: 'upload', counts: { settings: 2 } });
+          await this.uploadExtras(token, local);
+          this.setSideBase(LS.EXTRAS_BASE, { hash: localHash, uploadedAt: Date.now() });
+          parts.push('Preferências e temas enviados ao Drive.');
+        }
       }
     } catch (e) {
       console.warn('Não foi possível sincronizar as preferências:', e);
@@ -1808,65 +1847,74 @@ export class DriveSyncService {
     // ── 2) extensões ──
     try {
       itemProgress({ phase: 'comparing' });
-      const localState = await computeAddonState();
+      const localState = localAddonState ?? (await computeAddonState());
       const base = this.getSideBase(LS.ADDONS_BASE);
 
-      // Fase 3+4: usa hash do META para pular download se não mudou; se precisar, usa o já baixado (Fase 4)
-      let remoteIndex: SyncAddonsIndex | null = null;
+      // Mesmo conserto das preferências: hash no META igual ao local = nada
+      // a fazer (antes reenviava o índice vazio e dizia "Extensões removidas
+      // (não há mais nenhuma aqui)" em todo sync).
       if (remoteMeta?.addonsHash && remoteMeta.addonsHash === localState.hash) {
-        // Hash igual → não baixa
-      } else if (remoteAddonsIndex) {
-        // Já baixado na Fase 4
-        remoteIndex = remoteAddonsIndex;
-      } else {
-        // Fallback: baixa sob demanda (não deveria acontecer com Fase 4)
-        const indexFile = allFiles?.[DRIVE_FILES.ADDONS_INDEX] ?? await findFile(token, DRIVE_FILES.ADDONS_INDEX);
-        if (indexFile) {
-          try {
-            remoteIndex = JSON.parse(
-              await (await downloadFile(token, indexFile.id)).text()
-            ) as SyncAddonsIndex;
-          } catch {
-            remoteIndex = null;
-          }
-        }
-      }
-      const remoteHash = remoteIndex?.hash ?? null;
-
-      const side = decideSyncSide(base?.hash ?? null, localState.hash, remoteHash);
-      if (side === 'remote' && remoteIndex) {
-        const r = await this.installRemoteAddons(token, remoteIndex, progress, itemProgress);
-        if (r.ok) {
+        if (!base) {
           this.setSideBase(LS.ADDONS_BASE, {
-            hash: remoteHash!,
-            uploadedAt: remoteIndex.uploadedAt ?? Date.now(),
+            hash: localState.hash,
+            uploadedAt: remoteMeta.uploadedAt,
           });
         }
-        if (r.installed > 0) {
-          parts.push(
-            r.installed === 1
-              ? '1 extensão do Drive instalada.'
-              : `${r.installed} extensões do Drive instaladas.`
-          );
+      } else {
+        let remoteIndex: SyncAddonsIndex | null = null;
+        if (remoteAddonsIndex) {
+          // Já baixado na Fase 4 (só baixa quando o hash no META difere)
+          remoteIndex = remoteAddonsIndex;
+        } else {
+          // Fallback: baixa sob demanda (não deveria acontecer com Fase 4)
+          const indexFile = allFiles?.[DRIVE_FILES.ADDONS_INDEX] ?? await findFile(token, DRIVE_FILES.ADDONS_INDEX);
+          if (indexFile) {
+            try {
+              remoteIndex = JSON.parse(
+                await (await downloadFile(token, indexFile.id)).text()
+              ) as SyncAddonsIndex;
+            } catch {
+              remoteIndex = null;
+            }
+          }
         }
-        if (r.removed > 0) {
-          parts.push(
-            r.removed === 1
-              ? '1 extensão removida (não existe mais no Drive).'
-              : `${r.removed} extensões removidas (não existem mais no Drive).`
-          );
-        }
-      } else if (side === 'local') {
-        const uploaded = await this.uploadAddons(token, localState, progress, itemProgress);
-        this.setSideBase(LS.ADDONS_BASE, { hash: localState.hash, uploadedAt: Date.now() });
-        if (uploaded > 0) {
-          parts.push(
-            uploaded === 1
-              ? '1 extensão enviada ao Drive.'
-              : `${uploaded} extensões enviadas ao Drive.`
-          );
-        } else if (localState.addons.length === 0) {
-          parts.push('Extensões removidas (não há mais nenhuma aqui).');
+        const remoteHash = remoteIndex?.hash ?? null;
+
+        const side = decideSyncSide(base?.hash ?? null, localState.hash, remoteHash);
+        if (side === 'remote' && remoteIndex) {
+          const r = await this.installRemoteAddons(token, remoteIndex, progress, itemProgress);
+          if (r.ok) {
+            this.setSideBase(LS.ADDONS_BASE, {
+              hash: remoteHash!,
+              uploadedAt: remoteIndex.uploadedAt ?? Date.now(),
+            });
+          }
+          if (r.installed > 0) {
+            parts.push(
+              r.installed === 1
+                ? '1 extensão do Drive instalada.'
+                : `${r.installed} extensões do Drive instaladas.`
+            );
+          }
+          if (r.removed > 0) {
+            parts.push(
+              r.removed === 1
+                ? '1 extensão removida (não existe mais no Drive).'
+                : `${r.removed} extensões removidas (não existem mais no Drive).`
+            );
+          }
+        } else if (side === 'local') {
+          const uploaded = await this.uploadAddons(token, localState, progress, itemProgress);
+          this.setSideBase(LS.ADDONS_BASE, { hash: localState.hash, uploadedAt: Date.now() });
+          if (uploaded > 0) {
+            parts.push(
+              uploaded === 1
+                ? '1 extensão enviada ao Drive.'
+                : `${uploaded} extensões enviadas ao Drive.`
+            );
+          } else if (localState.addons.length === 0) {
+            parts.push('Extensões removidas (não há mais nenhuma aqui).');
+          }
         }
       }
     } catch (e) {
@@ -2490,6 +2538,19 @@ export class DriveSyncService {
     );
     // fast path: o META é reescrito em todo sync → é o marcador de "o Drive mudou"
     await this.rememberMetaWritten(token, metaUpload);
+
+    // O META acabou de anunciar extrasHash/addonsHash — os arquivos EXTRAS e
+    // ADDONS_INDEX do Drive PRECISAM ter exatamente esse conteúdo (o outro
+    // aparelho confia no hash para decidir se baixa). Sem isto, uma mudança
+    // só de preferências/tema subia o backup completo mas deixava o EXTRAS
+    // velho no Drive: o outro aparelho aplicava o tema antigo "confiando" no
+    // hash novo, e a diferença nunca se corrigia (o reenvio desperdiçado que
+    // a T1 cortou era o que mascarava isto).
+    await this.uploadExtras(token, localExtras);
+    await this.uploadAddons(token, localAddons, progress, itemProgress);
+    // bases em dia: o conteúdo local agora É o conteúdo do Drive
+    this.setSideBase(LS.EXTRAS_BASE, { hash: hashExtras(localExtras), uploadedAt: Date.now() });
+    this.setSideBase(LS.ADDONS_BASE, { hash: localAddons.hash, uploadedAt: Date.now() });
 
     // O estado unificado também é reescrito: o .colpkg sozinho não basta.
     // O STATE é quem diz aos outros aparelhos "a base é X, o head é X" — sem
