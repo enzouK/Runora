@@ -210,6 +210,8 @@ export interface DriveToken {
   accessToken: string;
   expiresAt: number;
   email?: string;
+  /** Token de renovação (login do Android) — permite reconectar sem o popup. */
+  refreshToken?: string;
 }
 
 export interface SyncMeta {
@@ -407,8 +409,35 @@ function getDeviceName(): string {
   return navigator.platform || 'Dispositivo';
 }
 
+/* ── Drive REST helpers ──────────────────────────────────────────────────── */
+
+/** Tempo máximo de uma chamada ao Google (evita o sync travar para sempre). */
+const API_TIMEOUT_MS = 30_000;
+
+/**
+ * Client secret do cliente OAuth Web.
+ * Não fica no código: é lido do arquivo `.env.local` (gitignored — nunca vai
+ * para o repositório). O Vite injeta variáveis `VITE_*` no build a partir dele.
+ * O secret aparece no app instalado, mas o repositório público fica limpo.
+ */
+const GOOGLE_CLIENT_SECRET = (import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string | undefined) ?? '';
+const SECRET_CONFIGURADO =
+  !!GOOGLE_CLIENT_SECRET && !GOOGLE_CLIENT_SECRET.startsWith('COLE_');
+
+/** URI de redirect para o fluxo OAuth manual (deve bater com o console do Google).
+ * O Google NÃO aceita path no redirect_uri — usa-se a origem pura.
+ * O code volta em https://localhost/?code=...&state=... */
+const GOOGLE_REDIRECT_URI = 'https://localhost';
+
+/** Tempo máximo para carregar o script de login do Google (GIS). */
+const GIS_LOAD_TIMEOUT_MS = 20_000;
+
 /* ── Google Identity Services (token client) ─────────────────────────────── */
 
+/**
+ * Carrega o script do GIS (usado no PC/desktop, onde o popup funciona).
+ * No Android o popup não funciona — lá usamos o fluxo manual com redirect.
+ */
 let gisLoading: Promise<void> | null = null;
 
 function loadGis(): Promise<void> {
@@ -442,14 +471,6 @@ function loadGis(): Promise<void> {
   }
   return gisLoading;
 }
-
-/* ── Drive REST helpers ──────────────────────────────────────────────────── */
-
-/** Tempo máximo de uma chamada ao Google (evita o sync travar para sempre). */
-const API_TIMEOUT_MS = 30_000;
-
-/** Tempo máximo para carregar o script de login do Google. */
-const GIS_LOAD_TIMEOUT_MS = 20_000;
 
 /**
  * fetch com limite de tempo (AbortController — funciona em qualquer WebView,
@@ -1001,6 +1022,71 @@ export class DriveSyncService {
     localStorage.removeItem(LS.TOKEN);
   }
 
+  /** Verifica se há código OAuth na URL (após redirect do Google) e troca por token. */
+  private static async maybeHandleOAuthRedirect(): Promise<DriveToken | null> {
+    const params = new URLSearchParams(location.search);
+    const code = params.get('code');
+    const error = params.get('error');
+    if (code || error) {
+      // limpa qualquer código pendente no storage (o da URL é o válido)
+      localStorage.removeItem('runora_oauth_code');
+      localStorage.removeItem('runora_oauth_error');
+      const clientId = this.getClientId();
+      return this.exchangeCodeForToken(clientId, code, error, params.get('error_description'));
+    }
+    // Verifica se o Android salvou o code no localStorage (via onPageFinished)
+    try {
+      const saved = localStorage.getItem('runora_oauth_code');
+      if (saved) {
+        localStorage.removeItem('runora_oauth_code');
+        const { code: savedCode, error: savedError, error_description: savedErrDesc } = JSON.parse(saved);
+        if (savedCode || savedError) {
+          const clientId = this.getClientId();
+          return this.exchangeCodeForToken(clientId, savedCode, savedError, savedErrDesc);
+        }
+      }
+      const savedErr = localStorage.getItem('runora_oauth_error');
+      if (savedErr) {
+        localStorage.removeItem('runora_oauth_error');
+        const { error: savedError, error_description: savedErrDesc } = JSON.parse(savedErr);
+        if (savedError) {
+          throw new Error(`Login cancelado: ${savedErrDesc || savedError}`);
+        }
+      }
+    } catch (e) {
+      console.warn('[RunoraLogin] erro lendo runora_oauth_code/error:', e);
+    }
+    return null;
+  }
+
+  /**
+   * Retoma o login depois que o app recarrega no redirect do Google.
+   *
+   * No Android o OAuth volta em `https://localhost/?code=...`: a página é
+   * recarregada, então o botão "Conectar" (que estava esperando) perde o
+   * estado. O app chama isto no boot para trocar o código por token.
+   *
+   * Devolve o email da conta conectada ou null se não havia login pendente.
+   */
+  public static async completePendingLogin(): Promise<string | null> {
+    const params = new URLSearchParams(location.search);
+    const pending =
+      !!params.get('code') ||
+      !!params.get('error') ||
+      !!localStorage.getItem('runora_oauth_code');
+    if (!pending) return null;
+    try {
+      const token = await this.maybeHandleOAuthRedirect();
+      console.log('[RunoraLogin] login concluído no boot (token salvo)');
+      return token?.email || 'conta conectada';
+    } catch (e) {
+      console.error('[RunoraLogin] falha ao retomar o login no boot:', (e as Error).message);
+      // limpa a URL: senão o app tenta trocar o mesmo código a cada abertura
+      history.replaceState(null, '', '/');
+      throw e;
+    }
+  }
+
   public static getDeviceId(): string {
     let id = localStorage.getItem(LS.DEVICE_ID);
     if (!id) {
@@ -1143,6 +1229,10 @@ export class DriveSyncService {
 
   /** Interactive connect (consent). Returns the account email when available. */
   public static async connect(clientIdOverride?: string): Promise<string> {
+    // Verifica se há redirect OAuth pendente (código no localStorage do Android)
+    const redirectToken = await this.maybeHandleOAuthRedirect();
+    if (redirectToken) return redirectToken.email || 'conta conectada';
+
     const clientId = (clientIdOverride || this.getClientId()).trim();
     if (!clientId) {
       throw new Error(
@@ -1162,6 +1252,19 @@ export class DriveSyncService {
     if (!clientId) {
       throw new Error('Conta do Google Drive não conectada. Abra a aba Sync e toque em "Conectar conta Google".');
     }
+    // Verifica se há redirect OAuth pendente
+    const redirectToken = await this.maybeHandleOAuthRedirect();
+    if (redirectToken) return redirectToken.accessToken;
+    // Tem refresh token? renova a sessão sem mostrar nada ao usuário
+    if (t?.refreshToken) {
+      try {
+        const fresh = await this.refreshAccessToken(t.refreshToken, clientId, t);
+        return fresh.accessToken;
+      } catch {
+        localStorage.removeItem(LS.TOKEN);
+        throw new Error('Sessão do Google expirada. Abra a aba Sync e reconecte sua conta.');
+      }
+    }
     try {
       const fresh = await this.requestToken(clientId, '');
       return fresh.accessToken;
@@ -1172,6 +1275,41 @@ export class DriveSyncService {
   }
 
   private static async requestToken(clientId: string, prompt: '' | 'consent'): Promise<DriveToken> {
+    // Se já estamos na home com code na query (redirect do Google), troca por token
+    const params = new URLSearchParams(location.search);
+    const code = params.get('code');
+    const error = params.get('error');
+    if (code || error) {
+      console.log('[RunoraLogin] code/error detectado na URL, trocando por token');
+      return this.exchangeCodeForToken(clientId, code, error, params.get('error_description'));
+    }
+
+    // No Android (WebView) o popup do GIS não funciona: o WebView não tem
+    // `window.opener` de verdade e o Capacitor manda a URL para o Chrome, onde
+    // o token se perde. Lá usamos o fluxo manual: a página vai para o Google
+    // e volta para https://localhost/?code=... (o app retoma no boot).
+    if (this.isAndroidWebView()) {
+      const authUrl =
+        'https://accounts.google.com/o/oauth2/auth' +
+        '?client_id=' + encodeURIComponent(clientId) +
+        '&redirect_uri=' + encodeURIComponent(GOOGLE_REDIRECT_URI) +
+        '&response_type=code' +
+        '&scope=' + encodeURIComponent(DRIVE_SCOPE) +
+        '&state=runora-auth' +
+        '&access_type=offline' +
+        '&prompt=' + (prompt || 'consent');
+
+      console.log('[RunoraLogin] Android: navigando para a URL de autorização');
+      (window as any).RunoraAuth.loadAuthUrl(authUrl);
+
+      // Esta Promise nunca resolve aqui — a página vai para o Google e volta
+      // para https://localhost/?code=..., onde o app troca o código por token.
+      return new Promise<DriveToken>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('Timeout no redirect do login do Google')), 5 * 60_000);
+      });
+    }
+
+    // PC/desktop: popup do Google Identity Services (funciona como sempre).
     await loadGis();
     const w = window as unknown as {
       google: {
@@ -1192,22 +1330,138 @@ export class DriveSyncService {
       callback: () => {},
     });
     const resp = await new Promise<Record<string, unknown>>((resolve, reject) => {
-      client.callback = (r) => (r && r.error ? reject(new Error(String(r.error_description || r.error))) : resolve(r));
+      client.callback = (r) =>
+        r && r.error
+          ? reject(new Error(String(r.error_description || r.error)))
+          : resolve(r);
       client.requestAccessToken({ prompt });
     });
     const token: DriveToken = {
       accessToken: String(resp.access_token),
       expiresAt: Date.now() + Number(resp.expires_in || 3600) * 1000 - 60_000,
     };
+    await this.fillEmail(token);
+    localStorage.setItem(LS.TOKEN, JSON.stringify(token));
+    return token;
+  }
+
+  /** Estamos no WebView do Android? (lá o popup do GIS não funciona) */
+  private static isAndroidWebView(): boolean {
+    return /android/i.test(navigator.userAgent) && !!(window as any).RunoraAuth;
+  }
+
+  /** Busca o email da conta (best-effort) e preenche o token. */
+  private static async fillEmail(token: DriveToken): Promise<void> {
     try {
       const u = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${token.accessToken}` },
       });
       if (u.ok) token.email = (await u.json() as { email?: string }).email;
     } catch {
-      /* email is best-effort */
+      /* email é best-effort */
     }
+  }
+
+  /**
+   * Renova o token sem mostrar nada ao usuário (usa o refresh token guardado
+   * no login do Android — evita perguntar o login de novo a cada hora).
+   */
+  private static async refreshAccessToken(
+    refreshToken: string,
+    clientId: string,
+    previous: DriveToken | null
+  ): Promise<DriveToken> {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      throw new Error(`Falha ao renovar a sessão do Google: ${res.status} ${err}`);
+    }
+    const data = (await res.json()) as {
+      access_token: string;
+      expires_in: number;
+      refresh_token?: string;
+    };
+    const token: DriveToken = {
+      accessToken: data.access_token,
+      expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000 - 60_000,
+      refreshToken: data.refresh_token || refreshToken,
+      email: previous?.email,
+    };
     localStorage.setItem(LS.TOKEN, JSON.stringify(token));
+    return token;
+  }
+
+  /** Troca o authorization code por access token (chamado na home após redirect). */
+  private static async exchangeCodeForToken(
+    clientId: string,
+    code: string | null,
+    error: string | null,
+    errorDescription: string | null
+  ): Promise<DriveToken> {
+    if (!SECRET_CONFIGURADO) {
+      throw new Error(
+        'Secret do Google não configurado: preencha VITE_GOOGLE_CLIENT_SECRET no arquivo .env.local e refaça o build.'
+      );
+    }
+    if (error) {
+      throw new Error(`Login cancelado: ${errorDescription || error}`);
+    }
+    if (!code) {
+      throw new Error('Código de autorização não encontrado na URL');
+    }
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: GOOGLE_REDIRECT_URI,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    if (!tokenRes.ok) {
+      const err = await tokenRes.text().catch(() => '');
+      console.error('[RunoraLogin] falha na troca do code:', tokenRes.status, err.slice(0, 400));
+      throw new Error(`Falha ao trocar código por token: ${tokenRes.status} ${err}`);
+    }
+
+    const data = (await tokenRes.json()) as {
+      access_token: string;
+      expires_in: number;
+      token_type: string;
+      scope: string;
+      refresh_token?: string;
+    };
+
+    const token: DriveToken = {
+      accessToken: data.access_token,
+      expiresAt: Date.now() + data.expires_in * 1000 - 60_000,
+      // com access_type=offline o Google manda o refresh token (na 1ª
+      // autorização) — é o que permite renovar a sessão sem perguntar o
+      // login de novo a cada hora.
+      refreshToken: data.refresh_token,
+    };
+
+    // Busca email do usuário
+    await this.fillEmail(token);
+
+    // Guarda a sessão (o app precisa dela para sincronizar depois)
+    localStorage.setItem(LS.TOKEN, JSON.stringify(token));
+
+    // Limpa a URL (remove ?code=...&state=...) e volta pra home
+    history.replaceState(null, '', '/');
     return token;
   }
 

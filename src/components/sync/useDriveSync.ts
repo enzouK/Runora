@@ -188,6 +188,11 @@ export function useDriveSync(onDataChanged: () => void) {
     setStatus({ type: 'info', text: 'Conta desconectada. O último backup continua no seu Drive.' });
   }, []);
 
+  /** Relê a conta do localStorage (usado quando o login termina fora da UI). */
+  const refreshAccount = useCallback(() => {
+    setAccount(DriveSyncService.getAccount());
+  }, []);
+
   return {
     running,
     status,
@@ -201,6 +206,7 @@ export function useDriveSync(onDataChanged: () => void) {
     runSync,
     connect,
     disconnect,
+    refreshAccount,
     refreshRemote,
     refreshPending,
     refreshDirty,

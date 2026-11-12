@@ -111,6 +111,24 @@ export default function App() {
     });
   }, [refreshAll]);
 
+  // Login do Google (Android): o app volta do Google em
+  // `https://localhost/?code=...` e a página recarrega — o botão "Conectar"
+  // (que estava esperando) perde o estado. Aqui retomamos a troca do código
+  // por token assim que o app abre.
+  useEffect(() => {
+    void DriveSyncService.completePendingLogin()
+      .then((email) => {
+        if (!email) return;
+        sync.refreshAccount();
+        void sync.refreshDirty();
+        showToast(`Google Drive conectado: ${email}`, 7000);
+      })
+      .catch((e) => {
+        showToast(`Falha no login do Google: ${(e as Error).message}`, 9000);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Addon toasts: RunoraAddons.toast() dispatches this event; show it in the global toast
   useEffect(() => {
     const handler = (e: Event) => {
