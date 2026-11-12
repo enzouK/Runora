@@ -2047,8 +2047,11 @@ export class DriveSyncService {
       // "Preferências e temas enviados ao Drive").
       if (remoteMeta?.extrasHash && remoteMeta.extrasHash === localHash) {
         // Conteúdo igual dos dois lados: nada a enviar nem aplicar — só
-        // garante que a base existe (aparelho recém-conectado precisa dela).
-        if (!base) {
+        // garante que a base reflete esse conteúdo. Além do aparelho
+        // recém-conectado (sem base), a base pode EXISTIR mas estar velha
+        // (hash antigo): sem este conserto o botão ficaria "pendente"
+        // para sempre, mesmo com os dois lados idênticos.
+        if (!base || base.hash !== localHash) {
           this.setSideBase(LS.EXTRAS_BASE, {
             hash: localHash,
             uploadedAt: remoteMeta.uploadedAt,
@@ -2121,7 +2124,9 @@ export class DriveSyncService {
       // a fazer (antes reenviava o índice vazio e dizia "Extensões removidas
       // (não há mais nenhuma aqui)" em todo sync).
       if (remoteMeta?.addonsHash && remoteMeta.addonsHash === localState.hash) {
-        if (!base) {
+        // Mesmo conserto dos extras: base inexistente OU velha precisa
+        // refletir o conteúdo comprovado igual nos dois lados.
+        if (!base || base.hash !== localState.hash) {
           this.setSideBase(LS.ADDONS_BASE, {
             hash: localState.hash,
             uploadedAt: remoteMeta.uploadedAt,
