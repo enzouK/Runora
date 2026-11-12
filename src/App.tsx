@@ -481,7 +481,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Settings & FSRS Modal */}
+      {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => {

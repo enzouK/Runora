@@ -38,10 +38,10 @@ export interface RemoteSyncData {
   cards: Card[];
   presets?: Preset[];
   revlog?: RevlogEntry[];
-  /** Parâmetros FSRS globais do pacote (backups do Runora). */
+  /** Parâmetros FSRS globais do pacote (backups do Runora) — formato intocado,
+   *  mas T10: o app não aplica mais esses valores (o global é config fixa). */
   fsrsParameters?: FSRSParameters;
   settings?: {
-    fsrs?: FSRSParameters;
     prefs?: unknown;
     theme?: string;
     colorTheme?: string;
@@ -462,11 +462,9 @@ export function applyRemoteItems(
   }
 
   // ── Configurações globais ──
+  // T10: o FSRS global NÃO é mais configuração do usuário — o app usa sempre
+  // o valor fixo dele (saveFSRSSettings é inerte).
   const s = remote.settings;
-  if (s?.fsrs && keys.has(SETTINGS_KEYS.fsrs)) {
-    StorageService.saveFSRSSettings(s.fsrs);
-    result.settings++;
-  }
   if (s?.prefs !== undefined && keys.has(SETTINGS_KEYS.prefs)) {
     const prefs = s.prefs as { rolloverHour?: number };
     if (typeof prefs.rolloverHour === 'number') StorageService.setRolloverHour(prefs.rolloverHour);

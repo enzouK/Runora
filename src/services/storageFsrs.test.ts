@@ -9,7 +9,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { StorageService } from './storage';
-import { DEFAULT_FSRS_WEIGHTS } from '../fsrs/constants';
+import { DEFAULT_FSRS_PARAMETERS, DEFAULT_FSRS_WEIGHTS } from '../fsrs/constants';
 import { FSRS } from '../fsrs/algorithm';
 import type { Deck, Preset } from '../types/runora';
 
@@ -204,7 +204,8 @@ describe('StorageService.getEffectiveFSRSParams', () => {
     assert.equal(params.requestRetention, 0.9);
     assert.equal(params.maximumInterval, 36500);
     // It defines no weights, so the global ones are inherited.
-    assert.equal(params.w.length, 19);
+    // T10: global é fixo (FSRS-6 defaults → 21 pesos).
+    assert.equal(params.w.length, 21);
   });
 
   it('gives each deck its own decay through the resolved weights', () => {
@@ -232,5 +233,34 @@ describe('StorageService.getEffectiveFSRSParams', () => {
     assert.equal(engine5.decay(), 0.5);
     // The two decay exponents must actually change the retrievability curve.
     assert.notEqual(engine6.retrievability(10, 20), engine5.retrievability(10, 20));
+  });
+});
+
+describe('StorageService.getFSRSSettings / saveFSRSSettings (T10)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('getFSRSSettings() devolve sempre o default fixo do app (T10)', () => {
+    // Mesmo com valor customizado salvo no localStorage...
+    localStorage.setItem('runora_fsrs_settings', JSON.stringify({
+      requestRetention: 0.8,
+      maximumInterval: 12345,
+      w: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+      enableFuzz: false,
+    }));
+    const params = StorageService.getFSRSSettings();
+    // ...o app devolve o default oficial FSRS-6 (21 pesos)
+    assert.deepEqual(params, DEFAULT_FSRS_PARAMETERS);
+  });
+
+  it('saveFSRSSettings() é inerte (T10)', () => {
+    const custom = { ...DEFAULT_FSRS_PARAMETERS, requestRetention: 0.7 };
+    StorageService.saveFSRSSettings(custom);
+    // O valor no localStorage NÃO mudou (a função não grava nada)
+    const raw = localStorage.getItem('runora_fsrs_settings');
+    assert.equal(raw, null); // não existe porque saveFSRSSettings não grava
+    // E getFSRSSettings continua devolvendo o default
+    assert.deepEqual(StorageService.getFSRSSettings(), DEFAULT_FSRS_PARAMETERS);
   });
 });

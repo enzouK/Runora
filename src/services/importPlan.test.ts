@@ -322,28 +322,30 @@ describe('applyImportPlan', () => {
     assert.equal(after.filter((x) => x.reviewTime === 2000).length, 1);
   });
 
-  it('FSRS global: em keep fica o de cá; em overwrite entra o do arquivo', async () => {
+  it('T10: FSRS global do arquivo NUNCA substitui o valor fixo do app', async () => {
     seedLocalOneNote('card-local-1', {});
     const withFsrs = collectionData({
       fsrsParameters: { requestRetention: 0.8, maximumInterval: 100, w: new Array(19).fill(0.5), enableFuzz: false },
     });
 
-    // o plano avisa que os parâmetros são diferentes
+    // o plano não avisa nada sobre o global (não é mais config do usuário)
     const plan = analyzeImport(withFsrs);
-    assert.equal(plan.summary.globalFsrsChanged, true);
+    assert.equal(plan.summary.globalFsrsChanged, false);
 
-    // keep: preserva o de cá
+    const appValue = StorageService.getFSRSSettings().requestRetention;
+
+    // keep: preserva o valor do app
     await applyImportPlan(plan, 'keep');
-    assert.notEqual(StorageService.getFSRSSettings().requestRetention, 0.8); // preservou
+    assert.equal(StorageService.getFSRSSettings().requestRetention, appValue);
 
-    // overwrite: entra o do arquivo
+    // overwrite: também preserva (o global é config fixa do app)
     await applyImportPlan(analyzeImport(withFsrs), 'overwrite');
-    assert.equal(StorageService.getFSRSSettings().requestRetention, 0.8);
+    assert.equal(StorageService.getFSRSSettings().requestRetention, appValue);
 
-    // coleção vazia: restauração simples (entra em qualquer modo)
+    // coleção vazia: restauração simples também não mexe no global
     localStorage.clear();
     await applyImportPlan(analyzeImport(withFsrs), 'keep');
-    assert.equal(StorageService.getFSRSSettings().requestRetention, 0.8);
+    assert.equal(StorageService.getFSRSSettings().requestRetention, appValue);
   });
 
   it('opções do deck (parâmetros FSRS do deck) diferentes entram no plano', async () => {

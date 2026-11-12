@@ -2,11 +2,11 @@
  * syncItems — sync item a item (estilo Anki).
  *
  * Para saber quem mudou o quê, cada item da coleção (deck, tipo de nota,
- * nota, card, preset e as configurações globais) ganha uma IDENTIDADE
+ * nota, card, preset e as configurações do usuário) ganha uma IDENTIDADE
  * portátil e um HASH do seu conteúdo:
  *
  *   deck:<nome>            notetype:<nome>     note:<guid>
- *   card:<guid>:<ord>      preset:<nome>       settings:fsrs|prefs|theme
+ *   card:<guid>:<ord>      preset:<nome>       settings:prefs|theme
  *
  * A identidade usa o que sobrevive entre dispositivos (nome do deck/tipo,
  * GUID da nota, nome+ordem do card) — os ids internos não são usados.
@@ -21,7 +21,6 @@
 import type {
   Card,
   Deck,
-  FSRSParameters,
   Note,
   NoteType,
   Preset,
@@ -74,7 +73,6 @@ export interface SyncContent {
   /** cardId → GUID da nota dona do card (os ids de card não são portáveis). */
   cardNoteGuid: Record<string, string>;
   settings: {
-    fsrs?: FSRSParameters;
     prefs?: unknown;
     theme?: string;
     colorTheme?: string;
@@ -113,7 +111,6 @@ export const noteKey = (guid: string) => `note:${guid}`;
 export const cardKey = (guid: string, ord: number) => `card:${guid}:${ord}`;
 export const presetKey = (name: string) => `preset:${name.trim()}`;
 export const SETTINGS_KEYS = {
-  fsrs: 'settings:fsrs',
   prefs: 'settings:prefs',
   theme: 'settings:theme',
 } as const;
@@ -210,9 +207,6 @@ export function computeSnapshot(
     });
   }
 
-  if (content.settings.fsrs) {
-    put(SETTINGS_KEYS.fsrs, 'settings', 'Parâmetros FSRS', content.settings.fsrs);
-  }
   if (content.settings.prefs !== undefined) {
     put(SETTINGS_KEYS.prefs, 'settings', 'Preferências', content.settings.prefs);
   }
@@ -254,7 +248,6 @@ export function localSyncContent(): SyncContent {
     presets: StorageService.getPresets(),
     cardNoteGuid,
     settings: {
-      fsrs: StorageService.getFSRSSettings(),
       prefs: { rolloverHour: StorageService.getRolloverHour() },
       theme: StorageService.getTheme(),
       colorTheme: StorageService.getColorTheme(),
@@ -272,7 +265,6 @@ export function collectionSyncContent(data: {
   notes: Note[];
   cards: Card[];
   presets?: Preset[];
-  fsrsParameters?: FSRSParameters;
   settings?: { prefs?: unknown; theme?: string; colorTheme?: string };
 }): SyncContent {
   const cardNoteGuid: Record<string, string> = {};
@@ -291,7 +283,6 @@ export function collectionSyncContent(data: {
     presets: data.presets ?? [],
     cardNoteGuid,
     settings: {
-      fsrs: data.fsrsParameters,
       prefs: data.settings?.prefs,
       theme: data.settings?.theme,
       colorTheme: data.settings?.colorTheme,
@@ -382,10 +373,32 @@ function describeItem(key: string, local: SyncSnapshot, remote: SyncSnapshot): S
 /** Base local (estado comum do último sync) — guardada no dispositivo. */
 const LS_BASE = 'runora_sync_base';
 
+/**
+ * Chaves que existiam em versões antigas do protocolo e não existem mais.
+ * A base salva no aparelho pode ter elas → precisam sair, senão o app
+ * acharia que "faltou" o item e reenviaria a coleção a cada sync.
+ */
+const LEGACY_SETTING_KEYS = ['settings:fsrs'];
+
 export function getSyncBase(): SyncSnapshot | null {
   try {
     const raw = localStorage.getItem(LS_BASE);
-    return raw ? (JSON.parse(raw) as SyncSnapshot) : null;
+    if (!raw) return null;
+    const snapshot = JSON.parse(raw) as SyncSnapshot;
+    if (!snapshot?.items) return snapshot;
+    // limpa as chaves obsoletas (T10: o FSRS global saiu do protocolo)
+    let changed = false;
+    const items = { ...snapshot.items };
+    for (const key of LEGACY_SETTING_KEYS) {
+      if (key in items) {
+        delete items[key];
+        changed = true;
+      }
+    }
+    if (!changed) return snapshot;
+    const cleaned = { ...snapshot, items };
+    localStorage.setItem(LS_BASE, JSON.stringify(cleaned));
+    return cleaned;
   } catch {
     return null;
   }

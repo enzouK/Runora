@@ -51,7 +51,6 @@ export const ImportPreviewModal: React.FC<Props> = ({
     s.newNoteTypeNames.length > 0 ||
     s.newRevlogCount > 0 ||
     s.changedDecksCount > 0 ||
-    s.globalFsrsChanged ||
     hasConflicts;
   const nothingNew = !hasAnythingNew;
 
@@ -118,7 +117,6 @@ export const ImportPreviewModal: React.FC<Props> = ({
             s.existingDecksCount > 0 ||
             s.changedCardsCount > 0 ||
             s.changedDecksCount > 0 ||
-            s.globalFsrsChanged ||
             s.newRevlogCount > 0 ||
             typeof s.mediaCount === 'number') && (
             <div className="pt-1.5 border-t border-black/[0.05] dark:border-white/[0.06] text-[12px] text-zinc-500 dark:text-zinc-400 space-y-1">
@@ -142,11 +140,6 @@ export const ImportPreviewModal: React.FC<Props> = ({
               {s.changedCardsCount > 0 && (
                 <div className="font-semibold text-zinc-700 dark:text-zinc-300">
                   {plural(s.changedCardsCount, 'card com data diferente', 'cards com datas diferentes')}.
-                </div>
-              )}
-              {s.globalFsrsChanged && (
-                <div className="font-semibold text-zinc-700 dark:text-zinc-300">
-                  Parâmetros FSRS diferentes.
                 </div>
               )}
               {s.newRevlogCount > 0 && (

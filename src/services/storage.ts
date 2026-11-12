@@ -3,7 +3,6 @@ import { ClozeService } from './clozeService';
 import { INITIAL_CARDS, INITIAL_DECKS, INITIAL_NOTE_TYPES, INITIAL_NOTES } from './sampleData';
 import { DEFAULT_FSRS_PARAMETERS, FSRS_WEIGHT_COUNT_MIN } from '../fsrs/constants';
 import { formatTimespanMinutes } from '../fsrs/timespan';
-import { isValidWeights } from '../fsrs/weights';
 import { DEFAULT_COLOR_THEME } from '../themes';
 
 /**
@@ -704,25 +703,16 @@ export class StorageService {
   }
 
   public static getFSRSSettings(): FSRSParameters {
-    const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    if (!raw) return DEFAULT_FSRS_PARAMETERS;
-    try {
-      const saved = JSON.parse(raw);
-      const merged = { ...DEFAULT_FSRS_PARAMETERS, ...saved };
-      // A weight array of 19 values is a legitimate FSRS-5 parameter set
-      // (Anki stores those as `fsrs_params_5`), so it is kept as-is — the
-      // engine switches to the fixed FSRS-5 decay on its own. Only a broken
-      // array falls back to the official defaults.
-      if (!isValidWeights(merged.w)) merged.w = [...DEFAULT_FSRS_PARAMETERS.w];
-      return merged;
-    } catch {
-      return DEFAULT_FSRS_PARAMETERS;
-    }
+    return {
+      requestRetention: DEFAULT_FSRS_PARAMETERS.requestRetention,
+      maximumInterval: DEFAULT_FSRS_PARAMETERS.maximumInterval,
+      w: [...DEFAULT_FSRS_PARAMETERS.w],
+      enableFuzz: DEFAULT_FSRS_PARAMETERS.enableFuzz,
+    };
   }
 
-  public static saveFSRSSettings(params: FSRSParameters): void {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(params));
-    dispatchSettingsChanged();
+  public static saveFSRSSettings(_params: FSRSParameters): void {
+    // Inerte conforme a T10: o FSRS global agora é configuração fixa do app.
   }
 
   public static getTheme(): 'light' | 'dark' | 'system' {

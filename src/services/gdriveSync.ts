@@ -1855,7 +1855,6 @@ export class DriveSyncService {
             notes: remoteData.notes,
             cards: remoteData.cards,
             presets: remoteData.presets,
-            fsrsParameters: remoteData.fsrsParameters,
             settings: remoteData.settings,
           }),
           effectiveMeta.deviceId,
@@ -2552,7 +2551,6 @@ export class DriveSyncService {
         revlog: data.revlog,
         fsrsParameters: data.fsrsParameters,
         settings: {
-          fsrs: data.fsrsParameters,
           prefs: data.settings?.prefs,
           theme: data.settings?.theme,
           colorTheme: data.settings?.colorTheme,
@@ -2567,7 +2565,6 @@ export class DriveSyncService {
           notes: remoteData.notes,
           cards: remoteData.cards,
           presets: remoteData.presets,
-          fsrsParameters: remoteData.fsrsParameters,
           settings: remoteData.settings,
         }),
         remoteMeta.deviceId,
@@ -2672,7 +2669,7 @@ export class DriveSyncService {
     if (!base) return this.computeLocalModifiedAt() > 0;
     // atalho: nada foi tocado depois do último sync → não há o que enviar
     if (this.computeLocalModifiedAt() <= base.updatedAt) {
-      // …exceto o que muda SEM tocar a coleção: preferências, tema e FSRS
+      // …exceto o que muda SEM tocar a coleção: preferências e tema
       // (são itens do snapshot, mas não têm updatedAt de item).
       if (this.hasExtrasLocalChanges()) return true;
       return this.hasSettingsItemChanges(base);
@@ -2710,7 +2707,7 @@ export class DriveSyncService {
   }
 
   /**
-   * FSRS / rollover / tema são itens do snapshot, mas mudar o valor NÃO
+   * Rollover / tema são itens do snapshot, mas mudar o valor NÃO
    * atualiza o updatedAt da coleção — este atalho compara só o hash deles.
    */
   private static hasSettingsItemChanges(base: SyncSnapshot): boolean {
@@ -2718,7 +2715,6 @@ export class DriveSyncService {
       const stored = base.items[key]?.hash;
       return stored !== undefined && stored !== hashValue(value);
     };
-    if (check(SETTINGS_KEYS.fsrs, StorageService.getFSRSSettings())) return true;
     if (check(SETTINGS_KEYS.prefs, { rolloverHour: StorageService.getRolloverHour() })) return true;
     if (
       check(SETTINGS_KEYS.theme, {

@@ -103,7 +103,11 @@ export interface ImportPlanSummary {
    * limites, preset) são diferentes no arquivo.
    */
   changedDecksCount: number;
-  /** Os parâmetros FSRS globais do arquivo são diferentes dos daqui. */
+  /**
+   * Os parâmetros FSRS globais do arquivo são diferentes dos daqui.
+   * T10: o global é configuração fixa do app → sempre `false` (a importação
+   * nunca mexe no global; presets e decks do pacote continuam valendo).
+   */
   globalFsrsChanged: boolean;
   /** Novas entradas de histórico de revisão (backups do Runora). */
   newRevlogCount: number;
@@ -198,8 +202,9 @@ export function analyzeImport(data: ImportableCollection): ImportPlan {
   }
 
   // ── Parâmetros FSRS globais ──
-  const globalFsrsChanged =
-    !!data.fsrsParameters && !sameFsrsParams(data.fsrsParameters, StorageService.getFSRSSettings());
+  // T10: o global virou configuração fixa do app → a importação NUNCA o
+  // altera. Os presets e decks do pacote continuam sendo aplicados normalmente.
+  const globalFsrsChanged = false;
 
   // ── Tipos de nota casados por nome (+ cloze) ──
   const typeIdByLocalName = new Map(
@@ -563,18 +568,10 @@ export async function applyImportPlan(
   }
 
   // ── FSRS global ──
-  // Coleção vazia: restauração simples (entra o do arquivo, qualquer que seja
-  // o modo). Coleção com conteúdo: só em 'overwrite' e só se for diferente —
-  // o plano avisa antes, então o usuário decide.
-  let appliedGlobalFsrs = false;
-  if (data.fsrsParameters) {
-    const collectionEmpty = localNotes.length === 0 && localCards.length === 0;
-    const differs = !sameFsrsParams(data.fsrsParameters, StorageService.getFSRSSettings());
-    if (collectionEmpty || (mode === 'overwrite' && differs)) {
-      StorageService.saveFSRSSettings(data.fsrsParameters);
-      appliedGlobalFsrs = true;
-    }
-  }
+  // T10: o global é configuração fixa do app → a importação NÃO o altera
+  // (o campo continua no .colpkg por compatibilidade de formato, mas o app
+  // usa sempre o seu valor oficial). Presets/decks do pacote seguem valendo.
+  const appliedGlobalFsrs = false;
 
   const message = buildApplyMessage({
     addedDecks: addedDecks.length,
@@ -674,16 +671,6 @@ function deckOptionsDiffer(
     return true;
   }
   return false;
-}
-
-/** Os dois conjuntos de parâmetros FSRS são equivalentes? */
-function sameFsrsParams(a: FSRSParameters, b: FSRSParameters): boolean {
-  return (
-    a.requestRetention === b.requestRetention &&
-    a.maximumInterval === b.maximumInterval &&
-    !!a.enableFuzz === !!b.enableFuzz &&
-    JSON.stringify(a.w ?? []) === JSON.stringify(b.w ?? [])
-  );
 }
 
 function buildApplyMessage(c: {

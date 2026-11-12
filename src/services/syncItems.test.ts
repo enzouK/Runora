@@ -133,7 +133,6 @@ function contentOf(opts: {
     presets: [],
     cardNoteGuid,
     settings: {
-      fsrs: undefined,
       prefs: { rolloverHour: opts.rollover ?? 4 },
       theme: 'light',
       colorTheme: 'default',

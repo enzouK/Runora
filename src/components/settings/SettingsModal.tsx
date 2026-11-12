@@ -6,16 +6,11 @@ import {
   Check,
   AlertCircle,
   Cloud,
-  ChevronDown,
   Download,
-  SlidersHorizontal,
 } from 'lucide-react';
-import { FSRSParameters } from '../../types/runora';
 import { StorageService } from '../../services/storage';
 import { DriveSyncService, type SyncProgressState } from '../../services/gdriveSync';
 import { ExportImportService } from '../../services/exportImport';
-import { DEFAULT_FSRS_PARAMETERS, FSRS_6_WEIGHT_COUNT } from '../../fsrs/constants';
-import { FSRS_WEIGHT_LABELS, parseFsrsWeights } from '../../fsrs/weights';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { IOSSelect } from '../common/IOSSelect';
 import { COLOR_THEMES, COLOR_THEME_NAMES, DEFAULT_COLOR_THEME } from '../../themes';
@@ -37,14 +32,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onDriveProgress,
 }) => {
   useBodyScrollLock(isOpen);
-  const [activeTab, setActiveTab] = useState<'fsrs'>('fsrs');
-  const [params, setParams] = useState<FSRSParameters>(() => StorageService.getFSRSSettings());
+  const [activeTab, setActiveTab] = useState<'geral'>('geral');
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [confirmResetFSRS, setConfirmResetFSRS] = useState(false);
   const [confirmResetData, setConfirmResetData] = useState(false);
-  const [rolloverHour, setRolloverHour] = useState<number>(() => StorageService.getRolloverHour());
-  const [weightsOpen, setWeightsOpen] = useState(false);
-  const [weightsPaste, setWeightsPaste] = useState('');
+  const [rolloverHour, setRolloverHour] = useState<number>(() => {
+    return StorageService.getRolloverHour();
+  });
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => StorageService.getTheme());
   const [colorTheme, setColorTheme] = useState<string>(() => StorageService.getColorTheme());
   // Google Drive sync
@@ -95,24 +88,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSaveFSRS = () => {
-    StorageService.saveFSRSSettings(params);
-    StorageService.setRolloverHour(rolloverHour);
-    setStatusMsg({ type: 'success', text: 'Parâmetros FSRS atualizados com sucesso!' });
-    setTimeout(() => setStatusMsg(null), 3000);
-    onRefresh();
-  };
-
-  const handleResetFSRS = () => {
-    setConfirmResetFSRS(true);
-  };
-
-  const executeResetFSRS = () => {
-    setParams({ ...DEFAULT_FSRS_PARAMETERS });
-    StorageService.saveFSRSSettings(DEFAULT_FSRS_PARAMETERS);
-    setStatusMsg({ type: 'success', text: 'Parâmetros restaurados aos padrões oficiais.' });
-    setConfirmResetFSRS(false);
-    setTimeout(() => setStatusMsg(null), 3000);
+  const handleRolloverChange = (newHour: number) => {
+    const clamped = Math.min(23, Math.max(0, newHour || 0));
+    setRolloverHour(clamped);
+    StorageService.setRolloverHour(clamped);
+    setStatusMsg({ type: 'success', text: 'Início do dia de estudo atualizado!' });
+    setTimeout(() => setStatusMsg(null), 2500);
     onRefresh();
   };
 
@@ -170,8 +151,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose();
   };
 
-  const TABS: { id: 'fsrs'; label: string }[] = [
-    { id: 'fsrs', label: 'Geral' },
+  const TABS: { id: 'geral'; label: string }[] = [
+    { id: 'geral', label: 'Geral' },
   ];
 
   return (
@@ -190,7 +171,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               Configurações do Runora
             </h3>
             <p className="text-xs text-zinc-400 dark:text-zinc-500">
-              Motor FSRS e Gerenciamento de Coleção
+              Preferências, aparência e gerenciamento de coleção
             </p>
           </div>
           <button
@@ -242,7 +223,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Body content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {activeTab === 'fsrs' && (            <div className="space-y-5">
+          {activeTab === 'geral' && (            <div className="space-y-5">
               {/* Day rollover — when the study day starts */}
               <div className="px-3.5 py-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06]">
                 <div className="flex items-center gap-2 mb-2">
@@ -258,9 +239,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     min="0"
                     max="23"
                     value={rolloverHour}
-                    onChange={(e) =>
-                      setRolloverHour(Math.min(23, Math.max(0, parseInt(e.target.value, 10) || 0)))
-                    }
+                    onChange={(e) => handleRolloverChange(parseInt(e.target.value, 10) || 0)}
                     className="w-14 px-2 py-1 mx-0.5 rounded-[8px] bg-white dark:bg-zinc-900 border border-black/[0.08] dark:border-white/[0.12] text-center font-mono font-semibold tabular-nums text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-ios-blue"
                   />{' '}
                   horas após a meia-noite — ou seja, às{' '}
@@ -272,106 +251,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
                   Ex.: com 4, revisar às 2:30 ainda conta para o dia anterior (padrão do Runora).
                 </p>
-              </div>
-
-              {/* Global FSRS weights — the fallback every preset/deck inherits from */}
-              <div className="px-3.5 py-3 rounded-[16px] bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.06]">
-                <button
-                  type="button"
-                  onClick={() => setWeightsOpen((v) => !v)}
-                  className="w-full flex items-center justify-between gap-2 text-left"
-                >
-                  <span className="flex items-center gap-2">
-                    <SlidersHorizontal className="w-4 h-4 text-ios-blue shrink-0" />
-                    <span className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-100">
-                      Pesos globais do FSRS
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="text-[11px] font-medium text-zinc-400">
-                      {params.w.length} valores (FSRS-{params.w.length === FSRS_6_WEIGHT_COUNT ? '6' : '5'})
-                    </span>
-                    <ChevronDown
-                      className={`w-4 h-4 text-zinc-400 transition-transform ${weightsOpen ? 'rotate-180' : ''}`}
-                    />
-                  </span>
-                </button>
-
-                {weightsOpen && (
-                  <div className="mt-3">
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-2.5 leading-relaxed">
-                      Os pesos matemáticos do agendador. Presets e decks podem sobrescrevê-los
-                      nas próprias opções de deck. O decay (w[20]) controla a curva de
-                      esquecimento.
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-1.5 mb-2.5">
-                      {params.w.map((value, i) => (
-                        <label
-                          key={i}
-                          className="flex items-center gap-1.5 rounded-lg bg-black/[0.03] dark:bg-white/[0.05] px-2 py-1"
-                        >
-                          <span
-                            className="text-[10px] font-mono text-zinc-400 w-4 shrink-0"
-                            title={FSRS_WEIGHT_LABELS[i]}
-                          >
-                            w{i}
-                          </span>
-                          <input
-                            type="number"
-                            step="0.0001"
-                            value={value}
-                            onChange={(e) => {
-                              const n = Number(e.target.value);
-                              if (!Number.isFinite(n)) return;
-                              setParams((p) => ({
-                                ...p,
-                                w: p.w.map((v, j) => (j === i ? n : v)),
-                              }));
-                            }}
-                            className="no-spinner w-full min-w-0 bg-transparent text-[11px] font-mono text-zinc-800 dark:text-zinc-200 focus:outline-none"
-                          />
-                        </label>
-                      ))}
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setParams((p) => ({ ...p, w: [...DEFAULT_FSRS_PARAMETERS.w] }))
-                        }
-                        className="px-2.5 py-1.5 rounded-lg bg-black/[0.05] dark:bg-white/[0.08] text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.08] dark:hover:bg-white/[0.12] transition-colors"
-                      >
-                        Restaurar padrão
-                      </button>
-                    </div>
-
-                    <div className="mt-2.5">
-                      <textarea
-                        rows={2}
-                        value={weightsPaste}
-                        onChange={(e) => setWeightsPaste(e.target.value)}
-                        placeholder="Cole aqui os pesos (19 ou 21 valores separados por espaço ou vírgula)"
-                        className="w-full px-2.5 py-2 rounded-lg bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.05] dark:border-white/[0.08] text-[11px] font-mono text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const parsed = parseFsrsWeights(weightsPaste);
-                          if (parsed) {
-                            setParams((p) => ({ ...p, w: parsed }));
-                            setWeightsPaste('');
-                          }
-                        }}
-                        disabled={!weightsPaste.trim()}
-                        className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-ios-blue text-white text-[11px] font-semibold disabled:opacity-40 transition-opacity"
-                      >
-                        Importar pesos
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Theme selector */}
@@ -554,24 +433,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center justify-between pt-3">
-                <button
-                  type="button"
-                  onClick={handleResetFSRS}
-                  className="text-[13px] font-medium text-zinc-500 hover:text-ios-red dark:hover:text-ios-red transition-colors"
-                >
-                  Restaurar Padrão Oficial
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSaveFSRS}
-                  className="px-5 py-2 rounded-full bg-ios-blue hover:bg-[#0071eb] text-white font-semibold text-[13px] shadow-[0_2px_8px_rgba(0,122,255,0.35)] transition-all active:scale-95"
-                >
-                  Salvar Configurações
-                </button>
-              </div>
-
               <div className="pt-3 border-t border-black/[0.05] dark:border-white/[0.07]">
                 <button
                   type="button"
@@ -586,17 +447,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
         </div>
       </div>
-
-      <ConfirmationModal
-        isOpen={confirmResetFSRS}
-        onClose={() => setConfirmResetFSRS(false)}
-        onConfirm={executeResetFSRS}
-        title="Restaurar Parâmetros FSRS?"
-        description="Esta ação redefinirá os 21 pesos matemáticos (FSRS-6) e a retenção desejada para as configurações oficiais padrão."
-        confirmText="Restaurar FSRS"
-        cancelText="Cancelar"
-        variant="warning"
-      />
 
       <ConfirmationModal
         isOpen={confirmResetData}
