@@ -76,52 +76,6 @@ export default function App() {
   // Google Drive sync controller (shared with the Sync tab + conflict modal)
   const sync = useDriveSync(refreshAll);
 
-  // Auto-sync once per app session on start, then periodically, when enabled
-  const autoSyncRan = useRef(false);
-  useEffect(() => {
-    if (autoSyncRan.current) return;
-    autoSyncRan.current = true;
-    // opção "Sincronizar ao abrir o aplicativo"
-    if (DriveSyncService.getAutoSyncOnOpen() && DriveSyncService.getAccount()) {
-      void sync.runSync();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // O timer do autosync é recriado quando a configuração dele muda — inclusive
-  // quando a configuração chega do Drive (evento de preferência do Sync).
-  const [autoSyncTick, setAutoSyncTick] = useState(0);
-  const autoSyncSigRef = useRef<string | null>(null);
-  useEffect(() => {
-    const check = () => {
-      const sig = `${DriveSyncService.getAutoSync()}|${DriveSyncService.getAutoSyncIntervalMinutes()}`;
-      if (autoSyncSigRef.current !== sig) {
-        autoSyncSigRef.current = sig;
-        setAutoSyncTick((t) => t + 1);
-      }
-    };
-    check();
-    window.addEventListener('runora:settings-changed', check);
-    return () => {
-      window.removeEventListener('runora:settings-changed', check);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!DriveSyncService.getAutoSync()) return;
-    // o intervalo é configurável nas Configurações (em minutos ou horas)
-    const minutes = DriveSyncService.getAutoSyncIntervalMinutes();
-    const id = window.setInterval(() => {
-      if (DriveSyncService.getAccount() && !DriveSyncService.isRunning()) {
-        void sync.runSync();
-      }
-    }, minutes * 60 * 1000);
-    return () => window.clearInterval(id);
-    // o timer é recriado quando a configuração do autosync muda
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey, autoSyncTick]);
-
   // Header Sync button: runs a sync right away and reports the result as a toast
   const [syncProgress, setSyncProgress] = useState<SyncProgressState | null>(null);
   const handleSyncClick = useCallback(() => {

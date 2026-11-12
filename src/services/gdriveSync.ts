@@ -115,23 +115,6 @@ import {
   removeAddon,
   setAddonEnabled,
 } from './addonStorage';
-import {
-  DEFAULT_AUTO_SYNC_MINUTES,
-  MAX_AUTO_SYNC_MINUTES,
-  MIN_AUTO_SYNC_MINUTES,
-  getAutoSyncEnabled,
-  getAutoSyncIntervalMinutes,
-  getAutoSyncOnOpen,
-  setAutoSyncEnabled,
-  setAutoSyncIntervalMinutes,
-  setAutoSyncOnOpen,
-} from './autoSyncSettings';
-
-export {
-  DEFAULT_AUTO_SYNC_MINUTES,
-  MAX_AUTO_SYNC_MINUTES,
-  MIN_AUTO_SYNC_MINUTES,
-};
 
 const LS = {
   CLIENT_ID: 'runora_gdrive_client_id',
@@ -996,35 +979,6 @@ export class DriveSyncService {
 
   public static disconnect(): void {
     localStorage.removeItem(LS.TOKEN);
-  }
-
-  public static getAutoSync(): boolean {
-    return getAutoSyncEnabled();
-  }
-
-  public static setAutoSync(on: boolean): void {
-    setAutoSyncEnabled(on);
-  }
-
-  /** Sincronizar ao abrir o aplicativo (opção separada do autosync). */
-  public static getAutoSyncOnOpen(): boolean {
-    return getAutoSyncOnOpen();
-  }
-
-  public static setAutoSyncOnOpen(on: boolean): void {
-    setAutoSyncOnOpen(on);
-  }
-
-  /**
-   * De quanto em quanto tempo o autosync roda — em MINUTOS.
-   * O usuário pode escolher em minutos ou em horas (a UI converte).
-   */
-  public static getAutoSyncIntervalMinutes(): number {
-    return getAutoSyncIntervalMinutes();
-  }
-
-  public static setAutoSyncIntervalMinutes(minutes: number): void {
-    setAutoSyncIntervalMinutes(minutes);
   }
 
   public static getDeviceId(): string {
