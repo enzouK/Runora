@@ -1795,8 +1795,31 @@ export class DriveSyncService {
             this.recordRemoteModifiedTimes(allFiles);
             return { action: 'none', message: 'Tudo sincronizado — nenhuma mudança desde o último sync.' };
           }
-          // Só preferências/extensões mudaram (não entram no snapshot): deixa
-          // o fluxo seguir até a Fase 5 (travada), que compara e envia os extras.
+
+          // Caminho leve: só preferências/extensões mudaram, coleção intacta (dos dois lados).
+          // Sincroniza extras e publica o estado atualizado (sem reenviar o .colpkg).
+          timing?.mark('extras-início');
+          const extrasMsg = await this.syncExtrasAndAddons(token, progress, itemProgress, {}, allFiles, effectiveMeta, remoteExtras, remoteAddonsIndex, localAddonState);
+          timing?.mark('extras-fim');
+
+          if (remoteState) {
+            const localExtras = buildExtrasPayload();
+            const localAddons = await computeAddonState();
+            const newSyncedAt = await this.updateRemoteState(token, remoteState.state, hashExtras(localExtras), localAddons.hash);
+            this.setLastSync({ at: newSyncedAt, remoteUploadedAt: newSyncedAt });
+
+            // Corrigir bug: atualizar a base local após sync leve para o botão sair do amarelo
+            this.setSideBase(LS.EXTRAS_BASE, { hash: hashExtras(localExtras), uploadedAt: newSyncedAt });
+            this.setSideBase(LS.ADDONS_BASE, { hash: localAddons.hash, uploadedAt: newSyncedAt });
+            this.refreshBaseSettings();
+            setSyncBase(computeSnapshot(localSyncContent(), this.getDeviceId(), getDeviceName()));
+          }
+
+          this.recordRemoteModifiedTimes(allFiles);
+          return {
+            action: 'upload',
+            message: extrasMsg ?? 'Preferências e temas atualizados.',
+          };
         }
 
         // ============================================================
@@ -2686,11 +2709,12 @@ export class DriveSyncService {
     return false;
   }
 
-  /** Houve mudança local desde o último sync? */
+  /** Houve mudança local na COLEÇÃO desde o último sync? (ignora settings:*) */
   private static hasLocalChanges(base: SyncSnapshot | null, local: SyncSnapshot): boolean {
     if (!base) return this.computeLocalModifiedAt() > 0;
     const keys = new Set([...Object.keys(base.items), ...Object.keys(local.items)]);
     for (const key of keys) {
+      if (key.startsWith('settings:')) continue;
       if (base.items[key]?.hash !== local.items[key]?.hash) return true;
     }
     return false;
@@ -3077,6 +3101,27 @@ export class DriveSyncService {
     }
     // B3: este estado vazio É o que o Drive tem agora
     this.setCachedOwnState(state);
+    return now;
+  }
+
+  /** Atualiza o estado remoto no Drive com novos hashes (extras/addons) e syncedAt. */
+  private static async updateRemoteState(
+    token: string,
+    state: SyncState,
+    extrasHash: string,
+    addonsHash: string
+  ): Promise<number> {
+    const now = Date.now();
+    const next: SyncState = {
+      ...state,
+      syncedAt: now,
+      extrasHash,
+      addonsHash,
+    };
+    const blob = new Blob([JSON.stringify(next, null, 2)], { type: 'application/json' });
+    const uploaded = await uploadStateFileCached(token, DRIVE_FILES.STATE, blob);
+    this.setCachedOwnState(next);
+    if (uploaded.modifiedTime) this.setStateModifiedTime(uploaded.modifiedTime);
     return now;
   }
 

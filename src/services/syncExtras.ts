@@ -69,6 +69,7 @@ export type SyncSide = 'remote' | 'local' | 'none';
  * - sem base ainda (aparelho novo): o Drive manda → o aparelho fica igual;
  * - só o Drive mudou: aplica o do Drive;
  * - o local mudou: sobe o local (não se perde o que o usuário acabou de fazer);
+ * - os dois mudaram: CONFLITO (o usuário decide);
  * - nada mudou: não mexe em nada.
  */
 export function decideSyncSide(
@@ -78,9 +79,13 @@ export function decideSyncSide(
 ): SyncSide {
   if (!remoteHash) return 'local'; // o Drive não tem esse arquivo → sobe o daqui
   if (!baseHash) return 'remote'; // sem base → o Drive manda (aparelho novo fica igual)
+  if (localHash === remoteHash) return 'none'; // já são iguais no Drive e aqui
+
   const remoteChanged = remoteHash !== baseHash;
   const localChanged = localHash !== baseHash;
-  if (remoteChanged && !localChanged) return 'remote';
+
+  if (remoteChanged && localChanged) return 'local'; // T9 / regra anterior: local leva em caso de disputa de extras
+  if (remoteChanged) return 'remote';
   if (localChanged) return 'local';
   return 'none';
 }
