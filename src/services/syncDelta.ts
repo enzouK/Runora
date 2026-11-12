@@ -175,10 +175,15 @@ export interface DeltaMeta {
  * Estado unificado do sync incremental (Fase 8).
  * Substitui: delta-meta.json + delta.json + delta-media-manifest.json + partes incrementais do meta.json.
  * Mantém compatibilidade: pode ser lido como DeltaMeta (campos em comum).
+ *
+ * T6 (2026-11-12): fundiu também o META do backup completo neste arquivo
+ * (version 2). O `runora-sync-meta.json` deixa de ser escrito; o que só
+ * existia nele virou os campos `appVersion` e `collectionCounts` abaixo.
+ * Leitores aceitam version 1 (campos novos ausentes → fallback) e 2.
  */
 export interface SyncState {
   app: 'runora';
-  version: number;           // 1 = formato atual
+  version: number;           // 1 = formato original · 2 = META fundido (T6)
   /** USN do último sync completo (base comum). */
   baseUsn: number;
   /** USN do último sync incremental bem-sucedido (head). */
@@ -208,6 +213,69 @@ export interface SyncState {
   extrasHash?: string;
   /** Hash das extensões (para pular download se não mudou). */
   addonsHash?: string;
+  /** (v2) Versão do app que subiu este estado — era o META. */
+  appVersion?: string;
+  /** (v2) Contagens da COLEÇÃO INTEIRA — era o `counts` do META
+   * (atenção: `counts` acima é do DELTA, não da coleção). */
+  collectionCounts?: {
+    decks: number;
+    notes: number;
+    cards: number;
+    noteTypes: number;
+    media: number;
+    revlog: number;
+  };
+}
+
+/** Versão do formato do estado unificado que este app ESCREVE. */
+export const STATE_FORMAT_VERSION = 2;
+
+/**
+ * T6: monta um objeto com a mesma cara do SyncMeta (que era o
+ * runora-sync-meta.json) a partir do STATE — para o resto do sync
+ * (extras/addons, mescla completa, painel) continuar funcionando sem
+ * reescrita geral. Campos que só existiam no META (v1 do STATE) recebem
+ * fallback razoável.
+ */
+export function metaFromState(state: SyncState): {
+  app: 'runora';
+  version: 1;
+  uploadedAt: number;
+  deviceId: string;
+  deviceName: string;
+  appVersion: string;
+  counts: {
+    decks: number;
+    notes: number;
+    cards: number;
+    noteTypes: number;
+    media: number;
+    revlog: number;
+  };
+  extrasHash?: string;
+  addonsHash?: string;
+  syncFormat?: 'state';
+} {
+  const c = state.collectionCounts ?? {
+    decks: state.counts.decks,
+    notes: state.counts.notes,
+    cards: state.counts.cards,
+    noteTypes: state.counts.noteTypes,
+    media: state.counts.mediaFiles,
+    revlog: state.counts.revlog,
+  };
+  return {
+    app: 'runora',
+    version: 1,
+    uploadedAt: state.syncedAt,
+    deviceId: state.deviceId,
+    deviceName: state.deviceName,
+    appVersion: state.appVersion ?? '0.1.0',
+    counts: c,
+    extrasHash: state.extrasHash,
+    addonsHash: state.addonsHash,
+    syncFormat: 'state',
+  };
 }
 
 /** Converte SyncState para DeltaMeta (compatibilidade com código antigo). */

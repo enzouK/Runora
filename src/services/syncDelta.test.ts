@@ -13,9 +13,12 @@ import {
   mergeDeltas,
   applyDeltaToCollection,
   DELTA_FORMAT_VERSION,
+  STATE_FORMAT_VERSION,
+  metaFromState,
   type SyncDelta,
   type DeltaMeta,
   type SyncConflict,
+  type SyncState,
 } from './syncDelta';
 import type { Deck, NoteType, Note, Card, RevlogEntry, Preset, Tombstone } from '../types/runora';
 
@@ -428,6 +431,61 @@ describe('applyDeltaToCollection — o .colpkg + o delta = a verdade do Drive', 
 
     assert.equal(colecao.notes.length, 0);
     assert.equal(colecao.cards.length, 0, 'o card da nota deletada some junto');
+  });
+});
+
+describe('metaFromState — META fundido no STATE (T6)', () => {
+  it('STATE v2: devolve a mesma cara do SyncMeta com os campos novos', () => {
+    const state: SyncState = {
+      app: 'runora',
+      version: STATE_FORMAT_VERSION,
+      baseUsn: 200,
+      headUsn: 223,
+      syncedAt: 1794497590105,
+      deviceId: 'dev-1',
+      deviceName: 'Windows',
+      counts: { decks: 1, noteTypes: 0, notes: 2, cards: 2, revlog: 0, presets: 0, tombstones: 0, mediaFiles: 0 },
+      delta: buildDelta(200, 223, 'dev-1', 'Windows', {
+        decks: [], noteTypes: [], notes: [], cards: [], revlog: [], presets: [], tombstones: [], mediaManifest: {},
+      }),
+      mediaManifest: {},
+      extrasHash: '9bfc27f0',
+      addonsHash: '2d5deee5',
+      appVersion: '0.1.0',
+      collectionCounts: { decks: 2, notes: 81, cards: 81, noteTypes: 3, media: 12, revlog: 40 },
+    };
+    const meta = metaFromState(state);
+    assert.equal(meta.uploadedAt, state.syncedAt);
+    assert.equal(meta.deviceId, 'dev-1');
+    assert.equal(meta.deviceName, 'Windows');
+    assert.equal(meta.appVersion, '0.1.0');
+    assert.equal(meta.syncFormat, 'state');
+    assert.deepEqual(meta.counts, { decks: 2, notes: 81, cards: 81, noteTypes: 3, media: 12, revlog: 40 });
+    assert.equal(meta.extrasHash, '9bfc27f0');
+    assert.equal(meta.addonsHash, '2d5deee5');
+  });
+
+  it('STATE v1 (aparelho antigo): fallback para as contagens do delta', () => {
+    const state: SyncState = {
+      app: 'runora',
+      version: 1,
+      baseUsn: 200,
+      headUsn: 210,
+      syncedAt: 1794400000000,
+      deviceId: 'dev-2',
+      deviceName: 'Android',
+      counts: { decks: 1, noteTypes: 1, notes: 1, cards: 1, revlog: 0, presets: 0, tombstones: 1, mediaFiles: 2 },
+      delta: buildDelta(200, 210, 'dev-2', 'Android', {
+        decks: [], noteTypes: [], notes: [], cards: [], revlog: [], presets: [], tombstones: [], mediaManifest: {},
+      }),
+      mediaManifest: {},
+    };
+    const meta = metaFromState(state);
+    // sem collectionCounts: usa o que o delta tem (o painel mostra aprox.)
+    assert.deepEqual(meta.counts, { decks: 1, notes: 1, cards: 1, noteTypes: 1, media: 2, revlog: 0 });
+    assert.equal(meta.appVersion, '0.1.0');
+    assert.equal(meta.extrasHash, undefined);
+    assert.equal(meta.addonsHash, undefined);
   });
 });
 
