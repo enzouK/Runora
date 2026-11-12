@@ -13,6 +13,9 @@ import {
   getCachedFileId,
   setCachedFileId,
   deleteCachedFileId,
+  markFileAbsent,
+  clearFileAbsent,
+  isFileMarkedAbsent,
   isMigrationDone,
   setMigrationDone,
   clearDriveCache,
@@ -51,6 +54,37 @@ describe('driveCache (MemoryBackend)', () => {
     assert.equal(await isMigrationDone(), false);
     await setMigrationDone();
     assert.equal(await isMigrationDone(), true);
+  });
+
+  it('cache negativo: marca, confirma e limpa a ausência', async () => {
+    assert.equal(await isFileMarkedAbsent('runora-sync-extras.json'), false);
+    await markFileAbsent('runora-sync-extras.json');
+    assert.equal(await isFileMarkedAbsent('runora-sync-extras.json'), true);
+    // o id não pode existir junto com a marca de ausência
+    await setCachedFileId('runora-sync-extras.json', 'id-antigo');
+    await deleteCachedFileId('runora-sync-extras.json');
+    assert.equal(await isFileMarkedAbsent('runora-sync-extras.json'), true);
+    // o arquivo voltou a existir → limpa a marca
+    await clearFileAbsent('runora-sync-extras.json');
+    assert.equal(await isFileMarkedAbsent('runora-sync-extras.json'), false);
+  });
+
+  it('cache negativo: clearFileAbsent sem marca não estraga o cache', async () => {
+    await setCachedFileId('x.json', 'id-x');
+    await clearFileAbsent('x.json');
+    const data = await readDriveCache();
+    assert.equal(data.fileIds['x.json'], 'id-x');
+    assert.deepEqual(data.absentFiles ?? {}, {});
+  });
+
+  it('cache negativo: guardar ausência não apaga folderId/migration', async () => {
+    await setCachedFolderId('folder-1');
+    await setMigrationDone();
+    await markFileAbsent('runora-sync-delta-meta.json');
+    const data = await readDriveCache();
+    assert.equal(data.folderId, 'folder-1');
+    assert.equal(data.migrationDone, true);
+    assert.ok(data.absentFiles?.['runora-sync-delta-meta.json']);
   });
 
   it('clear limpa tudo', async () => {

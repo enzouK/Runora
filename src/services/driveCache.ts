@@ -11,6 +11,14 @@
 export interface DriveCacheData {
   folderId?: string;
   fileIds: Record<string, string>; // nome do arquivo → id no Drive
+  /**
+   * Cache NEGATIVO: nome do arquivo → timestamp em que a listagem completa
+   * (listAllSyncFiles) confirmou que ele NÃO existe no Drive. Permite que o
+   * findFile responda "não existe" com 0 chamadas para arquivos que nunca
+   * sobem (EXTRAS, ADDONS_INDEX, deltas antigos...). É reescrito a cada sync,
+   * quando a listagem única refaz o retrato do Drive.
+   */
+  absentFiles?: Record<string, number>;
   migrationDone: boolean;
 }
 
@@ -160,6 +168,28 @@ export async function deleteCachedFileId(fileName: string): Promise<void> {
   const cache = await readDriveCache();
   delete cache.fileIds[fileName];
   await writeDriveCache(cache);
+}
+
+/** Marca um arquivo como "confirmado ausente" no Drive (cache negativo). */
+export async function markFileAbsent(fileName: string): Promise<void> {
+  const cache = await readDriveCache();
+  cache.absentFiles = cache.absentFiles ?? {};
+  cache.absentFiles[fileName] = Date.now();
+  await writeDriveCache(cache);
+}
+
+/** Retira a marca de "ausente" (o arquivo existe de novo). */
+export async function clearFileAbsent(fileName: string): Promise<void> {
+  const cache = await readDriveCache();
+  if (!cache.absentFiles || !(fileName in cache.absentFiles)) return;
+  delete cache.absentFiles[fileName];
+  await writeDriveCache(cache);
+}
+
+/** O arquivo foi confirmado ausente na última listagem completa do Drive? */
+export async function isFileMarkedAbsent(fileName: string): Promise<boolean> {
+  const cache = await readDriveCache();
+  return !!cache.absentFiles && fileName in cache.absentFiles;
 }
 
 /** Verifica se a migração da raiz já foi feita. */

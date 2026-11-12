@@ -53,6 +53,9 @@ import {
   getCachedFileId,
   setCachedFileId,
   deleteCachedFileId,
+  markFileAbsent,
+  clearFileAbsent,
+  isFileMarkedAbsent,
   isMigrationDone,
   setMigrationDone,
 } from './driveCache';
@@ -488,6 +491,16 @@ async function fetchWithTimeout(
   }
 }
 
+/** Erro da API do Drive com o status HTTP — usado para reagir a 404 (id velho). */
+export class DriveApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'DriveApiError';
+    this.status = status;
+  }
+}
+
 async function api(token: string, path: string, init?: RequestInit): Promise<Response> {
   const res = await fetchWithTimeout(
     `https://www.googleapis.com${path}`,
@@ -506,7 +519,10 @@ async function api(token: string, path: string, init?: RequestInit): Promise<Res
   }
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Erro na API do Google Drive (${res.status}): ${body.slice(0, 200)}`);
+    throw new DriveApiError(
+      res.status,
+      `Erro na API do Google Drive (${res.status}): ${body.slice(0, 200)}`
+    );
   }
   return res;
 }
@@ -575,7 +591,40 @@ async function migrateRootFiles(token: string, folderId: string): Promise<void> 
   }
 }
 
-async function findFile(token: string, name: string): Promise<DriveFileInfo | null> {
+/**
+ * Procura um arquivo de sync pelo nome.
+ *
+ * - Cache negativo: responde "não existe" com 0 chamadas quando a última
+ *   listagem completa confirmou a ausência (só para nomes da lista fixa).
+ * - Cache positivo: 1 chamada (files.get) para confirmar modifiedTime.
+ * - Sem cache: 1 busca (query).
+ *
+ * `ignoreNegativeCache`: para fluxos interativos fora do sync (restaurar,
+ * info remota, limpeza manual) — ali o cache negativo pode estar velho
+ * (outro aparelho pode ter subido o arquivo depois do último sync).
+ */
+async function findFile(
+  token: string,
+  name: string,
+  opts?: { ignoreNegativeCache?: boolean }
+): Promise<DriveFileInfo | null> {
+  // 0) cache NEGATIVO: a última listagem completa confirmou que o arquivo não
+  //    existe no Drive → responde "não existe" com 0 chamadas.
+  //    O LOCK fica de fora: ele pode aparecer a qualquer momento por outro
+  //    aparelho, e confiar no "ausente" poderia criar duas travas ao mesmo
+  //    tempo. Nomes de mídia (runora-sync-media/...) também não entram no
+  //    cache negativo (não são re-listados a cada sync).
+  const isListableName = Object.values(DRIVE_FILES).includes(
+    name as (typeof DRIVE_FILES)[keyof typeof DRIVE_FILES]
+  );
+  if (
+    !opts?.ignoreNegativeCache &&
+    name !== DRIVE_FILES.LOCK &&
+    isListableName &&
+    (await isFileMarkedAbsent(name))
+  ) {
+    return null;
+  }
   // 1) cache de id do arquivo
   const cachedId = await getCachedFileId(name);
   if (cachedId) {
@@ -600,7 +649,13 @@ async function findFile(token: string, name: string): Promise<DriveFileInfo | nu
   );
   const data = (await res.json()) as { files?: DriveFileInfo[] };
   const file = data.files?.[0] ?? null;
-  if (file) await setCachedFileId(name, file.id);
+  if (file) {
+    await setCachedFileId(name, file.id);
+    await clearFileAbsent(name);
+  } else if (isListableName && name !== DRIVE_FILES.LOCK) {
+    await deleteCachedFileId(name);
+    await markFileAbsent(name);
+  }
   return file;
 }
 
@@ -624,10 +679,22 @@ async function listAllSyncFiles(
   );
   const data = (await res.json()) as { files?: DriveFileInfo[] };
   const map: Record<string, DriveFileInfo> = {};
+  const found = new Set<string>();
   if (data.files) {
     for (const f of data.files) {
       map[f.name] = f;
+      found.add(f.name);
       await setCachedFileId(f.name, f.id);
+      await clearFileAbsent(f.name);
+    }
+  }
+  // cache NEGATIVO: o que a listagem inteira não trouxe, não existe no Drive.
+  // É isso que invalida as marcas antigas — o retrato do Drive é refeito a
+  // cada sync, então o "ausente" nunca fica velho.
+  for (const n of fileNames) {
+    if (!found.has(n)) {
+      await deleteCachedFileId(n);
+      await markFileAbsent(n);
     }
   }
   return map;
@@ -669,7 +736,7 @@ async function uploadResumable(
     API_TIMEOUT_MS
   );
   if (!initRes.ok) {
-    throw new Error(`Drive: falha ao iniciar upload (${initRes.status})`);
+    throw new DriveApiError(initRes.status, `Drive: falha ao iniciar upload (${initRes.status})`);
   }
   const location = initRes.headers.get('Location');
   if (!location) throw new Error('Drive: resposta de upload resumable sem Location.');
@@ -687,7 +754,7 @@ async function uploadResumable(
     API_TIMEOUT_MS * 4
   );
   if (!putRes.ok) {
-    throw new Error(`Drive: falha no envio do arquivo (${putRes.status})`);
+    throw new DriveApiError(putRes.status, `Drive: falha no envio do arquivo (${putRes.status})`);
   }
   const data = (await putRes.json()) as { id?: string; modifiedTime?: string };
   if (!data.id) throw new Error('Drive: upload concluído sem id de arquivo.');
@@ -715,39 +782,133 @@ async function uploadMultipart(
   return { id: data.id, modifiedTime: data.modifiedTime };
 }
 
+/* ── Upload com cache de id (Etapa 2) ────────────────────────────────────── */
+
+/**
+ * Id do arquivo para usar como "existingId" de upload, com 0 chamadas quando
+ * o cache está quente (o normal dentro de um sync: a listagem única do início
+ * acabou de popular positivo E negativo).
+ *
+ * - cache positivo → o id (0 chamadas; 404 depois é tratado por quem sobe)
+ * - cache negativo → null (0 chamadas; o upload cria o arquivo)
+ * - sem informação → findFile (1 chamada; popular o cache)
+ */
+async function getFileIdForUpload(token: string, name: string): Promise<string | null> {
+  const cachedId = await getCachedFileId(name);
+  if (cachedId) return cachedId;
+  if (name !== DRIVE_FILES.LOCK && (await isFileMarkedAbsent(name))) return null;
+  const file = await findFile(token, name);
+  return file?.id ?? null;
+}
+
+async function rememberUploadedFileId(name: string, result: UploadResult): Promise<void> {
+  await setCachedFileId(name, result.id);
+  await clearFileAbsent(name);
+}
+
+/** Depois de um 404: descarta o id velho, relista tudo e recacheia. */
+async function refreshIdAfterStale(token: string, name: string): Promise<string | null> {
+  await deleteCachedFileId(name);
+  const all = await listAllSyncFiles(token);
+  return all[name]?.id ?? null;
+}
+
+/** Sobe um JSON pequeno reutilizando o id em cache; 404 → relista e recria. */
+async function uploadMultipartCached(
+  token: string,
+  name: string,
+  blob: Blob
+): Promise<UploadResult> {
+  const existingId = await getFileIdForUpload(token, name);
+  try {
+    const result = await uploadMultipart(token, name, blob, existingId ?? undefined);
+    await rememberUploadedFileId(name, result);
+    return result;
+  } catch (e) {
+    if (!(e instanceof DriveApiError) || e.status !== 404 || !existingId) throw e;
+    const freshId = await refreshIdAfterStale(token, name);
+    const result = await uploadMultipart(token, name, blob, freshId ?? undefined);
+    await rememberUploadedFileId(name, result);
+    return result;
+  }
+}
+
+/** Sobe um blob grande (resumable) reutilizando o id em cache; 404 → relista e recria. */
+async function uploadResumableCached(
+  token: string,
+  name: string,
+  blob: Blob
+): Promise<UploadResult> {
+  const existingId = await getFileIdForUpload(token, name);
+  try {
+    const result = await uploadResumable(token, name, blob, existingId ?? undefined);
+    await rememberUploadedFileId(name, result);
+    return result;
+  } catch (e) {
+    if (!(e instanceof DriveApiError) || e.status !== 404 || !existingId) throw e;
+    const freshId = await refreshIdAfterStale(token, name);
+    const result = await uploadResumable(token, name, blob, freshId ?? undefined);
+    await rememberUploadedFileId(name, result);
+    return result;
+  }
+}
+
 /* ── Cross-device lock ───────────────────────────────────────────────────── */
 
 async function acquireLock(token: string): Promise<void> {
-  const lockFile = await findFile(token, DRIVE_FILES.LOCK);
-  if (lockFile) {
+  // O LOCK nunca entra no cache negativo (pode aparecer a qualquer momento
+  // por outro aparelho). Com o id em cache, porém, dá para ler o conteúdo
+  // direto — sem o files.get de confirmação (1 chamada a menos).
+  let lockFile: DriveFileInfo | null = null;
+  const cachedLockId = await getCachedFileId(DRIVE_FILES.LOCK);
+  if (cachedLockId) {
     try {
-      const info = JSON.parse(await (await downloadFile(token, lockFile.id)).text()) as LockInfo;
+      const info = JSON.parse(await (await downloadFile(token, cachedLockId)).text()) as LockInfo;
       if (info.deviceId !== DriveSyncService.getDeviceId() && Date.now() - info.ts < LOCK_TTL_MS) {
         throw new LockBusyError(info);
       }
+      // id em cache ainda é válido (a leitura funcionou)
+      lockFile = { id: cachedLockId, name: DRIVE_FILES.LOCK, modifiedTime: '' };
     } catch (e) {
       if (e instanceof LockBusyError) throw e;
-      // unreadable/stale lock file — treat as absent
+      // leitura falhou (id velho, lock corrompido...) → busca normal
+      lockFile = await findFile(token, DRIVE_FILES.LOCK);
     }
+  } else {
+    lockFile = await findFile(token, DRIVE_FILES.LOCK);
   }
   const info: LockInfo = {
     deviceId: DriveSyncService.getDeviceId(),
     deviceName: getDeviceName(),
     ts: Date.now(),
   };
-  await uploadMultipart(
+  const lockUpload = await uploadMultipart(
     token,
     DRIVE_FILES.LOCK,
     new Blob([JSON.stringify(info)], { type: 'application/json' }),
     lockFile?.id
   );
+  // o id da trava atual vai para o cache: o releaseLock apaga sem procurar
+  await rememberUploadedFileId(DRIVE_FILES.LOCK, lockUpload);
 }
 
 async function releaseLock(token: string): Promise<void> {
   try {
+    // id em cache → apaga direto (1 chamada em vez de 2)
+    const cachedLockId = await getCachedFileId(DRIVE_FILES.LOCK);
+    if (cachedLockId) {
+      await deleteCachedFileId(DRIVE_FILES.LOCK);
+      try {
+        await api(token, `/drive/v3/files/${cachedLockId}`, { method: 'DELETE' });
+        return;
+      } catch {
+        // id velho → cai para a busca normal abaixo
+      }
+    }
     const lockFile = await findFile(token, DRIVE_FILES.LOCK);
     if (lockFile) {
       await api(token, `/drive/v3/files/${lockFile.id}`, { method: 'DELETE' });
+      await deleteCachedFileId(DRIVE_FILES.LOCK);
     }
   } catch {
     // best-effort: the lock expires via TTL anyway
@@ -1041,9 +1202,10 @@ export class DriveSyncService {
   /** Info about the backup currently in Drive (null when none). */
   public static async getRemoteInfo(): Promise<{ meta: SyncMeta; size: number } | null> {
     const token = await this.ensureToken();
-    const metaFile = await findFile(token, DRIVE_FILES.META);
+    // fluxo interativo: ignora o cache negativo (pode estar velho)
+    const metaFile = await findFile(token, DRIVE_FILES.META, { ignoreNegativeCache: true });
     if (!metaFile) return null;
-    const pkgFile = await findFile(token, DRIVE_FILES.COLPKG);
+    const pkgFile = await findFile(token, DRIVE_FILES.COLPKG, { ignoreNegativeCache: true });
     const meta = JSON.parse(await (await downloadFile(token, metaFile.id)).text()) as SyncMeta;
     return { meta, size: Number(pkgFile?.size || 0) };
   }
@@ -1256,7 +1418,7 @@ export class DriveSyncService {
             const lastSyncedUsn = this.getLastSyncedUsn();
             if (lastSyncedUsn > 0) {
               timing?.mark('upload-incremental-início');
-              const newHead = await this.uploadIncremental(token, progress, itemProgress);
+              const newHead = await this.uploadIncremental(token, progress, itemProgress, allFiles);
               timing?.mark('upload-incremental-fim');
               if (newHead !== null) {
                 // Preferências/extensões também precisam subir (Fase 5),
@@ -1294,7 +1456,8 @@ export class DriveSyncService {
               token,
               progress,
               itemProgress,
-              remoteMeta.uploadedAt
+              remoteMeta.uploadedAt,
+              allFiles
             );
             timing?.mark('download-incremental-fim');
             if (newHead !== null) {
@@ -1325,7 +1488,8 @@ export class DriveSyncService {
           token,
           remoteMeta,
           progress,
-          itemProgress
+          itemProgress,
+          allFiles
         );
         timing?.mark('download-collection-fim');
         const remoteSnapshot = computeSnapshot(
@@ -1760,12 +1924,12 @@ export class DriveSyncService {
       deviceName: getDeviceName(),
       ...payload,
     };
-    const existing = await findFile(token, DRIVE_FILES.EXTRAS);
+    const existing = await getFileIdForUpload(token, DRIVE_FILES.EXTRAS);
     await uploadMultipart(
       token,
       DRIVE_FILES.EXTRAS,
       new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }),
-      existing?.id
+      existing ?? undefined
     );
   }
 
@@ -1784,8 +1948,7 @@ export class DriveSyncService {
       const pkg = await exportAddonPackage();
       if (pkg) {
         const zipBlob = new Blob([pkg.bytes.slice()], { type: 'application/zip' });
-        const existingZip = await findFile(token, DRIVE_FILES.ADDONS_ZIP);
-        await uploadResumable(token, DRIVE_FILES.ADDONS_ZIP, zipBlob, existingZip?.id);
+        await uploadResumableCached(token, DRIVE_FILES.ADDONS_ZIP, zipBlob);
       }
     } else {
       // conjunto vazio subindo: a exclusão (índice vazio) também é um envio
@@ -1801,12 +1964,10 @@ export class DriveSyncService {
       addons: state.addons,
       hash: state.hash,
     };
-    const existingIndex = await findFile(token, DRIVE_FILES.ADDONS_INDEX);
-    await uploadMultipart(
+    await uploadMultipartCached(
       token,
       DRIVE_FILES.ADDONS_INDEX,
-      new Blob([JSON.stringify(index, null, 2)], { type: 'application/json' }),
-      existingIndex?.id
+      new Blob([JSON.stringify(index, null, 2)], { type: 'application/json' })
     );
 
     // sem nenhuma extensão: o índice vazio já avisa o outro aparelho
@@ -1979,7 +2140,8 @@ export class DriveSyncService {
       itemProgress({ phase: 'download' });
 
       timing?.mark('meta-find');
-      const metaFile = await findFile(token, DRIVE_FILES.META);
+      // fluxo interativo (restaurar): ignora o cache negativo (pode estar velho)
+      const metaFile = await findFile(token, DRIVE_FILES.META, { ignoreNegativeCache: true });
       if (!metaFile) throw new Error('Não há backup no Google Drive ainda.');
       const remoteMeta = JSON.parse(
         await (await downloadFile(token, metaFile.id)).text()
@@ -2318,15 +2480,13 @@ export class DriveSyncService {
     // fase de envio: mostra quantos itens estão indo para o Drive
     itemProgress({ phase: 'upload', counts: meta.counts });
     progress(`Enviando backup (${formatBytes(blob.size)}) para o Google Drive…`);
-    const existing = await findFile(token, DRIVE_FILES.COLPKG);
-    await uploadResumable(token, DRIVE_FILES.COLPKG, blob, existing?.id);
+    // id em cache → 0 chamadas de busca (404 cai no fallback: relista e recria)
+    await uploadResumableCached(token, DRIVE_FILES.COLPKG, blob);
 
-    const metaExisting = await findFile(token, DRIVE_FILES.META);
-    const metaUpload = await uploadMultipart(
+    const metaUpload = await uploadMultipartCached(
       token,
       DRIVE_FILES.META,
-      new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }),
-      metaExisting?.id
+      new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' })
     );
     // fast path: o META é reescrito em todo sync → é o marcador de "o Drive mudou"
     await this.rememberMetaWritten(token, metaUpload);
@@ -2374,9 +2534,10 @@ export class DriveSyncService {
       cards: Card[];
       presets?: Preset[];
       revlog?: RevlogEntry[];
-    }
+    },
+    allFiles?: Record<string, DriveFileInfo>
   ): Promise<void> {
-    const stateInfo = await this.readStateFromDrive(token);
+    const stateInfo = await this.readStateFromDrive(token, allFiles);
     if (!stateInfo) return;
     const { state, modifiedTime } = stateInfo;
     if (!state || !state.delta) return;
@@ -2387,7 +2548,7 @@ export class DriveSyncService {
     // delta vazio: o head continua sendo o contador compartilhado)
     StorageService.adoptUsnCounter(state.headUsn);
     // delta velho (o .colpkg já é mais novo): o .colpkg é a verdade
-    const pkgFile = await findFile(token, DRIVE_FILES.COLPKG);
+    const pkgFile = allFiles?.[DRIVE_FILES.COLPKG] ?? (await findFile(token, DRIVE_FILES.COLPKG));
     if (pkgFile?.modifiedTime && modifiedTime && pkgFile.modifiedTime > modifiedTime) return;
     const d = state.delta;
     const vazio =
@@ -2406,9 +2567,10 @@ export class DriveSyncService {
    * Lê o estado unificado do Drive (null se não existir ou estiver ruins).
    */
   private static async readStateFromDrive(
-    token: string
+    token: string,
+    allFiles?: Record<string, DriveFileInfo>
   ): Promise<{ state: SyncState; modifiedTime: string } | null> {
-    const file = await findFile(token, DRIVE_FILES.STATE);
+    const file = allFiles?.[DRIVE_FILES.STATE] ?? (await findFile(token, DRIVE_FILES.STATE));
     if (!file) return null;
     try {
       const raw = await (await downloadFile(token, file.id)).text();
@@ -2430,11 +2592,12 @@ export class DriveSyncService {
    * já contém — e aplicá-lo poderia devolver ao mundo uma nota que já foi
    * apagada (foi exatamente o que aconteceu com a nota de teste).
    */
-  private static async isStateStale(token: string): Promise<boolean> {
-    const [stateFile, pkgFile] = await Promise.all([
-      findFile(token, DRIVE_FILES.STATE),
-      findFile(token, DRIVE_FILES.COLPKG),
-    ]);
+  private static async isStateStale(
+    token: string,
+    allFiles?: Record<string, DriveFileInfo>
+  ): Promise<boolean> {
+    const stateFile = allFiles?.[DRIVE_FILES.STATE] ?? (await findFile(token, DRIVE_FILES.STATE));
+    const pkgFile = allFiles?.[DRIVE_FILES.COLPKG] ?? (await findFile(token, DRIVE_FILES.COLPKG));
     if (!stateFile?.modifiedTime || !pkgFile?.modifiedTime) return false;
     return pkgFile.modifiedTime > stateFile.modifiedTime;
   }
@@ -2487,12 +2650,16 @@ export class DriveSyncService {
       addonsHash: (await computeAddonState()).hash,
     };
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-    const existing = await findFile(token, DRIVE_FILES.STATE);
-    await uploadResumable(token, DRIVE_FILES.STATE, blob, existing?.id);
-    // fast path: o STATE foi reescrito → guarda o modifiedTime novo
+    const uploaded = await uploadResumableCached(token, DRIVE_FILES.STATE, blob);
+    // fast path: o STATE foi reescrito → guarda o modifiedTime novo (a resposta
+    // do upload já traz; só busca o arquivo se não trouxer)
     try {
-      const fresh = await findFile(token, DRIVE_FILES.STATE);
-      if (fresh?.modifiedTime) this.setStateModifiedTime(fresh.modifiedTime);
+      if (uploaded.modifiedTime) {
+        this.setStateModifiedTime(uploaded.modifiedTime);
+      } else {
+        const fresh = await findFile(token, DRIVE_FILES.STATE);
+        if (fresh?.modifiedTime) this.setStateModifiedTime(fresh.modifiedTime);
+      }
     } catch {
       // fast path é otimização, não crítico
     }
@@ -2521,7 +2688,8 @@ export class DriveSyncService {
   private static async uploadIncremental(
     token: string,
     progress: (m: string) => void,
-    itemProgress: (p: SyncProgressState | null) => void = () => {}
+    itemProgress: (p: SyncProgressState | null) => void = () => {},
+    allFiles?: Record<string, DriveFileInfo>
   ): Promise<number | null> {
     const lastSyncedUsn = this.getLastSyncedUsn();
     const currentUsn = StorageService.getCurrentUsn();
@@ -2573,7 +2741,7 @@ export class DriveSyncService {
     // O delta que já está no Drive (a base) + as mudanças novas deste
     // aparelho. Sem a soma, cada envio incremental jogaria fora o delta
     // anterior e as mudanças antigas nunca chegariam aos outros aparelhos.
-    const previous = await this.readStateFromDrive(token);
+    const previous = await this.readStateFromDrive(token, allFiles);
     const previousState = previous?.state ?? null;
     if (previousState && previousState.headUsn !== lastSyncedUsn) {
       // O Drive tem mudanças que este aparelho ainda não viu: publicar um
@@ -2584,7 +2752,7 @@ export class DriveSyncService {
     // O delta que já está no Drive é a BASE do que este aparelho vai somar.
     // Se ele estiver velho (o .colpkg já é mais novo), não dá para somar em
     // cima: o caminho seguro é sincronizar tudo.
-    if (previous && (await this.isStateStale(token))) {
+    if (previous && (await this.isStateStale(token, allFiles))) {
       progress('O estado do Drive ficou atrás do backup — vai sincronizar tudo.');
       return null;
     }
@@ -2659,23 +2827,29 @@ export class DriveSyncService {
     const stateBlob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
     progress(`Enviando estado unificado (${formatBytes(stateBlob.size)}) para o Drive…`);
     itemProgress({ phase: 'upload', counts: { decks: decks.length, notes: notes.length, cards: cards.length } });
-    const existingState = await findFile(token, DRIVE_FILES.STATE);
-    await uploadResumable(token, DRIVE_FILES.STATE, stateBlob, existingState?.id);
+    // id em cache → 0 chamadas de busca (404 cai no fallback: relista e recria)
+    const stateUpload = await uploadResumableCached(token, DRIVE_FILES.STATE, stateBlob);
     // Fast path: atualiza o modifiedTime do STATE para o fast path do próximo sync
+    // (a resposta do upload já traz; só busca o arquivo se não trouxer)
     try {
-      const freshState = await findFile(token, DRIVE_FILES.STATE);
-      if (freshState?.modifiedTime) this.setStateModifiedTime(freshState.modifiedTime);
+      if (stateUpload.modifiedTime) {
+        this.setStateModifiedTime(stateUpload.modifiedTime);
+      } else {
+        const freshState = await findFile(token, DRIVE_FILES.STATE);
+        if (freshState?.modifiedTime) this.setStateModifiedTime(freshState.modifiedTime);
+      }
     } catch {
       // ignora: fast path é otimização, não crítico
     }
 
     // Atualiza o META do Drive: é por ele que os OUTROS aparelhos percebem
     // que há mudanças novas no Drive para baixar (checagem de remoteChanged).
-    const existingBackupMeta = await findFile(token, DRIVE_FILES.META);
+    // id em cache → 0 chamadas de busca; baixa só para ler o appVersion antigo
+    const existingBackupMetaId = await getFileIdForUpload(token, DRIVE_FILES.META);
     let appVersion = '0.1.0';
-    if (existingBackupMeta) {
+    if (existingBackupMetaId) {
       try {
-        appVersion = (JSON.parse(await (await downloadFile(token, existingBackupMeta.id)).text()) as SyncMeta).appVersion;
+        appVersion = (JSON.parse(await (await downloadFile(token, existingBackupMetaId)).text()) as SyncMeta).appVersion;
       } catch {
         /* mantém o padrão */
       }
@@ -2702,11 +2876,10 @@ export class DriveSyncService {
       // Marcador: este app conhece o estado unificado (runora-sync-state.json).
       syncFormat: 'state',
     };
-    const metaUpload = await uploadMultipart(
+    const metaUpload = await uploadMultipartCached(
       token,
       DRIVE_FILES.META,
-      new Blob([JSON.stringify(backupMeta, null, 2)], { type: 'application/json' }),
-      existingBackupMeta?.id
+      new Blob([JSON.stringify(backupMeta, null, 2)], { type: 'application/json' })
     );
     // fast path: o META é reescrito em todo sync → é o marcador de "o Drive mudou"
     await this.rememberMetaWritten(token, metaUpload);
@@ -2730,9 +2903,11 @@ export class DriveSyncService {
     token: string,
     remoteMeta: SyncMeta,
     progress: (m: string) => void,
-    itemProgress: (p: SyncProgressState | null) => void = () => {}
+    itemProgress: (p: SyncProgressState | null) => void = () => {},
+    allFiles?: Record<string, DriveFileInfo>
   ): Promise<ImportableCollection> {
-    const pkg = await findFile(token, DRIVE_FILES.COLPKG);
+    // o .colpkg já veio na listagem única do início do sync (0 chamadas extras)
+    const pkg = allFiles?.[DRIVE_FILES.COLPKG] ?? (await findFile(token, DRIVE_FILES.COLPKG));
     if (!pkg) {
       throw new Error('Há metadados no Drive, mas o arquivo de backup (.colpkg) não foi encontrado.');
     }
@@ -2753,7 +2928,7 @@ export class DriveSyncService {
     // O .colpkg é a BASE (o estado até o último sync completo). As mudanças
     // depois disso vivem no delta do estado unificado — sem aplicar o delta,
     // o .colpkg viria velho: nota nova sumia, nota apagada voltava.
-    await this.applyRemoteStateDelta(token, data);
+    await this.applyRemoteStateDelta(token, data, allFiles);
 
     // A mídia do outro dispositivo entra junto (nomes únicos, reimportar é seguro)
     progress('Importando os arquivos de mídia do Drive…');
@@ -2782,12 +2957,13 @@ export class DriveSyncService {
     token: string,
     progress: (m: string) => void,
     itemProgress: (p: SyncProgressState | null) => void = () => {},
-    remoteUploadedAt?: number
+    remoteUploadedAt?: number,
+    allFiles?: Record<string, DriveFileInfo>
   ): Promise<number | null> {
     const lastSyncedUsn = this.getLastSyncedUsn();
 
-    // Lê o estado unificado do Drive
-    const stateFile = await findFile(token, DRIVE_FILES.STATE);
+    // Lê o estado unificado do Drive (já veio na listagem única — 0 chamadas)
+    const stateFile = allFiles?.[DRIVE_FILES.STATE] ?? (await findFile(token, DRIVE_FILES.STATE));
     if (!stateFile) {
       progress('Nenhum estado incremental no Drive — fará sync completo se necessário.');
       return null;
@@ -2805,7 +2981,7 @@ export class DriveSyncService {
       //
       // A única exceção é o estado VELHO: aí o delta não descreve o .colpkg e
       // a coleção completa é a verdade.
-      if (await this.isStateStale(token)) {
+      if (await this.isStateStale(token, allFiles)) {
         progress('O estado do Drive ficou atrás do backup — vai baixar a coleção completa.');
         return null;
       }
@@ -2829,7 +3005,7 @@ export class DriveSyncService {
 
     // Delta velho (o .colpkg já é mais novo): aplicar ele poderia devolver
     // ao mundo algo que já foi apagado. O caminho seguro é a coleção completa.
-    if (await this.isStateStale(token)) {
+    if (await this.isStateStale(token, allFiles)) {
       progress('O estado do Drive ficou atrás do backup — vai baixar a coleção completa.');
       return null;
     }
@@ -3017,7 +3193,8 @@ itemProgress({ phase: 'download', counts: state.counts });
     ];
 
     for (const name of oldFiles) {
-      const file = await findFile(token, name);
+      // limpeza manual: ignora o cache negativo (pode estar velho)
+      const file = await findFile(token, name, { ignoreNegativeCache: true });
       if (file) {
         await api(token, `/drive/v3/files/${file.id}`, { method: 'DELETE' });
         deleted.push(name);
