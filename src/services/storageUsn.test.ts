@@ -194,6 +194,73 @@ describe('USN — o contador só avança quando o conteúdo muda', () => {
   });
 });
 
+describe('USN — deleção também é mudança real', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('apagar uma nota avança o contador (senão o delete vira backup completo)', () => {
+    StorageService.saveNotes([makeNote({ usn: 5 })]);
+    const usn1 = StorageService.getCurrentUsn();
+
+    StorageService.deleteNote('note-1');
+
+    assert.equal(
+      StorageService.getCurrentUsn(),
+      usn1 + 1,
+      'a deleção precisa criar uma versão nova (o tombstone depende disso)'
+    );
+    assert.equal(StorageService.getNotes().length, 0);
+  });
+
+  it('o tombstone da deleção fica ACIMA do último USN sincronizado', () => {
+    StorageService.saveNotes([makeNote({ usn: 5 })]);
+    const usn1 = StorageService.getCurrentUsn();
+
+    StorageService.deleteNote('note-1');
+
+    // o filtro do delta só pega tombstone com usn > sinceUsn
+    const tombstones = StorageService.getAllSyncTombstonesSince(usn1);
+    assert.equal(tombstones.length, 1, 'a deleção tem que entrar no delta');
+    assert.equal(tombstones[0].type, 'note');
+  });
+
+  it('apagar um card avança o contador também', () => {
+    StorageService.saveNotes([makeNote({ usn: 5 })]);
+    StorageService.saveCards([makeCard({ usn: 5 })]);
+    const usn1 = StorageService.getCurrentUsn();
+
+    StorageService.deleteCard('card-1');
+
+    assert.equal(StorageService.getCurrentUsn(), usn1 + 1);
+    assert.equal(StorageService.getCards().length, 0);
+  });
+
+  it('apagar o que não existe não cria versão nova', () => {
+    StorageService.saveNotes([makeNote({ usn: 5 })]);
+    const usn1 = StorageService.getCurrentUsn();
+
+    StorageService.deleteNote('nao-existe');
+    StorageService.deleteCard('nao-existe');
+
+    assert.equal(StorageService.getCurrentUsn(), usn1);
+  });
+
+  it('deleção que vem do Drive (sem renumerar) não cria versão nova', () => {
+    StorageService.saveNotes([makeNote({ usn: 5 })]);
+    const usn1 = StorageService.getCurrentUsn();
+
+    // o outro aparelho já deletou: o USN novo é o DELE
+    StorageService.withoutUsnBump(() => StorageService.deleteNote('note-1'));
+
+    assert.equal(
+      StorageService.getCurrentUsn(),
+      usn1,
+      'aplicar deleção do Drive não pode criar versão local'
+    );
+  });
+});
+
 describe('USN — identidade entre aparelhos (o `id` é local de cada aparelho)', () => {
   beforeEach(() => {
     localStorage.clear();
