@@ -17,7 +17,9 @@
     "site:deploy": "node scripts/deploy-site.mjs",
     "android:build": "npm run build && npx cap copy android && npx cap build android",
     "android:open": "npx cap open android",
-    "android:run": "npm run build && npx cap copy android && npx cap run android"
+    "android:run": "npm run build && npx cap copy android && npx cap run android",
+    "android:dev": "node scripts/android-apk.mjs dev",
+    "android:prod": "node scripts/android-apk.mjs prod"
   },
   "main": "electron/main.cjs",
   "build": {

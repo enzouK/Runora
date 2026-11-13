@@ -4,12 +4,20 @@ android {
     namespace = "com.runora.fsrs"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.runora.fsrs"
+        // `-PdevBuild=true` gera o APK de DESENVOLVIMENTO: outro pacote
+        // (`com.runora.fsrs.dev`), para poder conviver com o app de produção
+        // (`com.runora.fsrs`) no mesmo aparelho — sem trocar um pelo outro.
+        // O `capacitor.config.ts` usa a mesma troca de appId/appName.
+        applicationId project.hasProperty('devBuild') ? "com.runora.fsrs.dev" : "com.runora.fsrs"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Rótulos do app (o `strings.xml` NÃO define app_name/title_activity_main
+        // para não dar "duplicate resource" com estes valores).
+        resValue "string", "app_name", project.hasProperty('devBuild') ? "Runora Dev" : "Runora"
+        resValue "string", "title_activity_main", project.hasProperty('devBuild') ? "Runora Dev" : "Runora"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61

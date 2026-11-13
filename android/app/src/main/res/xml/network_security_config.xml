@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Regras de rede do app Android.
+
+    Regra geral: SÓ HTTPS (é o padrão do Android moderno — o app fala com a
+    API do Google Drive por HTTPS).
+
+    Exceção (somente desenvolvimento): o APK de dev carrega a interface do
+    Vite que roda no PC, em HTTP puro. No emulador, o PC é visto como
+    `10.0.2.2` (o "localhost" do emulador). Sem esta exceção o APK de dev
+    abriria em branco, porque o Android bloqueia tráfego "cleartext"
+    (HTTP) por padrão desde a API 28.
+
+    Nada mais é liberado — todo o resto continua exigindo HTTPS.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Emulador Android -> PC (servidor Vite de desenvolvimento). -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <!-- Emulador/PC -> loopback (adb reverse, testes locais). -->
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

@@ -1,7 +1,10 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Runora</string>
-    <string name="title_activity_main">Runora</string>
+    <!--
+        `app_name` e `title_activity_main` vêm do build.gradle (resValue),
+        porque mudam entre o app de produção ("Runora") e o de desenvolvimento
+        ("Runora Dev"). Não defina aqui, senão dá "duplicate resource".
+    -->
     <string name="package_name">com.runora.fsrs</string>
     <string name="custom_url_scheme">com.runora.fsrs</string>
 </resources>

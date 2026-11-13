@@ -93,15 +93,28 @@ perde. Por isso:
   `prod` usa o bundle embutido). Nunca deixar um deles para trás: um
   `APK-prod.apk` novo com um `APK-dev.apk` velho (ou o contrário) faz o
   emulador e o celular rodarem **códigos diferentes**.
-  - Montagem: `npm run build` → `CAP_SERVER_URL='http://10.0.2.2:3000' npx
-    cap copy android` → Gradle (JDK 21) → `release\Runora-APK-dev.apk` →
-    **depois, sem a variável**: `npx cap copy android` → Gradle →
+  - Montagem: `npm run android:dev` / `npm run android:prod` (o script
+    `scripts/android-apk.mjs` monta **os dois** e instala o escolhido), ou
+    na mão: `npm run build` → `CAP_SERVER_URL='http://10.0.2.2:3000' npx
+    cap copy android` → Gradle (JDK 21, com `-PdevBuild=true`) →
+    `release\Runora-APK-dev.apk` → **depois, sem a variável**: `npx
+    cap copy android` → Gradle (sem a opção) →
     `release\Runora-APK-prod.apk`.
   - **Termine sempre pelo de produção** — é o estado que deve ficar na pasta
     `android/` do projeto (a config gerada fica lá).
   - Antes de entregar, confira que o bundle dentro dos dois APKs tem o
     **mesmo hash** do `dist` final.
-  - Cuidado ao instalar: os dois têm a mesma `applicationId`
-    (`com.runora.fsrs`) → **um substitui o outro**; e as origens são
-    diferentes → os **dados ficam separados** (cards, login e estado do
-    sync não atravessam de um para o outro).
+- **O APK de dev é OUTRO pacote (`com.runora.fsrs.dev`, rótulo "Runora Dev")**
+  → ele **convive** com o de produção (`com.runora.fsrs`) no mesmo aparelho:
+  os dois ficam instalados lado a lado, sem trocar um pelo outro e sem perder
+  dados. O `applicationId`/rótulo são trocados pelo Gradle quando se monta com
+  `-PdevBuild=true` (ver `android/app/build.gradle`) e o `capacitor.config.ts`
+  acompanha a mesma troca.
+  - Atenção: o app dev tem **dados próprios** (origem `http://10.0.2.2:3000`)
+    → começa vazio. Se alguém logar nele, ele vira um **segundo aparelho** no
+    Drive (o `.colpkg` não é mexido por isso). O login do Google no Android
+    volta sempre em `https://localhost` (única origem registrada no Google
+    Cloud) → no app dev essa volta carrega o **bundle embutido**, não o Vite.
+  - O `network_security_config.xml` libera HTTP (cleartext) **só** para
+    `10.0.2.2`, `localhost` e `127.0.0.1` — sem isso o APK de dev abriria em
+    branco (o Android bloqueia HTTP desde a API 28).

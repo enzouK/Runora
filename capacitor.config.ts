@@ -10,12 +10,18 @@ import type { CapacitorConfig } from '@capacitor/cli';
  *   npx cap copy android
  *
  * Sem a variável (build de produção), o app usa os arquivos de `dist`.
+ *
+ * No modo dev o app vira OUTRO pacote (`com.runora.fsrs.dev`, com o nome
+ * "Runora Dev"): assim ele pode ficar instalado AO LADO do app de produção
+ * (`com.runora.fsrs`) no mesmo aparelho — sem trocar um pelo outro.
+ * O `applicationId` do Gradle acompanha essa mudança (ver
+ * `android/app/build.gradle`, opção `-PdevBuild=true`).
  */
 const serverUrl = process.env.CAP_SERVER_URL;
 
 const config: CapacitorConfig = {
-  appId: 'com.runora.fsrs',
-  appName: 'Runora',
+  appId: serverUrl ? 'com.runora.fsrs.dev' : 'com.runora.fsrs',
+  appName: serverUrl ? 'Runora Dev' : 'Runora',
   webDir: 'dist',
   ...(serverUrl
     ? {
