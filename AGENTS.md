@@ -49,8 +49,8 @@ perde. Por isso:
   explícita.
 - **Depois de commitar, pergunte se o dono quer push.** Push só com a
   autorização dele.
-- **Ao final de toda implementação que mexa no app, faça o build do `.exe` e
-  do APK** — antes do commit. A ordem é:
+- **Ao final de toda implementação que mexa no app, faça o build do `.exe`,
+  do `APK-dev.apk` e do `APK-prod.apk`** — antes do commit. A ordem é:
   implementar → validar no Vite → `npm test` + `npx tsc --noEmit` →
   **build** → commit → perguntar sobre o push.
   Tarefas que **não** mexem no app (só documentação, ferramentas, `.opencode/`)
@@ -88,3 +88,20 @@ perde. Por isso:
   secret na troca do código mesmo com PKCE.
 - APK emulador = dev (`http://10.0.2.2:3000`); APK celular real = produção
   (origem `https://localhost/`).
+- **Os dois APKs são sempre gerados JUNTOS, do mesmo `dist`** — é o mesmo
+  app, só muda de onde ele carrega o código (o `dev` busca no Vite do PC; o
+  `prod` usa o bundle embutido). Nunca deixar um deles para trás: um
+  `APK-prod.apk` novo com um `APK-dev.apk` velho (ou o contrário) faz o
+  emulador e o celular rodarem **códigos diferentes**.
+  - Montagem: `npm run build` → `CAP_SERVER_URL='http://10.0.2.2:3000' npx
+    cap copy android` → Gradle (JDK 21) → `release\Runora-APK-dev.apk` →
+    **depois, sem a variável**: `npx cap copy android` → Gradle →
+    `release\Runora-APK-prod.apk`.
+  - **Termine sempre pelo de produção** — é o estado que deve ficar na pasta
+    `android/` do projeto (a config gerada fica lá).
+  - Antes de entregar, confira que o bundle dentro dos dois APKs tem o
+    **mesmo hash** do `dist` final.
+  - Cuidado ao instalar: os dois têm a mesma `applicationId`
+    (`com.runora.fsrs`) → **um substitui o outro**; e as origens são
+    diferentes → os **dados ficam separados** (cards, login e estado do
+    sync não atravessam de um para o outro).
