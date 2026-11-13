@@ -2,43 +2,89 @@
 
 Este arquivo é lido no início de cada sessão. Siga-o.
 
-## 1. Plano de implementação: `.opencode/PLANO.md` (OBRIGATÓRIO)
+---
 
-O plano vive em `.opencode/PLANO.md` — pasta fora do git (`.gitignore`),
-para não ficar visível no repositório público.
-O chat é volátil — planos e decisões que ficarem só na conversa se perdem.
-Por isso:
+## 1. Workflow da tarefa (OBRIGATÓRIO)
 
-1. **Leia `.opencode/PLANO.md` no começo de toda tarefa** — nele estão as
-   decisões já tomadas, o que está pendente e o histórico do que foi feito.
+O trabalho em curso vive em três arquivos, com papéis bem separados:
+
+| Arquivo | Guarda | Quando ler |
+|---|---|---|
+| `.opencode/PLANO.md` | o que **falta** fazer + o plano da tarefa em andamento | sempre, no começo de cada tarefa |
+| `.opencode/HISTORICO.md` | o que **já foi feito** (commit, medições, bugs) | quando precisar de contexto do passado |
+| `AGENTS.md` (este) | as **regras permanentes** | sempre carregado, automaticamente |
+
+`.opencode/` está fora do git (`.gitignore`) — os planos e o histórico não vão
+para o repositório público. O chat é volátil: o que ficar só na conversa se
+perde. Por isso:
+
+1. **Leia `.opencode/PLANO.md` no começo de toda tarefa** — nele estão a fila
+   do que falta e o plano da tarefa em andamento.
 2. **Antes de implementar qualquer coisa, escreva o plano lá primeiro**:
-   objetivo, etapas em checklist (`- [ ]`), riscos, e como será validado.
+   objetivo, etapas em checklist (`- [ ]`), riscos e como será validado.
 3. **Durante a implementação, mantenha o arquivo vivo**: marque os itens
    concluídos (`- [x]`), anote medidas reais e atualize o status da etapa
    (⬜ PENDENTE → 🔄 EM ANDAMENTO → ✅ CONCLUÍDA) — não espere o fim.
-4. **Decisões novas** tomadas com o usuário (escolhas de design, limites,
-   "nunca faça X") viram itens na seção **Decisões permanentes** do PLANO.md.
-5. Etapa concluída = ganho/resultado resumido + commit previsto/real na entrada.
+4. **Quando a tarefa terminar** (commit/push feito): mova a entrada da tarefa
+   para `.opencode/HISTORICO.md` (com o resultado, as medições, os bugs
+   encontrados e o commit), atualize o índice de lá, e tire a tarefa da fila
+   do `PLANO.md`.
+5. **Antes de responder ao usuário**: confira se o `PLANO.md` e o `HISTORICO.md`
+   refletem o que você acabou de fazer. Se não refletirem, **atualize os dois
+   primeiro** e só então responda.
+6. **Tarefas só de conversa** (perguntas, discussões, consultas): **não** mexa
+   nos arquivos — a menos que o dono **aprove** uma decisão nova. Nesse caso,
+   registre a decisão aprovada nas regras permanentes deste `AGENTS.md` (e/ou
+   no `HISTORICO.md`) e diga o que mudou.
+
+> Um plugin local (`.opencode/plugins/runora-plano/`) injeta um lembrete
+> automático antes da resposta quando os arquivos ficaram desatualizados.
+
+---
 
 ## 2. Regras de colaboração (acordadas com o dono do projeto)
 
 - Responda sempre em **PT-BR**, em linguagem acessível (usuário leigo).
 - **Pergunte antes de commitar** cada etapa; só commite com autorização
-  explícita. Push somente quando pedido explicitamente.
-- Builds (.exe / APK) **somente quando pedidos** explicitamente.
+  explícita.
+- **Depois de commitar, pergunte se o dono quer push.** Push só com a
+  autorização dele.
+- **Ao final de toda implementação que mexa no app, faça o build do `.exe` e
+  do APK** — antes do commit. A ordem é:
+  implementar → validar no Vite → `npm test` + `npx tsc --noEmit` →
+  **build** → commit → perguntar sobre o push.
+  Tarefas que **não** mexem no app (só documentação, ferramentas, `.opencode/`)
+  não precisam de build.
 - Validação/testes primeiro no servidor Vite (`http://127.0.0.1:3000/`).
 - Testes: `npm test` + `npx tsc --noEmit` antes de qualquer commit.
 
-## 3. Regras do domínio (Runora — NÃO violar)
+---
 
-- **NÃO tocar** no algoritmo FSRS, na lógica de estudo nem no formato atual
-  do `.colpkg`.
-- O `.colpkg` **NUNCA será deletado** do Drive — ele é o ponto de backup
-  ("Restaurar do Drive"), decisivo para voltar atrás.
-- Protocolo de sync: `.colpkg` = base; delta incremental é sempre aplicado
-  **por cima** do `.colpkg`, nunca no lugar dele.
-- USN = contador **compartilhado** (Drive = referência); avança só com
-  mudança real de conteúdo.
-- Identidade universal: nota = GUID, card = (GUID da nota, ordem do template),
-  deck/tipo/preset = NOME.
-- Login do Google é feito **pelo usuário** no dispositivo (não injetar token).
+## 3. Regras do domínio (Runora)
+
+- **Login do Google é feito pelo usuário** no dispositivo (não injetar token).
+- **O `.colpkg` não é apagado do Drive** — ele é o ponto de backup
+  ("Restaurar do Drive"), decisivo para voltar atrás. Ele só pode ser
+  substituído por algo igualmente seguro, e essa decisão é do dono.
+- **Protocolo de sync:** `.colpkg` = base; o delta incremental é sempre
+  aplicado **por cima** dele, nunca no lugar.
+- **USN = contador compartilhado** (Drive = referência); avança só com mudança
+  real de conteúdo.
+- **Identidade universal:** nota = GUID, card = (GUID da nota, ordem do
+  template), deck/tipo/preset = NOME.
+- **Estabilidade (barra alta, não é proibição):** o algoritmo FSRS atual e a
+  lógica de estudo funcionam bem e agradam o dono. Mexer neles é possível,
+  mas só **com conversa e aprovação explícita**, explicando o que muda para o
+  usuário. O mesmo vale para o **formato do `.colpkg`**: mudá-lo quebra a
+  compatibilidade com pacotes do Anki e com aparelhos antigos — só com plano
+  aprovado.
+
+---
+
+## 4. Ambiente e builds
+
+- O client secret do Google fica em **`.env.local`** (gitignored) — **nunca**
+  commitado no repositório público (aviso do Google Cloud). O Google exige
+  secret na troca do código mesmo com PKCE.
+- APK emulador = dev (`http://10.0.2.2:3000`); APK celular real = produção
+  (origem `https://localhost/`).
