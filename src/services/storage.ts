@@ -171,7 +171,40 @@ export class StorageService {
    */
   public static getMaxItemUsn(): number {
     let max = 0;
-    const listas: Array<Array<{ usn?: number }>> = [
+    for (const lista of this.getContentLists()) {
+      for (const item of lista) max = Math.max(max, item.usn ?? 0);
+    }
+    // as deleções (tombstones) também são "versões" da coleção: sem elas,
+    // um aparelho que só deletou algo pareceria estar atrás do head.
+    const tombstones = this.getSyncTombstones();
+    for (const grupo of Object.keys(tombstones) as Array<keyof SyncTombstones>) {
+      for (const t of tombstones[grupo]) max = Math.max(max, t.usn ?? 0);
+    }
+    return max;
+  }
+
+  /**
+   * Maior USN só do CONTEÚDUTO (notas, cards, decks, tipos, presets, revlog).
+   *
+   * POR QUE EXISTE SEPARADO DO `getMaxItemUsn`:
+   * uma deleção local (tombstone) tem USN alto, mas NÃO prova que o
+   * conteúdo daqui está atualizado — o aparelho pode ter uma nota deletada
+   * com USN 244 e ainda estar com o resto da coleção em 206. Foi exatamente
+   * isso que escondeu as revisões do `.exe` no emulador: o tombstone (244)
+   * "disfarçava" o conteúdo velho (206) e o aparelho achava que estava em
+   * dia. Para a pergunta "estou atrás do head?", vale o CONTEÚDUTO.
+   */
+  public static getMaxContentUsn(): number {
+    let max = 0;
+    for (const lista of this.getContentLists()) {
+      for (const item of lista) max = Math.max(max, item.usn ?? 0);
+    }
+    return max;
+  }
+
+  /** As listas da coleção que carregam USN (usado nos cálculos de USN). */
+  private static getContentLists(): Array<Array<{ usn?: number }>> {
+    return [
       this.getNotes(),
       this.getCards(),
       this.getDecks(),
@@ -179,10 +212,115 @@ export class StorageService {
       this.getPresets(),
       this.getRevlog(),
     ];
-    for (const lista of listas) {
-      for (const item of lista) max = Math.max(max, item.usn ?? 0);
+  }
+
+  /**
+   * Contagens locais da coleção — para comparar com as do Drive (STATE).
+   *
+   * O STATE do Drive publica `collectionCounts` (quantos decks/notas/cards/
+   * revisões ele tem). Se o Drive tem MAIS revisões do que este aparelho,
+   * é sinal de que falta conteúdo aqui (foi o caso do emulador: 7 revisões
+   * no Drive, 3 aqui).
+   */
+  public static getCollectionCounts(): {
+    decks: number;
+    notes: number;
+    cards: number;
+    noteTypes: number;
+    revlog: number;
+  } {
+    return {
+      decks: this.getDecks().length,
+      notes: this.getNotes().length,
+      cards: this.getCards().length,
+      noteTypes: this.getNoteTypes().length,
+      revlog: this.getRevlog().length,
+    };
+  }
+
+  /**
+   * Quantas deleções LOCAIS ainda NÃO subiram (pendentes), por tipo.
+   *
+   * Serve para não confundir "o Drive tem mais itens" com "este aparelho
+   * deletou coisas que o Drive ainda não sabe" — um item deletado aqui
+   * ainda existe no Drive até a deleção subir.
+   */
+  public static getPendingDeletionCounts(sinceUsn: number): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const t of this.getAllSyncTombstonesSince(sinceUsn)) {
+      out[t.type] = (out[t.type] ?? 0) + 1;
     }
-    return max;
+    return out;
+  }
+
+  /**
+   * Dá USN NOVO (acima de `minimo`) às mudanças locais que o Drive ainda não
+   * viu — as que têm USN maior que `desdeUsn` e menor/igual a `minimo`.
+   *
+   * POR QUE ISSO EXISTE:
+   * o USN é um contador COMPARTILHADO. Se o aparelho ficou offline e o outro
+   * aparelho avançou o head (ex.: 244), o contador local continuou em 207: as
+   * mudanças feitas aqui receberam USNs 208-211 — **abaixo** do head. Quando
+   * o Drive é lido, o contador sobe para 244 e aquelas mudanças ficam "no
+   * passado": nenhum delta as carrega (`getCardsSince(244)` devolve vazio) e
+   * o aparelho que está no head acha que já tem tudo. As revisões sumiam.
+   *
+   * Aqui elas ganham um USN acima do head → voltam a ser "pendentes" e
+   * podem viajar no próximo delta.
+   *
+   * O **conteúdo** não é tocado — só o número (nada de FSRS, agenda ou
+   * histórico muda).
+   *
+   * @param desdeUsn só itens com USN MAIOR que isto são reestampados
+   * @param minimo   o novo USN sai acima deste valor
+   * @returns quantos itens foram reestampados
+   */
+  public static restampPendingChanges(desdeUsn: number, minimo: number): number {
+    // o contador precisa estar no mínimo antes de gerar o próximo USN
+    this.adoptUsnCounter(minimo);
+    const novoUsn = this.nextUsn();
+
+    let total = 0;
+    const reestampa = <T extends { usn?: number }>(key: string): void => {
+      const itens = this.readStored<T>(key);
+      if (!itens.length) return;
+      let mudou = false;
+      const novos = itens.map((item) => {
+        const usn = item.usn ?? 0;
+        if (usn > desdeUsn && usn <= minimo) {
+          mudou = true;
+          total++;
+          return { ...item, usn: novoUsn };
+        }
+        return item;
+      });
+      if (mudou) localStorage.setItem(key, JSON.stringify(novos));
+    };
+
+    reestampa(STORAGE_KEYS.DECKS);
+    reestampa(STORAGE_KEYS.NOTETYPES);
+    reestampa(STORAGE_KEYS.NOTES);
+    reestampa(STORAGE_KEYS.CARDS);
+    reestampa(STORAGE_KEYS.REVLOG);
+    reestampa(STORAGE_KEYS.PRESETS);
+
+    // tombstones (deletados) também carregam USN
+    const tombstones = this.getSyncTombstones();
+    let mudouTomb = false;
+    const novosTomb: SyncTombstones = { ...tombstones };
+    (Object.keys(tombstones) as Array<keyof SyncTombstones>).forEach((grupo) => {
+      novosTomb[grupo] = tombstones[grupo].map((t) => {
+        if (t.usn > desdeUsn && t.usn <= minimo) {
+          mudouTomb = true;
+          total++;
+          return { ...t, usn: novoUsn };
+        }
+        return t;
+      });
+    });
+    if (mudouTomb) this.saveSyncTombstones(novosTomb);
+
+    return total;
   }
 
   /**
@@ -246,6 +384,14 @@ export class StorageService {
 
     if (this.suppressUsnBump) {
       // veio do Drive: o USN é o de lá — não renumera nem avança o contador
+      //
+      // MAS o contador local precisa ACOMPANHAR o USN mais alto que veio: se
+      // ficasse para trás, a próxima mudança feita aqui receberia um USN
+      // abaixo do head compartilhado e sumiria do delta (foi exatamente o que
+      // escondeu as revisões de um aparelho do outro).
+      for (const item of items) {
+        if (item.usn) this.adoptUsnCounter(item.usn);
+      }
       return items.map((item) =>
         item.usn
           ? item

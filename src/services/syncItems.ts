@@ -220,6 +220,58 @@ export function computeSnapshot(
   return { deviceId, deviceName, updatedAt: now, items };
 }
 
+/**
+ * A COLEÇÃO (decks/notas/cards/presets) mudou desde a base?
+ * As chaves `settings:*` são ignoradas — preferências e tema têm vida
+ * própria (vêm no arquivo de extras).
+ */
+export function hasCollectionChanges(base: SyncSnapshot | null, local: SyncSnapshot): boolean {
+  if (!base) return false;
+  const keys = new Set([...Object.keys(base.items), ...Object.keys(local.items)]);
+  for (const key of keys) {
+    if (key.startsWith('settings:')) continue;
+    if (base.items[key]?.hash !== local.items[key]?.hash) return true;
+  }
+  return false;
+}
+
+/**
+ * As PREFERÊNCIAS ou o TEMA mudaram desde a base?
+ *
+ * `values` tem o mesmo formato que o snapshot usa (`settings:prefs` e
+ * `settings:theme`) — os hashes são comparáveis.
+ */
+export function hasSettingsChanges(
+  base: SyncSnapshot | null,
+  values: { prefs: unknown; theme: unknown }
+): boolean {
+  if (!base) return false;
+  const check = (key: string, value: unknown) => {
+    const stored = base.items[key]?.hash;
+    return stored !== undefined && stored !== hashValue(value);
+  };
+  if (check(SETTINGS_KEYS.prefs, values.prefs)) return true;
+  if (check(SETTINGS_KEYS.theme, values.theme)) return true;
+  return false;
+}
+
+/**
+ * O sync pode dizer "Tudo sincronizado" (fast path)?
+ *
+ * Só quando NADA mudou dos dois lados: nem a coleção, nem as
+ * preferências/tema, nem as extensões.
+ *
+ * (A troca de tema também é "mudança local": sem esta checagem o app
+ * ignorava a troca e o botão Sync ficava amarelo para sempre.)
+ */
+export function canSkipSync(changes: {
+  collection: boolean;
+  extras: boolean;
+  settings: boolean;
+}): boolean {
+  return !changes.collection && !changes.extras && !changes.settings;
+}
+
 /** Texto curto de uma nota (primeiro campo preenchido). */
 export function noteLabel(note: Note): string {
   const first = Object.values(note.fields || {}).find(

@@ -14,12 +14,15 @@ import {
   computeSnapshot,
   deckKey,
   diffSnapshots,
+  hasCollectionChanges,
+  hasSettingsChanges,
+  canSkipSync,
   hashValue,
   noteKey,
   SETTINGS_KEYS,
   type SyncContent,
 } from './syncItems';
-import { applyRemoteItems, applyRemoteItemsProgressive, mergeRemoteRevlog } from './syncApply';
+import { applyRemoteItems, applyRemoteItemsProgressive, hasRevlogOnlyLocal, mergeRemoteRevlog } from './syncApply';
 import type { Card, Deck, Note, NoteType, RevlogEntry } from '../types/runora';
 
 class MemoryStorage {
@@ -381,6 +384,49 @@ describe('syncApply — aplica só o que foi escolhido', () => {
   });
 });
 
+describe('syncApply — o histórico é comparado por IDENTIDADE (não pelo id local)', () => {
+  // O id do revlog é local de cada aparelho: a mesma revisão vira
+  // "rev-sync-<cardId>-<horário>" em cada um. Comparar os ids dava sempre
+  // "esta revisão só existe aqui" → o app reenviava a base inteira (72,9 MB)
+  // e os dois aparelhos entravam num ida-e-volta infinito.
+  const revlog = (id: string, cardId: string, reviewTime: number): RevlogEntry => ({
+    id,
+    cardId,
+    noteId: 'n1',
+    rating: 3,
+    reviewTime,
+    elapsedDays: 0,
+    scheduledDays: 1,
+    state: 2,
+    stability: 1,
+    difficulty: 5,
+  });
+
+  const localNotes = [makeNote('n1', 'g1', { Frente: 'gato' })];
+  const localCards = [makeCard('c1', 'n1')];
+  // o outro aparelho: os mesmos itens, mas com ids LOCAIS dele
+  const remoteNotes = [makeNote('n-remote', 'g1', { Frente: 'gato' })];
+  const remoteCards = [makeCard('c-remote', 'n-remote')];
+
+  it('a mesma revisão (com ids diferentes dos dois lados) NÃO é "só local"', () => {
+    const local = [revlog('rev-local-1', 'c1', 1000)];
+    const remoto = [revlog('rev-remote-1', 'c-remote', 1000)];
+    assert.equal(
+      hasRevlogOnlyLocal(local, remoto, localNotes, localCards, remoteNotes, remoteCards),
+      false
+    );
+  });
+
+  it('uma revisão que só existe aqui É "só local" (tem que subir)', () => {
+    const local = [revlog('rev-local-1', 'c1', 1000), revlog('rev-local-2', 'c1', 2000)];
+    const remoto = [revlog('rev-remote-1', 'c-remote', 1000)];
+    assert.equal(
+      hasRevlogOnlyLocal(local, remoto, localNotes, localCards, remoteNotes, remoteCards),
+      true
+    );
+  });
+});
+
 describe('exclusões e o marcador do sync (runora_deleted_at)', () => {  it('deleteNote/deleteDeck/deletePreset marcam a última exclusão', () => {
     const start = StorageService.getLastDeletedAt();
 
@@ -508,5 +554,58 @@ describe('syncApply — aplicação progressiva (contador ao vivo)', () => {
     assert.equal(r.cards, 1);
     assert.equal(StorageService.getCards().length, 1);
     assert.equal(StorageService.getCards()[0].due, 99);
+  });
+});
+
+/* ── botão amarelo: mudança de tema / preferências ───────────────────────── */
+
+/**
+ * O botão Sync fica AMARELO quando há algo local que o Drive ainda não tem.
+ * A troca de tema é uma dessas coisas — mas o tema NÃO é parte da coleção
+ * (não muda o `updatedAt` de nenhum item), então a comparação da coleção
+ * não a enxergava: o app dizia "Tudo sincronizado" e o botão ficava
+ * amarelo para sempre.
+ */
+describe('syncItems — pendência de tema/preferências (botão amarelo)', () => {
+  const conteudo = (tema: string, rollover = 4): SyncContent => ({
+    ...contentOf({ notes: [makeNote('n1', 'g1', { Frente: 'gato' })] }),
+    settings: { prefs: { rolloverHour: rollover }, theme: tema, colorTheme: 'default' },
+  });
+
+  const temaDe = (tema: string) => ({ theme: tema, colorTheme: 'default' });
+  const prefsDe = (rollover: number) => ({ rolloverHour: rollover });
+
+  it('a coleção NÃO muda quando só o tema muda', () => {
+    const base = computeSnapshot(conteudo('light'), 'd', 'PC');
+    const local = computeSnapshot(conteudo('dark'), 'd', 'PC');
+    assert.equal(hasCollectionChanges(base, local), false, 'a coleção é a mesma');
+  });
+
+  it('a troca de tema É uma mudança local (o botão fica amarelo)', () => {
+    const base = computeSnapshot(conteudo('light'), 'd', 'PC');
+    assert.equal(hasSettingsChanges(base, { prefs: prefsDe(4), theme: temaDe('dark') }), true);
+  });
+
+  it('a troca de preferências (rollover) também é uma mudança local', () => {
+    const base = computeSnapshot(conteudo('light', 4), 'd', 'PC');
+    assert.equal(hasSettingsChanges(base, { prefs: prefsDe(5), theme: temaDe('light') }), true);
+  });
+
+  it('depois do sync (base = conteúdo atual) NÃO fica mais pendente', () => {
+    // o que o sync faz: a base passa a refletir o conteúdo atual
+    const local = computeSnapshot(conteudo('dark'), 'd', 'PC');
+    assert.equal(hasSettingsChanges(local, { prefs: prefsDe(4), theme: temaDe('dark') }), false);
+    assert.equal(
+      canSkipSync({ collection: false, extras: false, settings: false }),
+      true,
+      'sem mudança nenhuma, o sync pode dizer "Tudo sincronizado"'
+    );
+  });
+
+  it('canSkipSync: só pula quando NADA mudou (coleção, extras ou tema)', () => {
+    assert.equal(canSkipSync({ collection: false, extras: false, settings: false }), true);
+    assert.equal(canSkipSync({ collection: false, extras: false, settings: true }), false);
+    assert.equal(canSkipSync({ collection: true, extras: false, settings: false }), false);
+    assert.equal(canSkipSync({ collection: false, extras: true, settings: false }), false);
   });
 });

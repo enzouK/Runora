@@ -70,6 +70,7 @@ import type { ImportableCollection } from './importPlan';
 import {
   applyRemoteItems,
   applyRemoteItemsProgressive,
+  hasRevlogOnlyLocal,
   mergeRemoteRevlog,
   summarizeApply,
   type RemoteSyncData,
@@ -80,6 +81,8 @@ import {
   diffSnapshots,
   getSyncBase,
   hashValue,
+  hasCollectionChanges,
+  hasSettingsChanges,
   localSyncContent,
   setSyncBase,
   SETTINGS_KEYS,
@@ -87,6 +90,7 @@ import {
   type SyncDiff,
   type SyncSnapshot,
 } from './syncItems';
+import { isBehindRemote } from './syncBehind';
 import {
   applyExtrasPayload,
   buildExtrasPayload,
@@ -139,6 +143,24 @@ const LS = {
   ADDONS_MODIFIED_TIME: 'runora_sync_addons_modified',
   /** B3: o STATE que ESTE aparelho subiu por último (pula o download dele). */
   STATE_CACHE: 'runora_sync_state_cache',
+  /**
+   * modifiedTime do `.colpkg` que este aparelho tem como BASE.
+   *
+   * A base (o `.colpkg`) pode ser trocada sem o head do USN andar — é o que
+   * acontece quando alguém reenvia o backup completo (o delta vai vazio).
+   * Sem saber qual base é a nossa, o aparelho acharia que "não tem nada
+   * além do que já tem" e nunca buscaria a base nova.
+   */
+  COLPKG_MODIFIED_TIME: 'runora_sync_colpkg_modified',
+  /**
+   * USN da BASE (o `.colpkg`) que este aparelho tem.
+   *
+   * A base pode ser trocada sem o head do USN andar (é o que acontece quando
+   * alguém reenvia o backup completo: o delta vai vazio). Guardar o USN da
+   * base que temos deixa o aparelho saber, sem baixar nada, se a base do
+   * Drive é mais nova que a sua → e então precisa buscá-la.
+   */
+  BASE_USN: 'runora_sync_base_usn',
 };
 
 /**
@@ -147,6 +169,14 @@ const LS = {
  * syncs — depois disso, o aviso é considerado antigo e descartado.
  */
 const LOCAL_RUNNING_TTL_MS = 2 * 60 * 1000;
+
+/**
+ * "Base" fictícia dos extras para um aparelho que JÁ sincronizou a coleção
+ * mas ainda não tem base de extras (app antigo). Serve para que a decisão
+ * "quem leva" trate a mudança local como pendente — senão o Drive
+ * sobrescreveria a troca de tema/preferências que o usuário acabou de fazer.
+ */
+const SEM_BASE_DE_EXTRAS = '__sem-base-de-extras__';
 
 /**
  * Built-in OAuth Client ID — the Google Cloud project of Runora, created by the
@@ -1569,12 +1599,15 @@ export class DriveSyncService {
     // Helper para timing: em não-dev executa direto, em dev mede
     const track = <T,>(stage: string, fn: () => Promise<T>) =>
       timing ? timing.track(stage, fn) : fn();
+    // Os arquivos do Drive conhecidos neste sync — a base (o `.colpkg`) é
+    // registrada no final, mesmo se o sync sair por outro caminho.
+    let allFiles: Record<string, DriveFileInfo> = {};
     try {
       const token = await track('token', () => this.ensureToken());
 
       // Fase 3 (nova): lista TODOS os arquivos de sync numa única chamada
       timing?.mark('list-all-files');
-      const allFiles = await listAllSyncFiles(token);
+      allFiles = await listAllSyncFiles(token);
 
       // Fase 6: Fast path — se o STATE, EXTRAS e ADDONS_INDEX não mudaram no
       // Drive e não há mudanças locais, podemos pular o sync inteiro
@@ -1601,7 +1634,22 @@ export class DriveSyncService {
             this.getDeviceId(),
             getDeviceName()
           );
-          if (!this.hasLocalChanges(base, localSnapshot) && !this.hasExtrasLocalChanges()) {
+          if (!this.hasLocalChanges(base, localSnapshot) &&
+            !this.hasExtrasLocalChanges() &&
+            // tema e preferências também são "mudança local": sem esta
+            // checagem o fast path dizia "Tudo sincronizado" e deixava a
+            // troca de tema pendente para sempre (botão amarelo eterno).
+            !this.hasSettingsItemChanges(base) &&
+            // o conteúdo daqui está em dia com o head do Drive? (e a base é
+            // a mesma?) — sem isto, um aparelho com conteúdo velho (e que
+            // "achava" estar em dia) ficava para sempre sem baixar a base.
+            !this.isContentBehindHead(
+              this.getCachedOwnState()?.headUsn ?? 0,
+              this.getCachedOwnState()?.baseUsn,
+              this.getCachedOwnState()?.collectionCounts
+            ) &&
+            !this.isBaseIdentityChanged(allFiles)
+          ) {
             // Sem mudanças no Drive E sem mudanças locais → fast path!
             timing?.mark('fast-path');
             progress('Tudo sincronizado — nenhuma mudança desde o último sync.');
@@ -1750,7 +1798,19 @@ export class DriveSyncService {
           return await this.uploadBackup(token, progress, itemProgress, true, allFiles);
         }
 
-        const remoteChanged = effectiveMeta.uploadedAt > (lastSync?.remoteUploadedAt ?? 0);
+        // O Drive mudou? (o STATE é mais novo que o que este aparelho viu)
+        // OU o conteúdo daqui está atrás do head do Drive / a base é outra?
+        // — quem reenvia o backup completo publica um delta vazio, então o
+        // head do USN pode ficar igual mesmo com conteúdo novo no Drive.
+        const remoteHead = remoteState?.state.headUsn ?? 0;
+        const remoteChanged =
+          this.isContentBehindHead(
+            remoteHead,
+            remoteState?.state.baseUsn,
+            remoteState?.state.collectionCounts
+          ) ||
+          this.isBaseIdentityChanged(allFiles) ||
+          effectiveMeta.uploadedAt > (lastSync?.remoteUploadedAt ?? 0);
         const localChanged = this.hasLocalChanges(base, localSnapshot);
 
         if (!remoteChanged && !oldFormatDetected) {
@@ -1812,10 +1872,10 @@ export class DriveSyncService {
             const newSyncedAt = await this.updateRemoteState(token, remoteState.state, hashExtras(localExtras), localAddons.hash);
             this.setLastSync({ at: newSyncedAt, remoteUploadedAt: newSyncedAt });
 
-            // Corrigir bug: atualizar a base local após sync leve para o botão sair do amarelo
-            this.setSideBase(LS.EXTRAS_BASE, { hash: hashExtras(localExtras), uploadedAt: newSyncedAt });
-            this.setSideBase(LS.ADDONS_BASE, { hash: localAddons.hash, uploadedAt: newSyncedAt });
-            this.refreshBaseSettings();
+            // O STATE anuncia os hashes novos (o outro aparelho confia neles
+            // para decidir se baixa). A base local dos extras já foi atualizada
+            // dentro do `syncExtrasAndAddons` (e a base da coleção, no
+            // `refreshBaseSettings`) — aqui só falta o snapshot completo.
             setSyncBase(computeSnapshot(localSyncContent(), this.getDeviceId(), getDeviceName()));
           }
 
@@ -1872,7 +1932,8 @@ export class DriveSyncService {
           effectiveMeta,
           progress,
           itemProgress,
-          allFiles
+          allFiles,
+          remoteState?.state.baseUsn
         );
         timing?.mark('download-collection-fim');
         const remoteSnapshot = computeSnapshot(
@@ -1912,7 +1973,10 @@ export class DriveSyncService {
                 progress,
                 keys,
                 itemProgress,
-                tallyUpFromLocalDiff(diff, 'remote')
+                tallyUpFromLocalDiff(diff, 'remote'),
+                remoteState?.state.headUsn ?? 0,
+                // só reenvia a base (72,9 MB) se há algo que só existe aqui
+                this.hasLocalToPublish(remoteData, diff, 'remote')
               );
             }
             if (choice === 'keep') {
@@ -1930,7 +1994,10 @@ export class DriveSyncService {
             ...diff.remoteDeleted.map((i) => i.key),
           ]);
           if (conflicts.length === 0) {
-            // Sem disputa: o estado mesclado sobe para o Drive.
+            // Sem disputa: o que veio do Drive entra. A base só é reenviada
+            // se houver algo que só existe AQUI (item novo, apagado aqui ou
+            // revisão só aqui) — reenviar a base sem necessidade faz o outro
+            // aparelho ver "a base mudou" e baixar 72,9 MB de novo (ping-pong).
             timing?.mark('merge-and-upload');
             return await this.mergeAndUpload(
               token,
@@ -1939,11 +2006,19 @@ export class DriveSyncService {
               progress,
               safeKeys,
               itemProgress,
-              tallyUpFromLocalDiff(diff)
+              tallyUpFromLocalDiff(diff),
+              remoteState?.state.headUsn ?? 0,
+              this.hasLocalToPublish(remoteData, diff, 'remote')
             );
           }
           timing?.mark('apply-remote');
-          const applied = await this.applyRemote(remoteData, safeKeys, itemProgress);
+          const applied = await this.applyRemote(
+            remoteData,
+            safeKeys,
+            itemProgress,
+            remoteState?.state.headUsn ?? 0,
+            progress
+          );
           this.updateBase(base, localSnapshot, remoteSnapshot, diff, safeKeys);
           this.setPendingConflict({
             count: conflicts.length,
@@ -1981,7 +2056,13 @@ export class DriveSyncService {
               ...diff.remoteDeleted.map((i) => i.key),
             ]);
             timing?.mark('apply-remote');
-            const applied = await this.applyRemote(remoteData, safeKeys, itemProgress);
+            const applied = await this.applyRemote(
+              remoteData,
+              safeKeys,
+              itemProgress,
+              remoteState?.state.headUsn ?? 0,
+              progress
+            );
             this.updateBase(base, localSnapshot, remoteSnapshot, diff, safeKeys);
             this.setPendingConflict({
               count: conflicts.length,
@@ -2029,7 +2110,9 @@ export class DriveSyncService {
           progress,
           applyKeys,
           itemProgress,
-          tallyUpFromLocalDiff(diff, choice)
+          tallyUpFromLocalDiff(diff, choice),
+          remoteState?.state.headUsn ?? 0,
+          this.hasLocalToPublish(remoteData, diff, choice)
         );
         // ── Fase 5: preferências, temas e extensões também vão para o Drive ──
         timing?.mark('extras-início');
@@ -2066,6 +2149,13 @@ export class DriveSyncService {
       }
     } finally {
       timing?.mark('fim');
+      // NÃO se grava aqui a base (o `.colpkg`) que está no Drive: este
+      // aparelho pode não ter baixado esse arquivo — gravar seria dizer
+      // "tenho a base nova" sem tê-la, e o aparelho nunca mais buscaria o
+      // conteúdo que ficou para trás (foi o que escondeu as revisões do
+      // `.exe` no emulador). A base é gravada só onde ela é realmente
+      // obtida: no download (`downloadCollection`), no upload
+      // (`uploadBackup`) e na aplicação do delta.
       // guarda o relatório para leitura posterior
       const report = timing?.getReport();
       if (report) (this as any)._lastTimingReport = report;
@@ -2128,6 +2218,12 @@ export class DriveSyncService {
       const localHash = hashExtras(local);
       const base = this.getSideBase(LS.EXTRAS_BASE);
 
+      // Sem base de extras, mas com a coleção já sincronizada (aparelho que
+      // usava um app mais antigo): o que o usuário acabou de mudar aqui é
+      // mais novo que o que está no Drive → o LOCAL leva. Sem isto a troca
+      // de tema era sobrescrita pelo Drive e o botão Sync ficava amarelo.
+      const baseHash = base?.hash ?? (getSyncBase() ? SEM_BASE_DE_EXTRAS : null);
+
       // O hash no META é o hash do CONTEÚDO do Drive (calculado por quem
       // subiu, a partir do conteúdo). Antes, hash igual → pulava o download →
       // remoteHash ficava null → decideSyncSide entendia "o Drive não tem o
@@ -2145,6 +2241,9 @@ export class DriveSyncService {
             uploadedAt: remoteMeta.uploadedAt,
           });
         }
+        // Os dois lados são iguais: a base da coleção precisa refletir o
+        // tema/preferências atuais (senão o botão Sync fica amarelo).
+        this.refreshBaseSettings();
       } else {
         let remotePayload: SyncExtrasPayload | null = null;
         let remoteUploadedAt: number | undefined;
@@ -2178,7 +2277,7 @@ export class DriveSyncService {
         }
         const remoteHash = remotePayload ? hashExtras(remotePayload) : null;
 
-        const side = decideSyncSide(base?.hash ?? null, localHash, remoteHash);
+        const side = decideSyncSide(baseHash, localHash, remoteHash);
         if (side === 'remote' && remotePayload) {
           itemProgress({ phase: 'applying', part: 'settings', done: 2, total: 2, counts: { settings: 2 } });
           applyExtrasPayload(remotePayload, { keepTheme: opts?.keepTheme, keepPrefs: opts?.keepPrefs });
@@ -2198,6 +2297,12 @@ export class DriveSyncService {
           this.setSideBase(LS.EXTRAS_BASE, { hash: localHash, uploadedAt: Date.now() });
           parts.push('Preferências e temas enviados ao Drive.');
         }
+        // A base da COLEÇÃO precisa refletir o tema/preferências que acabou
+        // de sincronizar. Sem isto a base continuava com o hash antigo do
+        // tema → `hasSettingsItemChanges()` dizia "mudou aqui" → o botão
+        // Sync ficava AMARELO mesmo depois de sincronizar (o bug antigo que
+        // ressurgiu no .exe).
+        this.refreshBaseSettings();
       }
     } catch (e) {
       console.warn('Não foi possível sincronizar as preferências:', e);
@@ -2467,12 +2572,38 @@ export class DriveSyncService {
     return { installed, removed, ok: true };
   }
 
-  /** Aplica os itens remotos no dispositivo e devolve o resumo. */
+  /**
+   * Aplica os itens remotos no dispositivo e devolve o resumo.
+   *
+   * `headUsn`: o head (USN) que o Drive está anunciando. Quando vem, as
+   * mudanças LOCAIS que ainda não foram publicadas recebem USN novo (acima do
+   * head) — sem isso elas ficam "no passado" do contador compartilhado, e
+   * nenhum delta as carrega (foi o que escondeu as revisões de um aparelho
+   * do outro).
+   */
   private static async applyRemote(
     remoteData: RemoteSyncData,
     keys: Set<string>,
-    itemProgress: (p: SyncProgressState | null) => void = () => {}
+    itemProgress: (p: SyncProgressState | null) => void = () => {},
+    /** Head (USN) anunciado pelo Drive — 0/undefined = não se sabe. */
+    headUsn = 0,
+    /** Aviso para a UI (opcional). */
+    progress: (m: string) => void = () => {}
   ) {
+    // ── 1) as mudanças locais pendentes sobem para ACIMA do head ──
+    // (antes de aplicar o remoto: as pendentes são as que o Drive ainda não
+    //  viu; o conteúdo delas NÃO é tocado — só o USN)
+    const head = headUsn > 0 ? headUsn : 0;
+    const lastSynced = this.getLastSyncedUsn();
+    if (head > 0 && lastSynced > 0 && lastSynced < head) {
+      const reestampados = StorageService.restampPendingChanges(lastSynced, head);
+      if (reestampados > 0) {
+        progress(
+          `${reestampados} mudança(s) local(is) receberam USN novo (acima de ${head}) para poderem subir no delta.`
+        );
+      }
+    }
+
     const applied = await applyRemoteItemsProgressive(remoteData, keys, (p) =>
       itemProgress({ phase: 'applying', ...p })
     );
@@ -2483,8 +2614,55 @@ export class DriveSyncService {
     // O USN é compartilhado: os itens que vieram do Drive trazem o USN do
     // aparelho que os mudou — o contador local precisa acompanhar, senão as
     // próximas edições daqui ficam "no passado" do delta.
-    StorageService.adoptUsnCounter(StorageService.getMaxItemUsn());
+    StorageService.adoptUsnCounter(head > 0 ? head : StorageService.getMaxItemUsn());
+    // E o "last synced" também: depois de aplicar o Drive, este aparelho está
+    // no mesmo ponto do Drive (o head). As mudanças que ainda faltam subiram
+    // de USN e continuam pendentes (ficaram acima do head).
+    if (head > 0) this.setLastSyncedUsn(head);
     return applied;
+  }
+
+  /**
+   * Há algo que só existe NESTE aparelho e precisa subir para o Drive?
+   *
+   * Quando não há, o app pode aplicar o que veio do Drive sem reenviar a base
+   * (o `.colpkg` de ~72,9 MB). Reenviar a MESMA base fazia o outro aparelho
+   * ver "a base mudou" e baixar tudo de novo — um ida-e-volta infinito de
+   * 72,9 MB entre os dois aparelhos.
+   */
+  private static hasLocalToPublish(
+    remoteData: RemoteSyncData,
+    diff: SyncDiff,
+    choice: SyncItemsChoice
+  ): boolean {
+    // o TEMA e as PREFERÊNCIAS não vão no `.colpkg` — vão no arquivo de
+    // extras (que é minúsculo). Se contassem aqui, uma simples troca de
+    // tema reenviaria a base inteira (72,9 MB) à toa.
+    const deColecao = (itens: { key: string }[]) =>
+      itens.filter((i) => !i.key.startsWith('settings:'));
+    // item que só existe aqui
+    if (deColecao(diff.localOnly).length > 0) return true;
+    // item apagado aqui
+    if (deColecao(diff.localDeleted).length > 0) return true;
+    // disputa vencida pela versão daqui
+    if (choice === 'local' && deColecao(diff.conflicts).length > 0) return true;
+    // revisão que só existe aqui (o histórico de revisões não entra no
+    // snapshot — sem esta checagem, uma revisão local se perderia).
+    // A comparação é por IDENTIDADE (nota + ordem + horário), não pelo id:
+    // o id do revlog é local de cada aparelho.
+    if (
+      hasRevlogOnlyLocal(
+        StorageService.getRevlog(),
+        remoteData.revlog ?? [],
+        StorageService.getNotes(),
+        StorageService.getCards(),
+        remoteData.notes,
+        remoteData.cards
+      )
+    ) {
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -2499,14 +2677,35 @@ export class DriveSyncService {
     applyKeys: Set<string>,
     itemProgress: (p: SyncProgressState | null) => void = () => {},
     /** O que esta mescla envia daqui (↑) — calculado pela diff de quem chama. */
-    upTally: Partial<SyncTally> = {}
+    upTally: Partial<SyncTally> = {},
+    /** Head (USN) que o Drive está anunciando (para não perder mudanças locais). */
+    headUsn = 0,
+    /**
+     * Há algo que só existe aqui para subir? Se não há, a base (o `.colpkg`)
+     * NÃO é reenviada — o Drive já tem o mesmo conteúdo.
+     */
+    publishLocal = true
   ): Promise<SyncResult> {
     progress('Aplicando as novidades do Drive…');
-    const applied = await this.applyRemote(remoteData, applyKeys, itemProgress);
+    const applied = await this.applyRemote(remoteData, applyKeys, itemProgress, headUsn, progress);
     mergeRemoteRevlog(remoteData.revlog ?? [], remoteData);
     const resumo = summarizeApply(applied);
     // ↑: só o que a mescla de fato acrescenta ao Drive (não a coleção inteira)
     addTally(upTally);
+
+    if (!publishLocal && headUsn > 0) {
+      // O Drive já tem exatamente este conteúdo → não reenvia a base (72,9 MB)
+      // nem mexe no STATE. Sem isto, o outro aparelho veria "a base mudou" e
+      // baixaria tudo de novo — ping-pong eterno de 72,9 MB.
+      setSyncBase(computeSnapshot(localSyncContent(), this.getDeviceId(), getDeviceName()));
+      this.setLastSync({ at: Date.now(), remoteUploadedAt: remoteMeta.uploadedAt });
+      const done = activeTally ? syncDoneMessage(activeTally) : null;
+      return {
+        action: 'download',
+        message: done ?? `Sincronizado com "${remoteMeta.deviceName}". ${resumo}.`,
+      };
+    }
+
     itemProgress({ phase: 'preparing' });
     await this.uploadBackup(token, progress, itemProgress, false, undefined, remoteMeta);
     const done = activeTally ? syncDoneMessage(activeTally) : null;
@@ -2716,12 +2915,7 @@ export class DriveSyncService {
   /** Houve mudança local na COLEÇÃO desde o último sync? (ignora settings:*) */
   private static hasLocalChanges(base: SyncSnapshot | null, local: SyncSnapshot): boolean {
     if (!base) return this.computeLocalModifiedAt() > 0;
-    const keys = new Set([...Object.keys(base.items), ...Object.keys(local.items)]);
-    for (const key of keys) {
-      if (key.startsWith('settings:')) continue;
-      if (base.items[key]?.hash !== local.items[key]?.hash) return true;
-    }
-    return false;
+    return hasCollectionChanges(base, local);
   }
 
   /**
@@ -2738,20 +2932,14 @@ export class DriveSyncService {
    * Rollover / tema são itens do snapshot, mas mudar o valor NÃO
    * atualiza o updatedAt da coleção — este atalho compara só o hash deles.
    */
-  private static hasSettingsItemChanges(base: SyncSnapshot): boolean {
-    const check = (key: string, value: unknown) => {
-      const stored = base.items[key]?.hash;
-      return stored !== undefined && stored !== hashValue(value);
-    };
-    if (check(SETTINGS_KEYS.prefs, { rolloverHour: StorageService.getRolloverHour() })) return true;
-    if (
-      check(SETTINGS_KEYS.theme, {
+  private static hasSettingsItemChanges(base: SyncSnapshot | null): boolean {
+    return hasSettingsChanges(base, {
+      prefs: { rolloverHour: StorageService.getRolloverHour() },
+      theme: {
         theme: StorageService.getTheme(),
         colorTheme: StorageService.getColorTheme(),
-      })
-    )
-      return true;
-    return false;
+      },
+    });
   }
 
   /**
@@ -2882,7 +3070,10 @@ export class DriveSyncService {
     itemProgress({ phase: 'upload', counts });
     progress(`Enviando backup (${formatBytes(blob.size)}) para o Google Drive…`);
     // id em cache → 0 chamadas de busca (404 cai no fallback: relista e recria)
-    await uploadResumableCached(token, DRIVE_FILES.COLPKG, blob);
+    const pkgUpload = await uploadResumableCached(token, DRIVE_FILES.COLPKG, blob);
+    // a base do Drive agora é ESTE pacote — os outros aparelhos precisam
+    // saber que ela mudou (o head do USN pode não ter andado).
+    this.setLocalBaseModified(pkgUpload.modifiedTime);
 
     // O STATE (v2) anuncia extrasHash/addonsHash — os arquivos EXTRAS e
     // ADDONS_INDEX do Drive PRECISAM ter exatamente esse conteúdo (o outro
@@ -2915,6 +3106,11 @@ export class DriveSyncService {
     // ele, o delta que sobrou no Drive ficaria velho e desmentiria o .colpkg.
     const usnAtual = StorageService.getCurrentUsn();
     const stateSyncedAt = await this.publishEmptyState(token, usnAtual, counts);
+    // A base que este aparelho tem é o pacote que acabou de subir: o USN
+    // dele é o do STATE publicado (base = head = usnAtual). Sem isto, o
+    // aparelho acharia que a base do Drive é outra e baixaria a coleção
+    // inteira (72,9 MB) no próximo sync.
+    this.setLocalBaseUsn(usnAtual);
     // O backup completo deixou o Drive no USN atual → este aparelho também
     // passa a contar a partir dali (senão o próximo sync acharia que está
     // "atrás" e baixaria a coleção inteira de novo).
@@ -3337,6 +3533,74 @@ export class DriveSyncService {
   }
 
   /**
+   * O conteúdo DESTE aparelho está ATRÁS do head que o Drive anuncia?
+   *
+   * A decisão (e a explicação de cada sinal) está em `syncBehind.ts` — aqui
+   * só juntamos os dados locais e os remotos.
+   */
+  private static isContentBehindHead(
+    remoteHeadUsn: number,
+    remoteBaseUsn?: number,
+    remoteCounts?: SyncState['collectionCounts']
+  ): boolean {
+    if (remoteHeadUsn <= 0) return false;
+    const lastSyncedUsn = this.getLastSyncedUsn();
+    return isBehindRemote({
+      remoteHeadUsn,
+      remoteBaseUsn,
+      remoteCounts,
+      localBaseUsn: this.getLocalBaseUsn(),
+      localCounts: StorageService.getCollectionCounts(),
+      localContentMaxUsn: StorageService.getMaxContentUsn(),
+      pendingDeletions: StorageService.getPendingDeletionCounts(lastSyncedUsn),
+    });
+  }
+
+  /** USN da base (o `.colpkg`) que este aparelho tem (0 = não sabe). */
+  private static getLocalBaseUsn(): number {
+    const raw = localStorage.getItem(LS.BASE_USN);
+    const n = Number(raw ?? '');
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  /** Grava o USN da base (o `.colpkg`) que este aparelho tem agora. */
+  private static setLocalBaseUsn(usn: number | undefined): void {
+    if (!usn || !Number.isFinite(usn) || usn <= 0) return;
+    localStorage.setItem(LS.BASE_USN, String(usn));
+  }
+
+  /**
+   * A base (o `.colpkg`) do Drive é OUTRA que a que este aparelho tem?
+   *
+   * Quem reenvia o backup completo publica um delta vazio — o head do USN
+   * pode ficar igual mesmo com conteúdo novo no Drive. Sem saber qual base é
+   * a nossa, o aparelho acharia que "não tem nada além do que já tem" e nunca
+   * buscaria a base nova.
+   *
+   * Sem registro (aparelho que acabou de atualizar o app) não dá para dizer:
+   * aí quem decide é o `isContentBehindHead` (o conteúdo está em dia?).
+   */
+  private static isBaseIdentityChanged(allFiles?: Record<string, DriveFileInfo>): boolean {
+    const pkg = allFiles?.[DRIVE_FILES.COLPKG];
+    const pkgModified = pkg?.modifiedTime;
+    if (!pkgModified) return false; // não há base no Drive (nada a comparar)
+    const known = localStorage.getItem(LS.COLPKG_MODIFIED_TIME);
+    if (!known) return false; // não sei qual base eu tenho → o USN decide
+    return pkgModified !== known;
+  }
+
+  /**
+   * Grava qual base (`.colpkg`) este aparelho tem agora.
+   *
+   * Usa "só se for mais novo": a listagem do começo do sync mostra a base
+   * ANTIGA — se ela fosse gravada por cima da base que acabamos de subir, o
+   * aparelho acharia que a base do Drive é outra e baixaria tudo de novo.
+   */
+  private static setLocalBaseModified(modifiedTime: string | undefined): void {
+    this.setModifiedTimeIfNewer(LS.COLPKG_MODIFIED_TIME, modifiedTime);
+  }
+
+  /**
    * Baixa o pacote do Drive e o lê (sem aplicar nada ainda) — a comparação
    * item a item acontece com o conteúdo em memória.
    */
@@ -3345,7 +3609,9 @@ export class DriveSyncService {
     remoteMeta: SyncMeta,
     progress: (m: string) => void,
     itemProgress: (p: SyncProgressState | null) => void = () => {},
-    allFiles?: Record<string, DriveFileInfo>
+    allFiles?: Record<string, DriveFileInfo>,
+    /** USN da base que vem no STATE (0/desconhecido = não se sabe). */
+    baseUsn?: number
   ): Promise<ImportableCollection> {
     // o .colpkg já veio na listagem única do início do sync (0 chamadas extras)
     const pkg = allFiles?.[DRIVE_FILES.COLPKG] ?? (await findFile(token, DRIVE_FILES.COLPKG));
@@ -3354,6 +3620,11 @@ export class DriveSyncService {
     }
     progress(`Baixando dados de "${remoteMeta.deviceName}" (${formatBytes(Number(pkg.size || 0))})…`);
     const blob = await downloadFile(token, pkg.id);
+    // a base deste aparelho agora é ESTE pacote (o delta entra por cima dele)
+    this.setLocalBaseModified(pkg.modifiedTime);
+    // e o USN dessa base — é o que permite saber, no próximo sync, se a base
+    // do Drive é outra (mais nova) que a nossa.
+    this.setLocalBaseUsn(baseUsn);
 
     // Segurança: guarda o estado atual antes de mexer nele
     try {
@@ -3437,6 +3708,16 @@ export class DriveSyncService {
         progress('O estado do Drive ficou atrás do backup — vai baixar a coleção completa.');
         return null;
       }
+      // E a BASE trocada: o `.colpkg` foi reenviado (com o delta vazio) e o
+      // head ficou igual → o conteúdo novo está só na base. Sem baixar ela,
+      // as mudanças (as revisões, por exemplo) nunca chegariam aqui.
+      if (
+        this.isContentBehindHead(remoteHeadUsn, state.baseUsn, state.collectionCounts) ||
+        this.isBaseIdentityChanged(allFiles)
+      ) {
+        progress('A base do Drive mudou — vai baixar a coleção completa.');
+        return null;
+      }
       progress('O Drive não tem nada além do que já temos.');
       if (stateFile.modifiedTime) this.setStateModifiedTime(stateFile.modifiedTime);
       this.setLastSync({
@@ -3451,6 +3732,14 @@ export class DriveSyncService {
     // outra, o delta traria um estado misturado (faltando o que veio antes)
     // → melhor baixar a coleção completa, que é sempre a verdade.
     if (lastSyncedUsn < state.baseUsn) {
+      progress('A base do Drive mudou — vai baixar a coleção completa.');
+      return null;
+    }
+
+    // O head andou, mas a BASE pode ter sido trocada junto (backup completo
+    // reenviado): o delta é relativo à base NOVA — sem tê-la, o resultado
+    // seria um estado misturado.
+    if (this.isBaseIdentityChanged(allFiles)) {
       progress('A base do Drive mudou — vai baixar a coleção completa.');
       return null;
     }
@@ -3477,6 +3766,19 @@ itemProgress({ phase: 'download', counts: state.counts });
     }
 
     const mediaManifest = state.mediaManifest;
+
+    // ── As mudanças locais pendentes sobem para ACIMA do head ──
+    // (mesma proteção do `applyRemote`: o USN é compartilhado e uma mudança
+    //  feita aqui com o contador atrás do head ficaria "no passado" — invisível
+    //  para o delta e para o próximo envio.)
+    if (lastSyncedUsn > 0 && lastSyncedUsn < remoteHeadUsn) {
+      const reestampados = StorageService.restampPendingChanges(lastSyncedUsn, remoteHeadUsn);
+      if (reestampados > 0) {
+        progress(
+          `${reestampados} mudança(s) local(is) receberam USN novo (acima de ${remoteHeadUsn}) para poderem subir no delta.`
+        );
+      }
+    }
 
     // Baixa arquivos de mídia novos (que não temos localmente)
     const mediaFolder = DRIVE_FILES.MEDIA_FOLDER;
@@ -3607,6 +3909,14 @@ itemProgress({ phase: 'download', counts: state.counts });
     // O USN é compartilhado: este aparelho passa a contar a partir do head
     // do Drive (senão as próximas edições ficariam "no passado" do delta).
     StorageService.adoptUsnCounter(newHeadUsn);
+    // A base deste aparelho é a MESMA base que o delta pressupõe: o `.colpkg`
+    // que está no Drive agora. Sem guardar isso, o aparelho acharia (no
+    // próximo sync) que a base tinha mudado e baixaria a coleção inteira
+    // (72,9 MB) à toa.
+    this.setLocalBaseModified(allFiles?.[DRIVE_FILES.COLPKG]?.modifiedTime);
+    // e o USN dessa base — é o que permite saber, no próximo sync, se a base
+    // do Drive é outra (mais nova) que a nossa.
+    this.setLocalBaseUsn(state.baseUsn);
     // O estado local agora é o do Drive → a base passa a ser o estado atual
     // (senão o sinal de "mudanças pendentes" acende à toa após o download).
     setSyncBase(computeSnapshot(localSyncContent(), this.getDeviceId(), getDeviceName()));

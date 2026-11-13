@@ -565,6 +565,59 @@ export async function applyRemoteItemsProgressive(
 }
 
 /**
+ * Há revisão aqui que NÃO existe no Drive?
+ *
+ * A comparação é por IDENTIDADE (nota + ordem do template + horário), não
+ * pelo `id`: o id do revlog é LOCAL de cada aparelho (a mesma revisão vira
+ * `rev-sync-<cardId>-<horário>` em cada um) — comparar os ids dava sempre
+ * "sim" e fazia o app reenviar a base inteira (72,9 MB) à toa, num
+ * ida-e-volta infinito entre os aparelhos.
+ */
+export function hasRevlogOnlyLocal(
+  localRevlog: RevlogEntry[],
+  remoteRevlog: RevlogEntry[],
+  localNotes: Note[],
+  localCards: Card[],
+  remoteNotes: Note[],
+  remoteCards: Card[]
+): boolean {
+  const identityByCard = (
+    notes: Note[],
+    cards: Card[]
+  ): Map<string, string> => {
+    const guidByNoteId = new Map(notes.map((n) => [n.id, n.guid?.trim() ?? '']));
+    const map = new Map<string, string>();
+    for (const c of cards) {
+      const guid = guidByNoteId.get(c.noteId) ?? '';
+      map.set(c.id, `${guid}:${c.templateOrd}`);
+    }
+    return map;
+  };
+
+  const localIdentity = identityByCard(localNotes, localCards);
+  const remoteIdentity = identityByCard(remoteNotes, remoteCards);
+
+  const remoteByIdentity = new Set<string>();
+  const remoteByTime = new Set<number>();
+  for (const e of remoteRevlog) {
+    remoteByTime.add(e.reviewTime);
+    const ident = remoteIdentity.get(e.cardId);
+    if (ident) remoteByIdentity.add(`${e.reviewTime}:${ident}`);
+  }
+
+  for (const e of localRevlog) {
+    const ident = localIdentity.get(e.cardId);
+    if (ident) {
+      if (!remoteByIdentity.has(`${e.reviewTime}:${ident}`)) return true;
+    } else if (!remoteByTime.has(e.reviewTime)) {
+      // sem card local para comparar → compara só pelo horário
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Histórico de revisões que veio do Drive: as entradas são reescritas com
  * os ids LOCAIS do card (o id do card do outro dispositivo não vale aqui)
  * e as repetidas são ignoradas.
