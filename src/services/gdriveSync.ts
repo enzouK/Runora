@@ -48,6 +48,11 @@ import {
   resetDriveCallCount,
 } from './syncTiming';
 import {
+  waitForGisToken,
+  LoginCancelledError,
+  type GisTokenClient,
+} from './gdriveAuth';
+import {
   getCachedFolderId,
   setCachedFolderId,
   getCachedFileId,
@@ -1261,7 +1266,10 @@ export class DriveSyncService {
     try {
       const fresh = await this.requestToken(clientId, '');
       return fresh.accessToken;
-    } catch {
+    } catch (e) {
+      // O usuário fechou a janela do Google (ou negou o consentimento):
+      // a mensagem certa é "login cancelado", não "sessão expirada".
+      if (e instanceof LoginCancelledError) throw e;
       localStorage.removeItem(LS.TOKEN);
       throw new Error('Sessão do Google expirada. Abra a aba Sync e reconecte sua conta.');
     }
@@ -1308,11 +1316,7 @@ export class DriveSyncService {
       google: {
         accounts: {
           oauth2: {
-            initTokenClient: (cfg: Record<string, unknown>) => {
-              callback: (r: Record<string, unknown>) => void;
-              error_callback?: (e: { type?: string }) => void;
-              requestAccessToken: (opts: { prompt: string }) => void;
-            };
+            initTokenClient: (cfg: Record<string, unknown>) => GisTokenClient;
           };
         };
       };
@@ -1320,15 +1324,15 @@ export class DriveSyncService {
     const client = w.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: DRIVE_SCOPE,
+      // os handlers de verdade são instalados em `waitForGisToken` (antes do
+      // requestAccessToken) — aqui só evitam "callback undefined".
       callback: () => {},
+      error_callback: () => {},
     });
-    const resp = await new Promise<Record<string, unknown>>((resolve, reject) => {
-      client.callback = (r) =>
-        r && r.error
-          ? reject(new Error(String(r.error_description || r.error)))
-          : resolve(r);
-      client.requestAccessToken({ prompt });
-    });
+    // `waitForGisToken` escuta o `error_callback`: quando o usuário FECHA a
+    // janela do Google sem conectar, a Promise rejeita em vez de ficar
+    // pendurada (o botão Sync travava em "Sincronizando…" para sempre).
+    const resp = await waitForGisToken(client, prompt);
     const token: DriveToken = {
       accessToken: String(resp.access_token),
       expiresAt: Date.now() + Number(resp.expires_in || 3600) * 1000 - 60_000,
