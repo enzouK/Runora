@@ -89,16 +89,36 @@ public class MainActivity extends BridgeActivity {
         );
     }
 
-    /** Hosts do Google usados no login (ficam dentro do app). */
+    /**
+     * Hosts do Google usados no login (ficam dentro do app).
+     *
+     * IMPORTANTE (bug de 14/11/2026, no celular real): o login do Google usa
+     * MAIS domínios do que só o `accounts.google.com`. Num aparelho que já
+     * tem conta Google configurada, o Google passa o cookie da sessão por
+     * `accounts.youtube.com/accounts/SetSID` — e esse host não estava na
+     * lista: a navegação saía do app e ia para o Chrome, onde o token se
+     * perde (no emulador não acontecia, porque ele não tem conta Google).
+     *
+     * A lista abaixo cobre todos os domínios do Google que o login toca.
+     */
     private static boolean isGoogleAuthHost(String host) {
         if (host == null) return false;
-        // "accounts.google." cobre os domínios regionais
-        // (accounts.google.com, accounts.google.com.br, .co.uk…)
-        return host.startsWith("accounts.google.")
-            || host.startsWith("consent.google.")
-            || host.equals("accounts.google.com")
-            || host.equals("consent.google.com")
-            || host.equals("googleapis.com")
-            || host.endsWith(".googleapis.com");
+        String h = host.toLowerCase(java.util.Locale.US);
+
+        // Contas e consentimento (inclui os domínios regionais).
+        if (h.startsWith("accounts.google.")) return true;
+        if (h.startsWith("consent.google.")) return true;
+        if (h.startsWith("accounts.youtube.")) return true;
+        if (h.startsWith("myaccount.google.")) return true;
+
+        // APIs e arquivos do Google (o login carrega scripts/CSS deles).
+        if (h.equals("googleapis.com")) return true;
+        if (h.endsWith(".googleapis.com")) return true;
+        if (h.equals("gstatic.com")) return true;
+        if (h.endsWith(".gstatic.com")) return true;
+        if (h.endsWith(".googleusercontent.com")) return true;
+
+        // Qualquer outro domínio do Google (ex.: accounts.google.co.uk).
+        return h.matches("^(.*\\.)?google\\.[a-z]{2,3}(\\.[a-z]{2})?$");
     }
 }
