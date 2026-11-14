@@ -53,6 +53,13 @@ import {
   type GisTokenClient,
 } from './gdriveAuth';
 import {
+  NO_CONNECTION_MESSAGE,
+  SESSION_EXPIRED_MESSAGE,
+  TokenRenewalError,
+  parseGoogleTokenError,
+  shouldDropStoredToken,
+} from './gdriveToken';
+import {
   getCachedFolderId,
   setCachedFolderId,
   getCachedFileId,
@@ -1288,9 +1295,17 @@ export class DriveSyncService {
       try {
         const fresh = await this.refreshAccessToken(t.refreshToken, clientId, t);
         return fresh.accessToken;
-      } catch {
-        localStorage.removeItem(LS.TOKEN);
-        throw new Error('Sessão do Google expirada. Abra a aba Sync e reconecte sua conta.');
+      } catch (e) {
+        // Só apaga o token guardado quando o GOOGLE diz que a permissão
+        // morreu (invalid_grant, invalid_client...). Erro de rede ou Google
+        // instável é passageiro: apagar aqui jogava fora uma sessão boa
+        // (foi o que aconteceu em 13/11/2026 — o dono perdeu o login do
+        // emulador por causa de um blip de rede).
+        if (shouldDropStoredToken(e)) {
+          localStorage.removeItem(LS.TOKEN);
+          throw new Error(SESSION_EXPIRED_MESSAGE);
+        }
+        throw new Error(NO_CONNECTION_MESSAGE);
       }
     }
     try {
@@ -1301,7 +1316,7 @@ export class DriveSyncService {
       // a mensagem certa é "login cancelado", não "sessão expirada".
       if (e instanceof LoginCancelledError) throw e;
       localStorage.removeItem(LS.TOKEN);
-      throw new Error('Sessão do Google expirada. Abra a aba Sync e reconecte sua conta.');
+      throw new Error(SESSION_EXPIRED_MESSAGE);
     }
   }
 
@@ -1398,19 +1413,34 @@ export class DriveSyncService {
     clientId: string,
     previous: DriveToken | null
   ): Promise<DriveToken> {
-    const res = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token',
-      }),
-    });
+    let res: Response;
+    try {
+      res = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token',
+        }),
+      });
+    } catch (e) {
+      // A requisição nem chegou ao Google (sem internet, WebView subindo,
+      // DNS...) → falha PASSAGEIRA: a sessão continua valendo.
+      throw new TokenRenewalError(
+        `Não consegui falar com o Google para renovar a sessão: ${String(e)}`
+      );
+    }
     if (!res.ok) {
       const err = await res.text().catch(() => '');
-      throw new Error(`Falha ao renovar a sessão do Google: ${res.status} ${err}`);
+      // O código do Google diz se a permissão morreu (invalid_grant) ou se
+      // foi só um erro passageiro (5xx, 429, slow_down).
+      const code = parseGoogleTokenError(err);
+      throw new TokenRenewalError(
+        `Falha ao renovar a sessão do Google: ${res.status} ${err}`,
+        { code, status: res.status }
+      );
     }
     const data = (await res.json()) as {
       access_token: string;
