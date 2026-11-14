@@ -86,6 +86,8 @@ perde. Por isso:
 - O client secret do Google fica em **`.env.local`** (gitignored) — **nunca**
   commitado no repositório público (aviso do Google Cloud). O Google exige
   secret na troca do código mesmo com PKCE.
+- **Feche o Runora antes de buildar o instalador** (o `.exe` dá `EBUSY` se o
+  app estiver aberto, porque a pasta `release\win-unpacked` fica travada).
 - APK emulador = dev (`http://10.0.2.2:3000`); APK celular real = produção
   (origem `https://localhost/`).
 - **Os dois APKs são sempre gerados JUNTOS, do mesmo `dist`** — é o mesmo
