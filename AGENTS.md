@@ -63,6 +63,12 @@ perde. Por isso:
 ## 3. Regras do domínio (Runora)
 
 - **Login do Google é feito pelo usuário** no dispositivo (não injetar token).
+- **Dado real do dono é intocável sem pedir** (15/11/2026): não estudar,
+  deletar, editar nem sincronizar o card/note/revisão de verdade do dono
+  para "testar" — nem no celular dele, nem no `.exe`. Em teste, criar um
+  item **novo**, com nome bem evidente (ex.: `TESTE-agente`), e limpar
+  depois. Se o dono pedir para testar em cima do card real, aí sim — mas
+  avisando antes o que vai acontecer.
 - **O `.colpkg` não é apagado do Drive** — ele é o ponto de backup
   ("Restaurar do Drive"), decisivo para voltar atrás. Ele só pode ser
   substituído por algo igualmente seguro, e essa decisão é do dono.
