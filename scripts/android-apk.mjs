@@ -9,10 +9,17 @@
  *   - "prod" → usa o bundle embutido no APK: funciona sozinho, sem PC.
  *              É este que vai para o celular real.
  *
- * POR QUE ELES CONVIVEM
+ * POR QUE SÃO PACOTES DIFERENTES
  *   O APK de dev é OUTRO pacote (`com.runora.fsrs.dev`, nome "Runora Dev"),
- *   então fica instalado AO LADO do de produção (`com.runora.fsrs`) — sem
- *   trocar um pelo outro e sem perder os dados de nenhum dos dois.
+ *   com dados totalmente separados do de produção (`com.runora.fsrs`): cada
+ *   um tem o seu diretório de dados, o seu deviceId e o seu login.
+ *
+ * ONDE CADA UM FICA INSTALADO (regra do dono em 15/11/2026)
+ *   - celular real -> só o app de PRODUÇÃO (`com.runora.fsrs`);
+ *   - emulador     -> só o app de DEV (`com.runora.fsrs.dev`).
+ *   Por isso este script instala cada APK no aparelho certo: o de dev vai
+ *   para o emulador e o de prod para o celular. (Se o aparelho esperado não
+ *   estiver ligado, ele avisa.)
  *
  * REGRA IMPORTANTE
  *   Os dois são montados SEMPRE juntos, do mesmo `dist` (regra do AGENTS.md):
@@ -181,6 +188,26 @@ function connectedDevices(adb) {
     .map((parts) => parts[0]);
 }
 
+/** O emulador aparece no `adb devices` como `emulator-XXXX` (e às vezes
+ *  também como `127.0.0.1:5555`). Tudo o mais é aparelho real. */
+function isEmulatorSerial(serial) {
+  return serial.startsWith('emulator-') || /^127\.0\.0\.1:/.test(serial);
+}
+
+/**
+ * Escolhe onde instalar: o APK de DEV vai para o emulador e o de PROD para o
+ * celular real (regra do dono em 15/11/2026 — um APK por aparelho).
+ */
+function chooseDevice(devices, mode) {
+  const emulators = devices.filter(isEmulatorSerial);
+  // o mesmo emulador pode aparecer 2x ("emulator-5554" e "127.0.0.1:5555"):
+  // prefere o serial "emulator-XXXX", que é o canônico.
+  const emulador = emulators.find((d) => d.startsWith('emulator-')) ?? emulators[0];
+  const reais = devices.filter((d) => !isEmulatorSerial(d));
+  if (mode === 'dev') return emulador ?? null;
+  return reais[0] ?? null;
+}
+
 function install(adb, apkPath) {
   step('5/5 — instalar no aparelho');
   const devices = connectedDevices(adb);
@@ -190,14 +217,29 @@ function install(adb, apkPath) {
     return false;
   }
   console.log('Aparelhos: ' + devices.join(', '));
-  const out = capture(adb, ['-s', devices[0], 'install', '-r', apkPath]);
+  const alvo = chooseDevice(devices, mode);
+  if (!alvo) {
+    const esperado = mode === 'dev' ? 'o emulador' : 'o celular real';
+    console.log(`!! ${esperado} não está conectado — não instalei para não quebrar a regra`);
+    console.log('   "um APK por aparelho" (dev no emulador, prod no celular).');
+    console.log('   O APK ficou pronto em: ' + apkPath);
+    return false;
+  }
+  const aviso =
+    mode === 'dev' && !isEmulatorSerial(alvo)
+      ? ' (ATENÇÃO: não era o emulador!)'
+      : mode === 'prod' && isEmulatorSerial(alvo)
+        ? ' (ATENÇÃO: não era o celular real!)'
+        : '';
+  console.log(`Instalando o APK de ${mode === 'dev' ? 'DEV' : 'PROD'} em ${alvo}${aviso}`);
+  const out = capture(adb, ['-s', alvo, 'install', '-r', apkPath]);
   console.log(out.trim());
   if (!/Success/i.test(out)) {
     console.log('!! A instalação não deu certo (veja a mensagem acima).');
     return false;
   }
   const pkg = mode === 'dev' ? DEV_PACKAGE : PROD_PACKAGE;
-  capture(adb, ['-s', devices[0], 'shell', 'monkey', '-p', pkg, '-c', 'android.intent.category.LAUNCHER', '1']);
+  capture(adb, ['-s', alvo, 'shell', 'monkey', '-p', pkg, '-c', 'android.intent.category.LAUNCHER', '1']);
   console.log(`App aberto: ${pkg}`);
   return true;
 }
@@ -242,7 +284,7 @@ if (prodInfo) console.log(`prod → pacote ${prodInfo.package} / rótulo "${prod
 if (devInfo && prodInfo && devInfo.package === prodInfo.package) {
   console.log('!! Os dois APKs têm o MESMO pacote — um substituiria o outro!');
 } else if (devInfo && prodInfo) {
-  console.log('OK: os dois convivem (pacotes diferentes).');
+  console.log('OK: são pacotes diferentes (um não substitui o outro).');
 }
 console.log(`Pasta android/ deixada no estado de PRODUÇÃO (config sem server.url).`);
 

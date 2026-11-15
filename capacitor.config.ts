@@ -12,8 +12,14 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * Sem a variável (build de produção), o app usa os arquivos de `dist`.
  *
  * No modo dev o app vira OUTRO pacote (`com.runora.fsrs.dev`, com o nome
- * "Runora Dev"): assim ele pode ficar instalado AO LADO do app de produção
- * (`com.runora.fsrs`) no mesmo aparelho — sem trocar um pelo outro.
+ * "Runora Dev"), com dados totalmente separados do de produção
+ * (`com.runora.fsrs`): cada um tem o seu diretório de dados, o seu
+ * deviceId e o seu login.
+ *
+ * Onde cada APK fica instalado (regra do dono em 15/11/2026):
+ *   - celular real -> só o app de PRODUÇÃO (`com.runora.fsrs`);
+ *   - emulador     -> só o app de DEV (`com.runora.fsrs.dev`).
+ *
  * O `applicationId` do Gradle acompanha essa mudança (ver
  * `android/app/build.gradle`, opção `-PdevBuild=true`).
  */
