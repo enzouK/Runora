@@ -86,6 +86,25 @@ interface SyncTombstones {
   presets: Tombstone[];
 }
 
+/**
+ * Opções das deleções (do storage).
+ *
+ * `remoteUsn`: a deleção veio do **Drive** (outro aparelho deletou). O
+ * tombstone local então carrega o **USN do Drive** — e não um USN novo.
+ *
+ * POR QUE ISSO IMPORTA (bug de 15/11/2026): o USN é o contador
+ * compartilhado da coleção. Um tombstone local com USN **acima** do head é
+ * uma mudança que o Drive ainda não viu → o aparelho acha que tem algo
+ * para publicar → o botão Sync fica laranja e a deleção volta para o Drive
+ * (ping-pong: o delta cresce a cada sync). Com o USN do Drive, o tombstone
+ * fica "já sincronizado" (como o item deletado no Drive) e a contagem de
+ * deleções pendentes continua correta.
+ */
+export interface DeleteOptions {
+  /** USN que o tombstone local deve carregar (deleção vinda do Drive). */
+  remoteUsn?: number;
+}
+
 const EMPTY_TOMBSTONES: Tombstones = { decks: [], notetypes: [], notes: [], cards: [] };
 
 export class StorageService {
@@ -276,20 +295,53 @@ export class StorageService {
    * @returns quantos itens foram reestampados
    */
   public static restampPendingChanges(desdeUsn: number, minimo: number): number {
-    // o contador precisa estar no mínimo antes de gerar o próximo USN
+    // O contador precisa acompanhar o head do Drive (ele é compartilhado).
     this.adoptUsnCounter(minimo);
+
+    // O que precisa de USN novo? Só o que o Drive ainda não viu (USN acima
+    // do `desdeUsn` e até o head).
+    const precisaReestampar = (usn?: number): boolean =>
+      typeof usn === 'number' && usn > desdeUsn && usn <= minimo;
+
+    // ── 1) CONTA o que precisa de USN novo (sem escrever nada ainda) ──
+    // O contador do USN é o "número da versão" da coleção: ele só pode
+    // andar com mudança REAL. Antes ele avançava sempre (um `nextUsn()`
+    // incondicional), e o aparelho acabava publicando um delta vazio —
+    // com o contador adiantado, o outro aparelho via o USN pular etapas e
+    // as contagens ficavam diferentes entre os aparelhos.
+    let total = 0;
+    for (const key of [
+      STORAGE_KEYS.DECKS,
+      STORAGE_KEYS.NOTETYPES,
+      STORAGE_KEYS.NOTES,
+      STORAGE_KEYS.CARDS,
+      STORAGE_KEYS.REVLOG,
+      STORAGE_KEYS.PRESETS,
+    ]) {
+      for (const item of this.readStored<{ usn?: number }>(key)) {
+        if (precisaReestampar(item.usn)) total++;
+      }
+    }
+    const tombstones = this.getSyncTombstones();
+    for (const grupo of Object.keys(tombstones) as Array<keyof SyncTombstones>) {
+      for (const t of tombstones[grupo]) {
+        if (precisaReestampar(t.usn)) total++;
+      }
+    }
+
+    // Nada para reestampar → o contador NÃO avança (nada mudou de verdade).
+    if (total === 0) return 0;
+
+    // ── 2) agora sim: um USN novo, acima do head ──
     const novoUsn = this.nextUsn();
 
-    let total = 0;
     const reestampa = <T extends { usn?: number }>(key: string): void => {
       const itens = this.readStored<T>(key);
       if (!itens.length) return;
       let mudou = false;
       const novos = itens.map((item) => {
-        const usn = item.usn ?? 0;
-        if (usn > desdeUsn && usn <= minimo) {
+        if (precisaReestampar(item.usn)) {
           mudou = true;
-          total++;
           return { ...item, usn: novoUsn };
         }
         return item;
@@ -305,18 +357,13 @@ export class StorageService {
     reestampa(STORAGE_KEYS.PRESETS);
 
     // tombstones (deletados) também carregam USN
-    const tombstones = this.getSyncTombstones();
     let mudouTomb = false;
     const novosTomb: SyncTombstones = { ...tombstones };
     (Object.keys(tombstones) as Array<keyof SyncTombstones>).forEach((grupo) => {
-      novosTomb[grupo] = tombstones[grupo].map((t) => {
-        if (t.usn > desdeUsn && t.usn <= minimo) {
-          mudouTomb = true;
-          total++;
-          return { ...t, usn: novoUsn };
-        }
-        return t;
-      });
+      novosTomb[grupo] = tombstones[grupo].map((t) =>
+        precisaReestampar(t.usn) ? { ...t, usn: novoUsn } : t
+      );
+      if (novosTomb[grupo].some((t, i) => t !== tombstones[grupo][i])) mudouTomb = true;
     });
     if (mudouTomb) this.saveSyncTombstones(novosTomb);
 
@@ -339,8 +386,14 @@ export class StorageService {
    * deletou), o USN novo já existe — é o do outro aparelho. Aqui não se cria
    * outra versão, senão o aparelho "mudaria" sem motivo e o próximo sync
    * subiria um delta vazio.
+   *
+   * EXCEÇÃO 2 (deleção que VEIO do Drive): o tombstone local carrega o
+   * **USN do Drive** (`remoteUsn`) — assim ele não vira uma mudança local
+   * pendente (que faria o botão Sync ficar laranja e a deleção voltar para
+   * o Drive a cada sync).
    */
-  private static advanceUsnForDeletion(): number {
+  private static advanceUsnForDeletion(opts?: DeleteOptions): number {
+    if (opts?.remoteUsn !== undefined) return opts.remoteUsn;
     if (this.suppressUsnBump) return this.getCurrentUsn();
     return this.nextUsn();
   }
@@ -830,8 +883,11 @@ export class StorageService {
 
   public static saveRevlog(entry: RevlogEntry): void {
     const list = this.getRevlog();
-    const usn = this.nextUsn();
-    const withUsn = entry.usn ? entry : { ...entry, usn };
+    // Só uma revisão NOVA consome USN. Uma revisão que JÁ tem USN (veio
+    // do Drive, ou de outro aparelho) mantém o dele — e o contador NÃO
+    // avança: o USN é o número da versão da coleção, e ele só anda com
+    // mudança real de conteúdo.
+    const withUsn = entry.usn ? entry : { ...entry, usn: this.nextUsn() };
     list.push(withUsn);
     localStorage.setItem(STORAGE_KEYS.REVLOG, JSON.stringify(list));
   }
@@ -1053,8 +1109,11 @@ export class StorageService {
 
   /**
    * Delete a note and its corresponding cards
+   *
+   * `opts.remoteUsn`: a deleção veio do Drive → o tombstone local carrega
+   * o USN do Drive (não vira mudança local pendente).
    */
-  public static deleteNote(noteId: string): void {
+  public static deleteNote(noteId: string, opts?: DeleteOptions): void {
     const note = this.getNotes().find((n) => n.id === noteId);
     const cardsToDelete = this.getCards().filter((c) => c.noteId === noteId);
     if (!note && cardsToDelete.length === 0) return; // nada a apagar de verdade
@@ -1072,7 +1131,7 @@ export class StorageService {
     // aparelho sobe o BACKUP COMPLETO em vez do delta — e o tombstone
     // (usn > sinceUsn) nem entraria num delta pequeno. Os saves acima NÃO
     // avançam o contador numa deleção pura (os itens restantes são iguais).
-    const usn = this.advanceUsnForDeletion();
+    const usn = this.advanceUsnForDeletion(opts);
     const deletedAt = Date.now();
     if (note) {
       this.addSyncTombstone('notes', { type: 'note', id: noteId, guid: note.guid, usn, deletedAt });
@@ -1092,8 +1151,11 @@ export class StorageService {
 
   /**
    * Delete a deck and cascade options
+   *
+   * `opts.remoteUsn`: a deleção veio do Drive → o tombstone local carrega
+   * o USN do Drive (não vira mudança local pendente).
    */
-  public static deleteDeck(deckId: string): void {
+  public static deleteDeck(deckId: string, opts?: DeleteOptions): void {
     const decks = this.getDecks();
     const targetDeck = decks.find((d) => d.id === deckId);
     if (!targetDeck) return;
@@ -1127,7 +1189,7 @@ export class StorageService {
 
     // Sync tombstones (Phase 7) — deleção é mudança real: o contador avança
     // (ver deleteNote; sem isso o delete viraria backup completo no sync).
-    const usn = this.advanceUsnForDeletion();
+    const usn = this.advanceUsnForDeletion(opts);
     const deletedAt = Date.now();
     for (const did of deckIdsToDelete) {
       const deck = decks.find((d) => d.id === did);
@@ -1612,8 +1674,13 @@ export class StorageService {
     });
   }
 
-  /** Delete a preset; every deck linked to it is re-linked to the factory preset. */
-  public static deletePreset(presetId: string): void {
+  /**
+   * Delete a preset; every deck linked to it is re-linked to the factory preset.
+   *
+   * `opts.remoteUsn`: a deleção veio do Drive → o tombstone local carrega
+   * o USN do Drive (não vira mudança local pendente).
+   */
+  public static deletePreset(presetId: string, opts?: DeleteOptions): void {
     if (presetId === this.DEFAULT_PRESET_ID) return; // the factory preset is permanent
     const presetName = this.getPresets().find((p) => p.id === presetId)?.name;
     if (!presetName) return; // nada a apagar de verdade
@@ -1628,7 +1695,7 @@ export class StorageService {
 
     // Sync tombstone (Phase 7) — a identidade entre aparelhos é o NOME.
     // Deleção é mudança real: o contador avança (ver deleteNote).
-    const usn = this.advanceUsnForDeletion();
+    const usn = this.advanceUsnForDeletion(opts);
     const deletedAt = Date.now();
     this.addSyncTombstone('presets', { type: 'preset', id: presetId, name: presetName, usn, deletedAt });
   }
@@ -1792,7 +1859,13 @@ export class StorageService {
     });
   }
 
-  public static deleteCard(cardId: string): void {
+  /**
+   * Delete a card.
+   *
+   * `opts.remoteUsn`: a deleção veio do Drive → o tombstone local carrega
+   * o USN do Drive (não vira mudança local pendente).
+   */
+  public static deleteCard(cardId: string, opts?: DeleteOptions): void {
     const card = this.getCards().find((c) => c.id === cardId);
     if (!card) return; // nada a apagar de verdade
     this.saveCards(this.getCards().filter((c) => c.id !== cardId));
@@ -1801,7 +1874,7 @@ export class StorageService {
     // Sync tombstone (Phase 7) — a identidade do card entre aparelhos é
     // (GUID da nota dona, ordem do template).
     // Deleção é mudança real: o contador avança (ver deleteNote).
-    const usn = this.advanceUsnForDeletion();
+    const usn = this.advanceUsnForDeletion(opts);
     const deletedAt = Date.now();
     const noteGuid = card ? this.getNotes().find((n) => n.id === card.noteId)?.guid : undefined;
     this.addSyncTombstone('cards', {
@@ -1814,7 +1887,13 @@ export class StorageService {
     });
   }
 
-  public static deleteNoteType(noteTypeId: string): void {
+  /**
+   * Delete a note type.
+   *
+   * `opts.remoteUsn`: a deleção veio do Drive → o tombstone local carrega
+   * o USN do Drive (não vira mudança local pendente).
+   */
+  public static deleteNoteType(noteTypeId: string, opts?: DeleteOptions): void {
     const noteType = this.getNoteTypes().find((nt) => nt.id === noteTypeId);
     if (!noteType) return; // nada a apagar de verdade
     this.saveNoteTypes(this.getNoteTypes().filter((nt) => nt.id !== noteTypeId));
@@ -1822,7 +1901,7 @@ export class StorageService {
     this.addTombstone('notetypes', [noteTypeId]);
     // Sync tombstone (Phase 7) — a identidade entre aparelhos é o NOME.
     // Deleção é mudança real: o contador avança (ver deleteNote).
-    const usn = this.advanceUsnForDeletion();
+    const usn = this.advanceUsnForDeletion(opts);
     const deletedAt = Date.now();
     this.addSyncTombstone('notetypes', {
       type: 'notetype',

@@ -572,18 +572,33 @@ export function isValidDelta(delta: unknown): delta is SyncDelta {  if (!delta |
 /**
  * Aplica um delta localmente (merge das entidades + tombstones).
  * Retorna o novo USN head.
+ *
+ * `sinceUsn`: só o que é **NOVO** para este aparelho é aplicado (USN acima
+ * dele). O delta que fica no Drive é **acumulado** (cobre da base até o
+ * head) — aplicá-lo inteiro de novo reescrevia o que já estava aqui:
+ * as revisões entravam duplicadas e as deleções reapareciam.
  */
-export function applyDelta(delta: SyncDelta, applyEntity: (entity: unknown, type: string) => void, applyTombstone: (t: Tombstone) => void): number {
+export function applyDelta(
+  delta: SyncDelta,
+  applyEntity: (entity: unknown, type: string) => void,
+  applyTombstone: (t: Tombstone) => void,
+  sinceUsn = 0
+): number {
+  // item sem USN (dado antigo) é sempre aplicado — não há como saber se
+  // ele já entrou aqui.
+  const eNovo = (usn?: number): boolean => usn === undefined || usn > sinceUsn;
+
   // 1. Aplica tombstones primeiro (deletados)
   for (const t of delta.tombstones) {
+    if (!eNovo(t.usn)) continue;
     applyTombstone(t);
   }
   // 2. Aplica entidades (cria/atualiza)
-  for (const d of delta.decks) applyEntity(d, 'deck');
-  for (const nt of delta.noteTypes) applyEntity(nt, 'notetype');
-  for (const n of delta.notes) applyEntity(n, 'note');
-  for (const c of delta.cards) applyEntity(c, 'card');
-  for (const r of delta.revlog) applyEntity(r, 'revlog');
-  for (const p of delta.presets) applyEntity(p, 'preset');
+  for (const d of delta.decks) if (eNovo(d.usn)) applyEntity(d, 'deck');
+  for (const nt of delta.noteTypes) if (eNovo(nt.usn)) applyEntity(nt, 'notetype');
+  for (const n of delta.notes) if (eNovo(n.usn)) applyEntity(n, 'note');
+  for (const c of delta.cards) if (eNovo(c.usn)) applyEntity(c, 'card');
+  for (const r of delta.revlog) if (eNovo(r.usn)) applyEntity(r, 'revlog');
+  for (const p of delta.presets) if (eNovo(p.usn)) applyEntity(p, 'preset');
   return delta.currentUsn;
 }

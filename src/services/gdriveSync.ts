@@ -112,7 +112,6 @@ import {
 } from './syncExtras';
 import {
   buildDelta,
-  applyDelta,
   applyDeltaToCollection,
   mergeDeltas,
   isValidDelta,
@@ -124,6 +123,7 @@ import {
   metaFromState,
 } from './syncDelta';
 import { isOldFormatBackup, OLD_DEVICE_WARNING } from './syncFormat';
+import { applyDeltaToStorage } from './syncApplyDelta';
 import {
   computeAddonState,
   exportAddonPackage,
@@ -3857,82 +3857,22 @@ itemProgress({ phase: 'download', counts: state.counts });
       });
     };
 
-    const newHeadUsn = applyDelta(delta,
-      // applyEntity: cria/atualiza entidade no storage local
-      (entity, type) => {
-        switch (type) {
-          case 'deck':
-            StorageService.upsertDeck(entity as Deck);
-            break;
-          case 'notetype':
-            StorageService.upsertNoteType(entity as NoteType);
-            break;
-          case 'note':
-            StorageService.upsertNote(entity as Note);
-            break;
-          case 'card': {
-            const card = entity as Card;
-            // o `noteId` do card é o id da nota NO APARELHO DE ORIGEM: o delta
-            // traz o mapa id → GUID para casar a nota localmente
-            StorageService.upsertCard(card, delta.noteGuids?.[card.noteId]);
-            break;
-          }
-          case 'revlog':
-            StorageService.saveRevlog(entity as RevlogEntry);
-            break;
-          case 'preset':
-            StorageService.upsertPreset(entity as Preset);
-            break;
-        }
+    // As revisões que vêm do Drive são casadas com o card LOCAL e aplicadas
+    // depois das notas/cards (elas precisam do card para ser casadas) — isso
+    // acontece dentro do `applyDeltaToStorage`.
+    const novoUsn = applyDeltaToStorage(delta, lastSyncedUsn, {
+      onEntity: (type) => {
         const key = TALLY_KEY[type];
         if (key) addTally(tallyFromCounts({ [key]: 1 }, 'down'));
         // 'presets' conta no tally mas não tem "parte" própria no painel
         reportApply(key && key !== 'presets' ? key : undefined);
       },
-      // applyTombstone: processa deletados
-      (tombstone) => {
-        // O `id` do tombstone é LOCAL do aparelho que deletou — aqui we casamos
-        // pela identidade universal (GUID da nota / nome do deck) para apagar
-        // o item certo.
-        // A deleção vem do Drive: o USN novo JÁ existe (é o do outro
-        // aparelho) → sem withoutUsnBump, esta apparatus local criaria uma
-        // versão nova sem motivo (e o próximo sync subiria um delta vazio).
-        switch (tombstone.type) {
-          case 'deck': {
-            const id = StorageService.findDeckIdByName(tombstone.name) ?? tombstone.id;
-            StorageService.withoutUsnBump(() => StorageService.deleteDeck(id));
-            break;
-          }
-          case 'notetype': {
-            const id = StorageService.findNoteTypeIdByName(tombstone.name) ?? tombstone.id;
-            StorageService.withoutUsnBump(() => StorageService.deleteNoteType(id));
-            break;
-          }
-          case 'note': {
-            const id = StorageService.findNoteIdByGuid(tombstone.guid) ?? tombstone.id;
-            StorageService.withoutUsnBump(() => StorageService.deleteNote(id));
-            break;
-          }
-          case 'card': {
-            const id =
-              StorageService.findCardIdByIdentity(tombstone.guid, tombstone.templateOrd) ??
-              tombstone.id;
-            StorageService.withoutUsnBump(() => StorageService.deleteCard(id));
-            break;
-          }
-          case 'revlog':
-            // Revlog não tem delete individual — ignora (limpeza via sync completo se necessário)
-            break;
-          case 'preset': {
-            const id = StorageService.findPresetIdByName(tombstone.name) ?? tombstone.id;
-            StorageService.withoutUsnBump(() => StorageService.deletePreset(id));
-            break;
-          }
-        }
+      onTombstone: () => {
         addTally({ removedDown: 1 });
         reportApply('deletes');
-      }
-    );
+      },
+    });
+    const newHeadUsn = novoUsn.headUsn;
 
     // Atualiza último USN sincronizado
     this.setLastSyncedUsn(newHeadUsn);
