@@ -90,6 +90,18 @@ perde. Por isso:
   app estiver aberto, porque a pasta `release\win-unpacked` fica travada).
 - APK emulador = dev (`http://10.0.2.2:3000`); APK celular real = produção
   (origem `https://localhost/`).
+- **Cada aparelho usa só UM APK (decisão do dono em 15/11/2026):**
+  - **Celular real (Galaxy S25 Ultra)** → só o **prod** (`com.runora.fsrs`).
+    O pacote dev **não** fica instalado nele.
+  - **Emulador (`pixel-api-35`)** → só o **dev** (`com.runora.fsrs.dev`).
+    O pacote prod **não** fica instalado nele.
+  - Motivo: cada aparelho fica com uma identidade clara (produção = o app
+    que o dono usa; emulador = o app de desenvolvimento que aponta para o
+    Vite do PC), sem risco de abrir a versão errada. Isso **não** muda a
+    regra de que os dois APKs são sempre gerados juntos do mesmo `dist`:
+    os dois artefatos continuam sendo construídos e conferidos.
+  - Se for preciso testar o APK de produção no emulador (ou o de dev no
+    celular), é uma exceção pontual — **pergunte ao dono antes**.
 - **Os dois APKs são sempre gerados JUNTOS, do mesmo `dist`** — é o mesmo
   app, só muda de onde ele carrega o código (o `dev` busca no Vite do PC; o
   `prod` usa o bundle embutido). Nunca deixar um deles para trás: um
