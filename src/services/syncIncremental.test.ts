@@ -153,7 +153,7 @@ describe('Revisão do Drive — casada com o card LOCAL (sem órfã, sem duplica
     assert.equal(r.entries.length, 1);
     assert.equal(r.entries[0].cardId, 'card-local');
     assert.equal(r.entries[0].noteId, 'note-local');
-    assert.equal(r.skipped, 0);
+    assert.equal(r.orphans, 0);
   });
 
   it('casa pelo par (GUID da nota, ordem do template) quando o id é outro', () => {
@@ -199,11 +199,15 @@ describe('Revisão do Drive — casada com o card LOCAL (sem órfã, sem duplica
 
     const r = resolveRemoteRevlog(delta.revlog, delta, { notes, cards, revlog: [] });
 
-    assert.equal(r.entries.length, 0, 'sem a ordem do template não dá para casar');
-    assert.equal(r.skipped, 1);
+    // A revisão é GUARDADA (o addon *Review Heatmap* precisa dela), mas sem
+    // card local: sem a ordem do template não dá para saber de qual card ela
+    // é — e chutar apontaria a revisão para o card errado.
+    assert.equal(r.entries.length, 1, 'a revisão não pode ser descartada');
+    assert.equal(r.entries[0].cardId, 'card-remoto', 'sem card local, ela fica órfã');
+    assert.equal(r.orphans, 1);
   });
 
-  it('descarta a revisão de um card que não existe aqui (nada de órfã)', () => {
+  it('GUARDA a revisão de um card que não existe aqui (o heatmap conta ela)', () => {
     const delta = makeDelta({
       noteGuids: { 'note-remota': 'guid-y' },
       revlog: [makeRevlog({ cardId: 'card-remoto', noteId: 'note-remota', usn: 289 })],
@@ -211,11 +215,14 @@ describe('Revisão do Drive — casada com o card LOCAL (sem órfã, sem duplica
 
     const r = resolveRemoteRevlog(delta.revlog, delta, { notes: [], cards: [], revlog: [] });
 
-    assert.equal(r.entries.length, 0);
-    assert.equal(r.skipped, 1);
+    // Antes (T21) esta revisão era DESCARTADA — e era por isso que o
+    // celular tinha 10 revisões de card apagado e o PC tinha 16.
+    assert.equal(r.entries.length, 1, 'a revisão de card apagado tem que viajar');
+    assert.equal(r.orphans, 1);
+    assert.equal(r.entries[0].cardId, 'card-remoto');
   });
 
-  it('não duplica a revisão que já está no histórico', () => {
+  it('a revisão que já está no histórico não entra de novo', () => {
     const notes = [makeNote({ id: 'note-local', guid: 'guid-x', usn: 100 })];
     const cards = [makeCard({ id: 'card-local', noteId: 'note-local', usn: 100 })];
     const jaGuardada = makeRevlog({ cardId: 'card-local', noteId: 'note-local', reviewTime: 500, usn: 200 });
@@ -340,7 +347,7 @@ describe('Deleção que veio do Drive NÃO vira mudança local pendente', () => 
 describe('O caso real do dono — aplicar o delta inteiro sem estragar o estado', () => {
   beforeEach(limpar);
 
-  it('delta com 2 revisões + 4 pares de deleções: contador parado, sem órfã, sem ping-pong', () => {
+  it('delta com 2 revisões + 4 pares de deleções: contador parado, sem duplicata, sem ping-pong', () => {
     // ── o estado local do `.exe` (antes de aplicar) ──
     const notas = [
       makeNote({ id: 'note-a', guid: 'guid-a', usn: 280 }),
@@ -391,14 +398,18 @@ describe('O caso real do dono — aplicar o delta inteiro sem estragar o estado'
       0,
       'as deleções do Drive não podem voltar como pendência local'
     );
-    const idsCards = new Set(StorageService.getCards().map((c) => c.id));
-    assert.ok(
-      StorageService.getRevlog().every((r) => idsCards.has(r.cardId)),
-      'nenhuma revisão pode ficar órfã (apontando para um card que não existe)'
-    );
-    assert.equal(StorageService.getRevlog().length, 0, 'a revisão de um card inexistente não entra');
-    assert.equal(resultado.revlogSkipped, 2, 'as 2 revisões são de um card que não existe aqui');
+    // A revisão de um card APAGADO é guardada (T16): ela é invisível na
+    // tela de estudo, mas continua no histórico — é o que o *Review
+    // Heatmap* conta, e o número tem que ser o mesmo em todos os aparelhos.
+    assert.equal(StorageService.getRevlog().length, 2, 'as 2 revisões foram guardadas');
+    assert.equal(resultado.revlogOrphans, 2, 'as 2 revisões são de um card que não existe aqui');
+    assert.equal(resultado.revlogApplied, 2);
     assert.equal(resultado.headUsn, head);
+
+    // ── o próximo sync (o delta do Drive é acumulado) ──
+    const resultado2 = applyDeltaToStorage(delta, head);
+    assert.equal(resultado2.revlogApplied, 0, 'a revisão não pode entrar duplicada');
+    assert.equal(StorageService.getRevlog().length, 2, 'o histórico não pode ter repetida');
   });
 
   it('a revisão que É de um card existente entra uma vez só, sem consumir USN', () => {

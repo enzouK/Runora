@@ -528,7 +528,13 @@ export class AnkiApkgExportService {
     type RevlogRow = [number, number, number, number, number, number, number, number, number];
     const revlogRows: RevlogRow[] = [];
     if (includeScheduling) {
+      // A revisão de um card que NÃO está no pacote é pulada: o Anki não
+      // aceita uma linha de revisão apontando para um card inexistente
+      // (o exportador inventava um id numérico e gravava a linha assim
+      // mesmo — dado inválido no banco do Anki).
+      const cardIdsExportados = new Set(cards.map((c) => c.id));
       for (const r of revlog) {
+        if (!cardIdsExportados.has(r.cardId)) continue;
         const cid = cardIds.forString(`card:${r.cardId}`);
         // Anki type: 0 learn, 1 review, 2 relearn, 3 cram
         const type = r.state === 2 ? 1 : r.state === 3 ? 2 : 0;

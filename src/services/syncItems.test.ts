@@ -23,6 +23,7 @@ import {
   type SyncContent,
 } from './syncItems';
 import { applyRemoteItems, applyRemoteItemsProgressive, hasRevlogOnlyLocal, mergeRemoteRevlog } from './syncApply';
+import { universalReviewId } from './reviewIdentity';
 import type { Card, Deck, Note, NoteType, RevlogEntry } from '../types/runora';
 
 class MemoryStorage {
@@ -350,7 +351,9 @@ describe('syncApply — aplica só o que foi escolhido', () => {
     const local = StorageService.getRevlog();
     assert.equal(local.length, 1);
     assert.equal(local[0].cardId, 'c1');
-    assert.equal(local[0].id.startsWith('rev-sync-'), true);
+    // o id da revisão é UNIVERSAL (T16): o mesmo card + o mesmo horário =
+    // o mesmo id em qualquer aparelho.
+    assert.equal(local[0].id, universalReviewId(1000, { guid: 'g1', templateOrd: 0 }));
   });
 
   it('revisão repetida não entra de novo', () => {

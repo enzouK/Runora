@@ -9,8 +9,7 @@
  * 1. **O `cardId` é o do aparelho de origem.** Cada aparelho tem os seus
  *    ids (o card é reconhecido entre aparelhos pelo par *(GUID da nota,
  *    ordem do template)*). Salvar a revisão crua deixava uma revisão
- *    **órfã**: apontando para um card que não existe aqui — o histórico
- *    sumia da tela e a contagem de revisões do aparelho ficava errada.
+ *    apontando para um card que não existe aqui.
  * 2. **Sem dedupe.** O delta do Drive é **acumulado** (cobre da base até o
  *    head) e pode ser aplicado mais de uma vez → a mesma revisão entrava
  *    duplicada no histórico.
@@ -23,12 +22,27 @@
  * caminho incremental — com a diferença de que aqui só se conhece o
  * **delta** (não a coleção inteira do outro aparelho).
  *
+ * A IDENTIDADE DA REVISÃO (T16, 15/11/2026):
+ *
+ * A revisão agora tem um id **universal** (o mesmo card + o mesmo horário
+ * = o mesmo id em qualquer aparelho — ver `reviewIdentity.ts`). E a
+ * revisão de um card **apagado** não é mais descartada: ela é guardada
+ * (é o que o addon *Review Heatmap* conta) e continua sendo a mesma
+ * revisão nos dois aparelhos.
+ *
  * NADA aqui mexe no FSRS, na agenda de estudo ou no formato do `.colpkg`:
  * só em como a revisão recebida é guardada.
  */
 
-import type { Card, Note, RevlogEntry } from '../types/runora';
+import type { Card, Note, RevlogEntry, Tombstone } from '../types/runora';
 import type { SyncDelta } from './syncDelta';
+import {
+  buildCardIdentityIndex,
+  hasUniversalId,
+  reviewDedupeKeys,
+  universalReviewId,
+  type CardIdentity,
+} from './reviewIdentity';
 
 /** Identidade universal de um card (a que atravessa os aparelhos). */
 export interface RemoteCardRef {
@@ -43,16 +57,18 @@ export interface LocalRevlogContext {
   notes: Note[];
   cards: Card[];
   revlog: RevlogEntry[];
+  /** Cards apagados (tombstones) — a identidade do card continua neles. */
+  tombstones?: Tombstone[];
 }
 
 /** O que o resolvedor conseguiu fazer com as revisões recebidas. */
 export interface ResolvedRevlog {
   /** Revisões prontas para guardar (já com o `cardId` LOCAL). */
   entries: RevlogEntry[];
-  /** Revisões que vieram do Drive mas não puderam ser guardadas. */
-  skipped: number;
   /** Revisões repetidas (a mesma revisão já estava aqui). */
   duplicates: number;
+  /** Revisões guardadas sem card local (o card foi apagado). */
+  orphans: number;
 }
 
 /**
@@ -100,7 +116,7 @@ export function buildRemoteCardIndex(delta: SyncDelta): Map<string, RemoteCardRe
  *    certamente o remoto. Com mais de um card, a ordem do template remoto
  *    é desconhecida — e chutar seria atribuir a revisão ao card errado
  *    (isto mexeria na agenda de estudo: por isso, nesse caso, a revisão é
- *    ignorada em vez de errar).
+ *    guardada como órfã, sem card local, em vez de errar).
  */
 function resolveLocalCard(
   entry: RevlogEntry,
@@ -135,14 +151,19 @@ function resolveLocalCard(
  * Resolve as revisões do delta para os cards locais.
  *
  * O resultado já está no formato do histórico local (`cardId`/`noteId`
- * locais, id determinístico) e sem duplicatas.
+ * locais, id universal) e sem duplicatas.
+ *
+ * A REVISÃO DE UM CARD APAGADO **é guardada** (não é descartada): ela
+ * fica invisível na tela de estudo, mas continua no histórico — é o que
+ * o *Review Heatmap* conta, e o número tem que ser o mesmo em todos os
+ * aparelhos.
  */
 export function resolveRemoteRevlog(
   remoteRevlog: RevlogEntry[],
   delta: SyncDelta,
   local: LocalRevlogContext
 ): ResolvedRevlog {
-  const empty: ResolvedRevlog = { entries: [], skipped: 0, duplicates: 0 };
+  const empty: ResolvedRevlog = { entries: [], duplicates: 0, orphans: 0 };
   if (!remoteRevlog || remoteRevlog.length === 0) return empty;
 
   const remoteIndex = buildRemoteCardIndex(delta);
@@ -166,13 +187,31 @@ export function resolveRemoteRevlog(
     localCardsByGuid.set(guid, lista);
   }
 
-  // Dedupe: a mesma revisão (mesmo card local + mesmo horário) não entra
-  // duas vezes — nem vinda de novo do Drive, nem repetida no histórico.
-  const seen = new Set(local.revlog.map((e) => `${e.reviewTime}:${e.cardId}`));
+  // Identidade de QUALQUER card que este aparelho conhece — inclusive os
+  // apagados (o tombstone carrega o GUID e a ordem do template).
+  const identityIndex = buildCardIdentityIndex(
+    local.notes,
+    local.cards,
+    [...(local.tombstones ?? []), ...(delta.tombstones ?? [])]
+  );
+  for (const [cardId, ref] of remoteIndex) {
+    identityIndex.set(cardId, { guid: ref.guid, templateOrd: ref.templateOrd });
+  }
 
   const entries: RevlogEntry[] = [];
-  let skipped = 0;
   let duplicates = 0;
+  let orphans = 0;
+
+  // Dedupe: a mesma revisão (mesma identidade + mesmo horário) não entra
+  // duas vezes — nem vinda de novo do Drive, nem repetida no histórico.
+  // As duas chaves são usadas (identidade universal e card local): a
+  // revisão de um card apagado não tem identidade resolvível, e aí é o
+  // id do card (que é o do aparelho de origem) que casa com ela.
+  const seen = new Set<string>();
+  for (const localEntry of local.revlog) {
+    const localIdentity = identityIndex.get(localEntry.cardId);
+    for (const key of reviewDedupeKeys(localEntry, localIdentity)) seen.add(key);
+  }
 
   for (const entry of remoteRevlog) {
     const card = resolveLocalCard(
@@ -183,25 +222,43 @@ export function resolveRemoteRevlog(
       localCardsByGuid,
       delta
     );
-    if (!card) {
-      // revisão de um card que não existe aqui (o card foi deletado ou
-      // ainda não chegou) — guardar assim deixaria a revisão órfã.
-      skipped++;
-      continue;
-    }
-    const key = `${entry.reviewTime}:${card.id}`;
-    if (seen.has(key)) {
+
+    // A identidade do card da revisão (para o id universal e para o dedupe).
+    // Vem do card que casou, do índice de identidade ou — quando a revisão
+    // já nasceu no app novo — do próprio id (que é universal).
+    const identity: CardIdentity | undefined =
+      card && guidByNoteId.get(card.noteId)
+        ? { guid: guidByNoteId.get(card.noteId)!, templateOrd: card.templateOrd ?? 0 }
+        : identityIndex.get(entry.cardId);
+
+    // O id final: o universal (calculado aqui ou o que veio, que já é o
+    // mesmo em qualquer aparelho). Uma revisão legada sem identidade
+    // possível fica com o id que veio — nunca se perde revisão.
+    const id = hasUniversalId(entry)
+      ? entry.id
+      : identity
+        ? universalReviewId(entry.reviewTime, identity)
+        : entry.id;
+
+    const mapped: RevlogEntry = {
+      ...entry,
+      id,
+      cardId: card?.id ?? entry.cardId,
+      noteId: card?.noteId ?? entry.noteId,
+    };
+    if (!card) orphans++;
+
+    // Dedupe: a mesma revisão (mesma identidade + mesmo horário) não entra
+    // duas vezes — nem vinda de novo do Drive, nem repetida no histórico.
+    const keys = reviewDedupeKeys(mapped, identity);
+    if (keys.some((key) => seen.has(key))) {
       duplicates++;
       continue;
     }
-    seen.add(key);
-    entries.push({
-      ...entry,
-      id: `rev-sync-${card.id}-${entry.reviewTime}`,
-      cardId: card.id,
-      noteId: card.noteId,
-    });
+    for (const key of keys) seen.add(key);
+
+    entries.push(mapped);
   }
 
-  return { entries, skipped, duplicates };
+  return { entries, duplicates, orphans };
 }

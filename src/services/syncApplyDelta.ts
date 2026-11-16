@@ -28,6 +28,7 @@ import type { Card, Deck, Note, NoteType, Preset, RevlogEntry } from '../types/r
 import { StorageService } from './storage';
 import { applyDelta, type SyncDelta } from './syncDelta';
 import { resolveRemoteRevlog } from './syncRevlog';
+import { buildCardIdentityIndex, mergeRevlogEntries } from './reviewIdentity';
 
 /** Tipos de entidade que o delta pode trazer. */
 export type DeltaEntityType = 'deck' | 'notetype' | 'note' | 'card' | 'revlog' | 'preset';
@@ -46,10 +47,12 @@ export interface ApplyDeltaResult {
   headUsn: number;
   /** Revisões que entraram no histórico local. */
   revlogApplied: number;
-  /** Revisões que vieram do Drive sem card correspondente aqui. */
-  revlogSkipped: number;
+  /** Revisões guardadas sem card local (o card foi apagado). */
+  revlogOrphans: number;
   /** Revisões que eram repetidas (já estavam no histórico). */
   revlogDuplicates: number;
+  /** Revisões legadas que ganharam o id universal. */
+  revlogReplaced: number;
 }
 
 /**
@@ -162,22 +165,46 @@ export function applyDeltaToStorage(
   // casada com o card LOCAL (remap), as repetidas são descartadas e
   // NENHUMA delas consome USN (o contador é compartilhado — ele só anda
   // com mudança real de conteúdo).
+  //
+  // A revisão de um card APAGADO é guardada do mesmo jeito (vira órfã):
+  // ela é invisível na tela de estudo, mas continua no histórico — é o
+  // que o addon *Review Heatmap* conta, e o número tem que ser o mesmo
+  // em todos os aparelhos.
   let revlogApplied = 0;
-  let revlogSkipped = 0;
+  let revlogOrphans = 0;
   let revlogDuplicates = 0;
+  let revlogReplaced = 0;
   if (revlogRemoto.length > 0) {
+    const localRevlog = StorageService.getRevlog();
     const resolvidas = resolveRemoteRevlog(revlogRemoto, delta, {
       notes: StorageService.getNotes(),
       cards: StorageService.getCards(),
-      revlog: StorageService.getRevlog(),
+      revlog: localRevlog,
+      tombstones: StorageService.getCardTombstones(),
     });
-    revlogApplied = resolvidas.entries.length;
-    revlogSkipped = resolvidas.skipped;
-    revlogDuplicates = resolvidas.duplicates;
-    if (resolvidas.entries.length > 0) {
-      StorageService.saveRevlogAll([...StorageService.getRevlog(), ...resolvidas.entries]);
+    revlogOrphans = resolvidas.orphans;
+
+    const identityIndex = buildCardIdentityIndex(
+      StorageService.getNotes(),
+      StorageService.getCards(),
+      [...StorageService.getCardTombstones(), ...(delta.tombstones ?? [])]
+    );
+    const mescladas = mergeRevlogEntries(localRevlog, resolvidas.entries, (entry) =>
+      identityIndex.get(entry.cardId)
+    );
+    revlogApplied = mescladas.applied;
+    revlogDuplicates = mescladas.duplicates;
+    revlogReplaced = mescladas.replaced;
+    if (mescladas.merged.length !== localRevlog.length || mescladas.replaced > 0) {
+      StorageService.saveRevlogAll(mescladas.merged);
     }
   }
 
-  return { headUsn, revlogApplied, revlogSkipped, revlogDuplicates };
+  return {
+    headUsn,
+    revlogApplied,
+    revlogOrphans,
+    revlogDuplicates,
+    revlogReplaced,
+  };
 }

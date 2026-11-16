@@ -16,6 +16,7 @@ import { formatTimespanDays } from '../../fsrs/timespan';
 import { ClozeService } from '../../services/clozeService';
 import { AudioService } from '../../services/audioService';
 import { StorageService } from '../../services/storage';
+import { universalReviewId } from '../../services/reviewIdentity';
 import { AddonSystem } from '../../services/addonSystem';
 import { RatingButtons } from './RatingButtons';
 import { CardContentRenderer } from './CardContentRenderer';
@@ -572,8 +573,17 @@ export const StudyView: React.FC<StudyViewProps> = ({
     }
 
     // Save revlog
+    // O id da revisão é UNIVERSAL: o mesmo card + o mesmo horário = o mesmo
+    // id em qualquer aparelho (a identidade do card é o GUID da nota + a
+    // ordem do template). É o que faz a mesma revisão ter o mesmo histórico
+    // no celular e no PC — e o que o addon *Review Heatmap* vai ler.
+    const noteGuid = noteData?.note?.guid?.trim();
+    const revlogId =
+      noteGuid && currentCard.templateOrd !== undefined
+        ? universalReviewId(now, { guid: noteGuid, templateOrd: currentCard.templateOrd })
+        : `rev-${now}-${Math.random().toString(36).slice(2, 6)}`;
     StorageService.saveRevlog({
-      id: `rev-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: revlogId,
       cardId: currentCard.id,
       noteId: currentCard.noteId,
       rating,

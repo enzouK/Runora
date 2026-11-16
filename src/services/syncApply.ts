@@ -21,6 +21,12 @@ import type {
 import { StorageService } from './storage';
 import { refreshThemeInDom } from './syncExtras';
 import {
+  buildCardIdentityIndex,
+  hasUniversalId,
+  mergeRevlogEntries,
+  universalReviewId,
+} from './reviewIdentity';
+import {
   cardKey,
   deckKey,
   noteKey,
@@ -568,10 +574,15 @@ export async function applyRemoteItemsProgressive(
  * Há revisão aqui que NÃO existe no Drive?
  *
  * A comparação é por IDENTIDADE (nota + ordem do template + horário), não
- * pelo `id`: o id do revlog é LOCAL de cada aparelho (a mesma revisão vira
- * `rev-sync-<cardId>-<horário>` em cada um) — comparar os ids dava sempre
- * "sim" e fazia o app reenviar a base inteira (72,9 MB) à toa, num
+ * pelo `id`: o id do revlog era LOCAL de cada aparelho (a mesma revisão
+ * virava `rev-sync-<cardId>-<horário>` em cada um) — comparar os ids dava
+ * sempre "sim" e fazia o app reenviar a base inteira (72,9 MB) à toa, num
  * ida-e-volta infinito entre os aparelhos.
+ *
+ * Agora o id da revisão é UNIVERSAL (o mesmo card + o mesmo horário = o
+ * mesmo id em qualquer aparelho) → ele também serve de chave, e é o que
+ * fecha a conta das revisões de card APAGADO (que não têm card para
+ * comparar).
  */
 export function hasRevlogOnlyLocal(
   localRevlog: RevlogEntry[],
@@ -599,8 +610,10 @@ export function hasRevlogOnlyLocal(
 
   const remoteByIdentity = new Set<string>();
   const remoteByTime = new Set<number>();
+  const remoteById = new Set<string>();
   for (const e of remoteRevlog) {
     remoteByTime.add(e.reviewTime);
+    remoteById.add(e.id);
     const ident = remoteIdentity.get(e.cardId);
     if (ident) remoteByIdentity.add(`${e.reviewTime}:${ident}`);
   }
@@ -608,7 +621,9 @@ export function hasRevlogOnlyLocal(
   for (const e of localRevlog) {
     const ident = localIdentity.get(e.cardId);
     if (ident) {
-      if (!remoteByIdentity.has(`${e.reviewTime}:${ident}`)) return true;
+      if (!remoteByIdentity.has(`${e.reviewTime}:${ident}`) && !remoteById.has(e.id)) {
+        return true;
+      }
     } else if (!remoteByTime.has(e.reviewTime)) {
       // sem card local para comparar → compara só pelo horário
       return true;
@@ -619,8 +634,12 @@ export function hasRevlogOnlyLocal(
 
 /**
  * Histórico de revisões que veio do Drive: as entradas são reescritas com
- * os ids LOCAIS do card (o id do card do outro dispositivo não vale aqui)
- * e as repetidas são ignoradas.
+ * os ids LOCAIS do card (o id do card do outro dispositivo não vale aqui),
+ * ganham o **id universal** da revisão e as repetidas são ignoradas.
+ *
+ * A revisão de um card APAGADO também é guardada (ela fica invisível na
+ * tela de estudo, mas continua no histórico — é o que o addon *Review
+ * Heatmap* conta, e o número tem que ser o mesmo em todos os aparelhos).
  */
 export function mergeRemoteRevlog(
   remoteRevlog: RevlogEntry[],
@@ -628,49 +647,69 @@ export function mergeRemoteRevlog(
 ): number {
   if (remoteRevlog.length === 0) return 0;
 
-  // cardId do outro lado → (guid da nota, ordem do template)
-  const remoteIdentityByCardId = new Map<string, { guid: string; ord: number }>();
+  const localNotes = StorageService.getNotes();
+  const localCards = StorageService.getCards();
+
+  // Identidade de qualquer card conhecido aqui — inclusive os apagados
+  // (o tombstone carrega o GUID e a ordem do template).
+  const identityIndex = buildCardIdentityIndex(localNotes, localCards, StorageService.getCardTombstones());
+  // Os cards do outro aparelho (a base do Drive) também valem: o id deles
+  // é o que a revisão remota cita.
+  const remoteGuidByNoteId = new Map<string, string>();
   for (const n of remote.notes) {
     const guid = n.guid?.trim();
+    if (guid) remoteGuidByNoteId.set(n.id, guid);
+  }
+  for (const c of remote.cards) {
+    const guid = remoteGuidByNoteId.get(c.noteId);
     if (!guid) continue;
-    for (const c of remote.cards) {
-      if (c.noteId === n.id) remoteIdentityByCardId.set(c.id, { guid, ord: c.templateOrd });
-    }
+    identityIndex.set(c.id, { guid, templateOrd: c.templateOrd ?? 0 });
   }
 
   // (guid, ordem) → card local
   const localCardByIdentity = new Map<string, { id: string; noteId: string }>();
-  const localNotes = StorageService.getNotes();
   const localGuidByNoteId = new Map<string, string>();
   for (const n of localNotes) {
     const guid = n.guid?.trim();
     if (guid) localGuidByNoteId.set(n.id, guid);
   }
-  for (const c of StorageService.getCards()) {
+  const localById = new Map<string, { id: string; noteId: string }>();
+  for (const c of localCards) {
+    localById.set(c.id, { id: c.id, noteId: c.noteId });
     const guid = localGuidByNoteId.get(c.noteId);
     if (!guid) continue;
     localCardByIdentity.set(`${guid}:${c.templateOrd}`, { id: c.id, noteId: c.noteId });
   }
 
   const localRevlog = StorageService.getRevlog();
-  const seen = new Set(localRevlog.map((e) => `${e.reviewTime}:${e.cardId}`));
-  const fresh: RevlogEntry[] = [];
+
+  // Prepara cada revisão remota: id universal + card local (se houver).
+  const prepared: RevlogEntry[] = [];
   for (const entry of remoteRevlog) {
-    const ident = remoteIdentityByCardId.get(entry.cardId);
-    if (!ident) continue; // revisão de um card que não existe aqui
-    const localCard = localCardByIdentity.get(`${ident.guid}:${ident.ord}`);
-    if (!localCard) continue;
-    const mapped: RevlogEntry = {
+    const identity = identityIndex.get(entry.cardId);
+    const localCard =
+      localById.get(entry.cardId) ??
+      (identity ? localCardByIdentity.get(`${identity.guid}:${identity.templateOrd}`) : undefined);
+
+    const id = hasUniversalId(entry)
+      ? entry.id
+      : identity
+        ? universalReviewId(entry.reviewTime, identity)
+        : entry.id;
+
+    prepared.push({
       ...entry,
-      id: `rev-sync-${localCard.id}-${entry.reviewTime}`,
-      cardId: localCard.id,
-      noteId: localCard.noteId,
-    };
-    const key = `${mapped.reviewTime}:${mapped.cardId}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    fresh.push(mapped);
+      id,
+      cardId: localCard?.id ?? entry.cardId,
+      noteId: localCard?.noteId ?? entry.noteId,
+    });
   }
-  if (fresh.length > 0) StorageService.saveRevlogAll([...localRevlog, ...fresh]);
-  return fresh.length;
+
+  const mescladas = mergeRevlogEntries(localRevlog, prepared, (entry) =>
+    identityIndex.get(entry.cardId)
+  );
+  if (mescladas.merged.length !== localRevlog.length || mescladas.replaced > 0) {
+    StorageService.saveRevlogAll(mescladas.merged);
+  }
+  return mescladas.applied + mescladas.replaced;
 }

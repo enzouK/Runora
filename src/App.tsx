@@ -102,6 +102,13 @@ export default function App() {
     const ensuredNotes = ensureNoteGuids(localNotes);
     if (ensuredNotes !== localNotes) StorageService.saveNotes(ensuredNotes);
 
+    // Migração da identidade das revisões (T16): as revisões antigas
+    // (criadas com id aleatório, ou reescritas pelo sync) ganham o id
+    // UNIVERSAL — o mesmo card + o mesmo horário = o mesmo id em qualquer
+    // aparelho. É derivado, então cada aparelho faz isso sozinho, sem
+    // tráfego de rede e sem mexer no USN.
+    StorageService.migrateReviewIdentity();
+
     refreshAll();
     // Addon hook: fired once when the app shell mounts. Await addon loading
     // first — on slow FS backends (Android) init() may not have finished when

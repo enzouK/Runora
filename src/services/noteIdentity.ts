@@ -52,7 +52,7 @@ export function normalizeFieldValue(value: string): string {
 }
 
 /** FNV-1a 32-bit — hash pequeno e estável para a assinatura. */
-function fnv1a(text: string): string {
+export function fnv1aHash(text: string): string {
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     hash ^= text.charCodeAt(i);
@@ -80,7 +80,7 @@ export function computeNoteSignature(
     .filter((entry) => !entry.endsWith('='))
     .join('|');
   const payload = `v1|type:${noteTypeName}|deck:${deckName}|${fieldEntries}`;
-  return `sig-${fnv1a(payload)}-${payload.length.toString(16)}`;
+  return `sig-${fnv1aHash(payload)}-${payload.length.toString(16)}`;
 }
 
 /**

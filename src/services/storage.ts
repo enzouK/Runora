@@ -1,4 +1,5 @@
 import { Card, DailyLimits, Deck, DeckCounts, DisplayOrderConfig, FSRSParameters, FSRSScope, InsertionOrder, LeechAction, MixOrder, NewGatherOrder, NewSortOrder, Note, NoteType, Preset, ReviewSortOrder, RevlogEntry, Tombstone } from '../types/runora';
+import { planReviewIdentityMigration } from './reviewMigration';
 import { ClozeService } from './clozeService';
 import { INITIAL_CARDS, INITIAL_DECKS, INITIAL_NOTE_TYPES, INITIAL_NOTES } from './sampleData';
 import { DEFAULT_FSRS_PARAMETERS, FSRS_WEIGHT_COUNT_MIN } from '../fsrs/constants';
@@ -605,6 +606,46 @@ export class StorageService {
   }
 
   /**
+   * Todos os tombstones de CARD (inclusive os já sincronizados).
+   *
+   * O tombstone é a "certidão de óbito" do card: ele carrega a identidade
+   * universal dele (GUID da nota + ordem do template). É o que permite
+   * dar a identidade universal às revisões de cards que foram APAGADOS
+   * (o addon *Review Heatmap* precisa delas — e o número tem que bater
+   * em todos os aparelhos).
+   */
+  public static getCardTombstones(): Tombstone[] {
+    return this.getSyncTombstones().cards ?? [];
+  }
+
+  /**
+   * Re-estampa a identidade das revisões guardadas neste aparelho (T16).
+   *
+   * O id universal é DERIVADO (o mesmo card + o mesmo horário = o mesmo id
+   * em qualquer aparelho), então cada aparelho faz isso sozinho: sem
+   * tráfego de rede e **sem mexer no USN** (o conteúdo da coleção não
+   * muda — só o rótulo do id).
+   *
+   * Roda em dois momentos:
+   * - na abertura do app (o que sobrou de legado);
+   * - no instante em que um card é apagado (enquanto a identidade do card
+   *   ainda está no *tombstone* — depois de publicado, o tombstone é
+   *   limpo e a identidade do card se perde).
+   */
+  public static migrateReviewIdentity(): void {
+    const plano = planReviewIdentityMigration({
+      revlog: this.getRevlog(),
+      notes: this.getNotes(),
+      cards: this.getCards(),
+      tombstones: this.getCardTombstones(),
+    });
+    if (!plano.mudou) return;
+    // `keepMissingUsn`: a migração só troca o rótulo do id — o USN (a
+    // "versão" da coleção) não pode andar por causa disso.
+    this.saveRevlogAll(plano.entries, { keepMissingUsn: true });
+  }
+
+  /**
    * Backfill: garante que todas as entidades existentes tenham USN.
    * Deve ser chamado uma vez na inicialização ou migração.
    * Retorna o número de entidades atualizadas.
@@ -892,8 +933,21 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.REVLOG, JSON.stringify(list));
   }
 
-  /** Replaces the whole review history (bulk imports build the union first). */
-  public static saveRevlogAll(entries: RevlogEntry[]): void {
+  /**
+   * Replaces the whole review history (bulk imports build the union first).
+   *
+   * `keepMissingUsn`: não dá USN novo às revisões que não têm. Usado pela
+   * migração de identidade (T16), que só troca o rótulo do id — o conteúdo
+   * da coleção não muda, então o contador compartilhado não pode andar.
+   */
+  public static saveRevlogAll(
+    entries: RevlogEntry[],
+    opts?: { keepMissingUsn?: boolean }
+  ): void {
+    if (opts?.keepMissingUsn) {
+      localStorage.setItem(STORAGE_KEYS.REVLOG, JSON.stringify(entries));
+      return;
+    }
     // O contador só avança se entra alguma revisão SEM USN (ou seja, nova de
     // verdade). Reordenar/mesclar o histórico que já tem USN não cria uma
     // "versão" nova da coleção — e criar uma faria os aparelhos baixarem a
@@ -1147,6 +1201,12 @@ export class StorageService {
         deletedAt,
       });
     }
+
+    // O card apagado AINDA tem a identidade no tombstone (ela é limpa
+    // depois que a deleção é publicada): é a hora de dar o id UNIVERSAL às
+    // revisões dele — senão cada aparelho daria um id diferente para a
+    // mesma revisão (e o addon *Review Heatmap* contaria diferente).
+    this.migrateReviewIdentity();
   }
 
   /**
@@ -1210,6 +1270,11 @@ export class StorageService {
         deletedAt,
       });
     }
+
+    // Mesmo do deleteCard/deleteNote: enquanto o tombstone existe, a
+    // identidade do card apagado ainda é conhecida — dá para dar o id
+    // UNIVERSAL às revisões dele agora.
+    this.migrateReviewIdentity();
   }
 
   // ---- Runora-style Daily Limits ----
@@ -1885,6 +1950,12 @@ export class StorageService {
       usn,
       deletedAt,
     });
+
+    // O card apagado AINDA tem a identidade no tombstone (ela é limpa
+    // depois que a deleção é publicada): é a hora de dar o id UNIVERSAL às
+    // revisões dele — senão cada aparelho daria um id diferente para a
+    // mesma revisão (e o addon *Review Heatmap* contaria diferente).
+    this.migrateReviewIdentity();
   }
 
   /**

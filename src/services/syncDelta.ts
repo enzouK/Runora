@@ -7,6 +7,7 @@
  */
 
 import type { Deck, NoteType, Note, Card, RevlogEntry, Preset, Tombstone } from '../types/runora';
+import { isUniversalReviewId, reviewDedupeKeys } from './reviewIdentity';
 
 /** Versão do formato de delta. */
 export const DELTA_FORMAT_VERSION = 1;
@@ -473,6 +474,42 @@ export function applyDeltaToCollection(
 ): void {
   const noteGuids: Record<string, string> = delta.noteGuids ?? {};
 
+  // Identidade dos cards — montada ANTES de qualquer alteração, porque a
+  // revisão que está na base cita o card pelo id que a base gravou, e o
+  // delta pode trocar esse id. Inclui os cards APAGADOS (o tombstone
+  // carrega o GUID e a ordem do template) → a revisão de um card deletado
+  // também tem identidade (e não entra 2×).
+  const cardIdentities = new Map<string, { guid: string; templateOrd: number }>();
+  const guidBase = new Map<string, string>();
+  for (const n of collection.notes) {
+    const guid = n.guid?.trim();
+    if (guid) guidBase.set(n.id, guid);
+  }
+  for (const c of collection.cards) {
+    const guid = guidBase.get(c.noteId);
+    if (!guid) continue;
+    cardIdentities.set(c.id, { guid, templateOrd: c.templateOrd ?? 0 });
+  }
+  const guidDelta = new Map<string, string>();
+  for (const n of delta.notes ?? []) {
+    const guid = n.guid?.trim();
+    if (guid) guidDelta.set(n.id, guid);
+  }
+  for (const [noteId, guid] of Object.entries(noteGuids)) {
+    if (guid?.trim()) guidDelta.set(noteId, guid.trim());
+  }
+  for (const c of delta.cards ?? []) {
+    const guid = guidDelta.get(c.noteId);
+    if (!guid) continue;
+    cardIdentities.set(c.id, { guid, templateOrd: c.templateOrd ?? 0 });
+  }
+  for (const t of delta.tombstones ?? []) {
+    if (t.type !== 'card') continue;
+    const guid = t.guid?.trim();
+    if (!guid || t.templateOrd === undefined) continue;
+    cardIdentities.set(t.id, { guid, templateOrd: t.templateOrd });
+  }
+
   // O `.colpkg` e o delta podem ter vindo de aparelhos diferentes: a
   // identidade entre eles é o GUID (nota), (GUID + ordem) (card) e o NOME
   // (deck/tipo/preset) — o `id` é local de cada aparelho.
@@ -544,7 +581,36 @@ export function applyDeltaToCollection(
   upsert(collection.notes, delta.notes, 'note');
   upsert(collection.cards, delta.cards, 'card');
   upsert(collection.presets, delta.presets, 'preset');
-  upsert(collection.revlog, delta.revlog, 'revlog');
+
+  // 3. as revisões entram casadas pela IDENTIDADE UNIVERSAL
+  // (GUID da nota + ordem do template + horário) — e não pelo `id`, que é
+  // local de cada aparelho. Era aqui que a mesma revisão entrava 2× (a da
+  // base com um id, a do delta com outro) e o STATE contava dobrado.
+  //
+  // A revisão de um card APAGADO também entra (fica invisível na tela de
+  // estudo, mas continua no histórico — é o que o *Review Heatmap* conta).
+  if (delta.revlog?.length) {
+    if (!collection.revlog) collection.revlog = [];
+    const list = collection.revlog;
+    for (const item of delta.revlog) {
+      const identity = cardIdentities.get(item.cardId);
+      const keys = reviewDedupeKeys(item, identity);
+      const idx = list.findIndex((x) => {
+        const xIdentity = cardIdentities.get(x.cardId);
+        const xKeys = reviewDedupeKeys(x, xIdentity);
+        return keys.some((k) => xKeys.includes(k));
+      });
+      if (idx >= 0) {
+        // o delta é mais novo → ele entra. Mas o id universal não pode
+        // "voltar" para um id legado: se o que já está aqui é universal, ele
+        // fica (é o mesmo em qualquer aparelho).
+        if (isUniversalReviewId(list[idx].id) && !isUniversalReviewId(item.id)) continue;
+        list[idx] = item;
+      } else {
+        list.push(item);
+      }
+    }
+  }
 }
 
 /**
